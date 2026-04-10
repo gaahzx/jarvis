@@ -1,0 +1,50 @@
+# Dados pessoais e secrets
+.env
+.env.local
+.env.production
+
+# Memória e histórico do aluno
+system/FELIPE-MEMORY.md
+system/FELIPE-HISTORY.json
+system/JARVIS-MEMORY.md
+system/JARVIS-HISTORY.json
+system/memory-embeddings.json
+system/last-audio-debug.*
+
+# Arquivos criados pelo aluno
+Documents and Projects/
+Documents and Projects - Backup/
+
+# Node / Puppeteer
+node_modules/
+.cache/
+launcher/node_modules/
+launcher/dist/
+
+# Build artifacts
+FELIPE-Launcher.exe
+*.exe
+
+# Claude local settings
+.claude/settings.local.json
+
+# Arquivos temporários
+temp_*.jpg
+temp_*.png
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Obsidian vault (pessoal)
+Felipe/
+.obsidian/
+
+# Inno Setup build
+*.iss.bak
+JARVIS-Installer.exe
