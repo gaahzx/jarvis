@@ -65,40 +65,54 @@ let claudeCliAvailable = false;
 let claudeCliChecking = true;
 let claudeCliError = '';
 
-// Procura o binario do Claude em multiplos locais
-// Cobre: PATH, npm global, native installer (novo) e Program Files
+// Procura o binario do Claude CLI com QUADRUPLO CHECK:
+// 1. Via PATH (rapido)
+// 2. Via 'where claude' / 'which claude' (descobre caminho real)
+// 3. Via caminhos conhecidos hardcoded (npm + native installer + Program Files)
+// 4. Busca recursiva em AppData\Local\Programs (fallback final)
 function findClaudeCli() {
-  // 1. Tenta via PATH primeiro (mais rapido)
+  // Estrategia 1: PATH direto
   try {
     execSync('claude --version', { stdio: 'pipe', timeout: 5000, shell: true });
+    console.log('[FELIPE] Claude CLI encontrado via PATH');
     return 'claude';
   } catch {}
 
-  // 2. Usa 'where' (Windows) ou 'which' (Unix) pra descobrir o caminho real
+  // Estrategia 2: where/which (descobre caminho real mesmo se o Electron tiver PATH reduzido)
   try {
     const cmd = process.platform === 'win32' ? 'where claude' : 'which claude';
     const result = execSync(cmd, { encoding: 'utf-8', timeout: 5000, shell: true });
-    const firstPath = result.split('\n')[0].trim();
-    if (firstPath && fs.existsSync(firstPath)) {
-      return firstPath;
+    const paths = result.split('\n').map(p => p.trim()).filter(Boolean);
+    for (const p of paths) {
+      if (fs.existsSync(p)) {
+        try {
+          execSync(`"${p}" --version`, { stdio: 'pipe', timeout: 5000, shell: true });
+          console.log(`[FELIPE] Claude CLI encontrado via where: ${p}`);
+          return p;
+        } catch {}
+      }
     }
   } catch {}
 
-  // 3. Fallback: checa caminhos conhecidos (npm global e native installer)
+  // Estrategia 3: caminhos conhecidos
   const HOME = os.homedir();
   const candidates = [
-    // Native installer (novo — Claude Code v2+)
+    // Native installer (novo — Claude Code v2.1+)
     path.join(HOME, '.local', 'bin', 'claude.exe'),
+    path.join(HOME, '.local', 'bin', 'claude.cmd'),
     path.join(HOME, '.local', 'bin', 'claude'),
     path.join(HOME, 'AppData', 'Local', 'Programs', 'claude-code', 'claude.exe'),
     path.join(HOME, 'AppData', 'Local', 'Programs', 'Claude', 'claude.exe'),
     path.join(HOME, 'AppData', 'Local', 'Anthropic', 'Claude Code', 'claude.exe'),
     path.join(HOME, 'AppData', 'Local', 'claude-code', 'claude.exe'),
+    path.join(HOME, 'AppData', 'Local', 'anthropic', 'claude-code', 'claude.exe'),
     // npm global bin (antigo)
     path.join(HOME, 'AppData', 'Roaming', 'npm', 'claude.cmd'),
     path.join(HOME, 'AppData', 'Roaming', 'npm', 'claude.exe'),
     // Program Files
     'C:\\Program Files\\Claude Code\\claude.exe',
+    'C:\\Program Files\\Claude\\claude.exe',
+    'C:\\Program Files\\Anthropic\\Claude Code\\claude.exe',
     'C:\\Program Files\\nodejs\\claude.cmd',
   ];
 
@@ -106,10 +120,37 @@ function findClaudeCli() {
     if (fs.existsSync(cmd)) {
       try {
         execSync(`"${cmd}" --version`, { stdio: 'pipe', timeout: 5000, shell: true });
+        console.log(`[FELIPE] Claude CLI encontrado via candidato: ${cmd}`);
         return cmd;
       } catch {}
     }
   }
+
+  // Estrategia 4: busca recursiva em AppData\Local\Programs
+  try {
+    const programsDir = path.join(HOME, 'AppData', 'Local', 'Programs');
+    if (fs.existsSync(programsDir)) {
+      const dirs = fs.readdirSync(programsDir);
+      for (const d of dirs) {
+        if (d.toLowerCase().includes('claude') || d.toLowerCase().includes('anthropic')) {
+          const subDir = path.join(programsDir, d);
+          try {
+            const files = fs.readdirSync(subDir);
+            for (const f of files) {
+              if (f.toLowerCase().startsWith('claude') && (f.endsWith('.exe') || f.endsWith('.cmd'))) {
+                const exePath = path.join(subDir, f);
+                try {
+                  execSync(`"${exePath}" --version`, { stdio: 'pipe', timeout: 5000, shell: true });
+                  console.log(`[FELIPE] Claude CLI encontrado via busca: ${exePath}`);
+                  return exePath;
+                } catch {}
+              }
+            }
+          } catch {}
+        }
+      }
+    }
+  } catch {}
 
   return null;
 }
@@ -131,7 +172,7 @@ async function checkClaudeCliAuth() {
   // Slow check: can Claude actually execute? (~5-15s) — runs AFTER server starts
   try {
     await new Promise((resolve, reject) => {
-      const proc = spawn('claude', [
+      const proc = spawn(CLAUDE_CMD, [
         '--print', '--output-format', 'text',
         '--dangerously-skip-permissions'
       ], { shell: true, cwd: JARVIS_DIR });
@@ -210,7 +251,7 @@ class WarmPool {
   }
 
   _spawn() {
-    const proc = spawn('claude', [
+    const proc = spawn(CLAUDE_CMD, [
       '--print', '--output-format', 'text',
       '--model', this.model,
       '--dangerously-skip-permissions'
@@ -2332,7 +2373,7 @@ Be direct and concise. If the user's question is about specific content visible 
 
     return new Promise((resolve) => {
       // Screen analysis needs --file flag — must use fresh spawn (can't use pool)
-      const proc = spawn('claude', [
+      const proc = spawn(CLAUDE_CMD, [
         '--print', '--output-format', 'text',
         '--model', 'claude-sonnet-4-6',
         '--dangerously-skip-permissions',
@@ -3238,7 +3279,7 @@ After fixing, output a summary of what was done.`;
   res.setHeader('Cache-Control', 'no-cache');
 
   try {
-    const proc = spawn('claude', [
+    const proc = spawn(CLAUDE_CMD, [
       '--print', '--output-format', 'text', '--model', 'claude-sonnet-4-6',
       '--dangerously-skip-permissions',
       '-p', fixPrompt
@@ -3358,7 +3399,7 @@ To open programs: use hotkey "win+r", type the program name, press enter.
 To open URLs: use Bash "start https://..." command directly.`;
 
   try {
-    const proc = spawn('claude', [
+    const proc = spawn(CLAUDE_CMD, [
       '--print', '--output-format', 'text',
       '--dangerously-skip-permissions'
     ], {
