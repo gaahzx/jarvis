@@ -65,16 +65,35 @@ let claudeCliAvailable = false;
 let claudeCliChecking = true;
 let claudeCliError = '';
 
-function checkClaudeCliSync() {
-  // Fast check: does the 'claude' command exist in PATH? (~10ms)
-  try {
-    execSync('claude --version', { stdio: 'pipe', timeout: 5000, shell: true });
-    return true;
-  } catch {
-    claudeCliError = 'Claude Code CLI not found in PATH. Install: npm install -g @anthropic-ai/claude-code';
-    console.error(`[FELIPE] ❌ ${claudeCliError}`);
-    return false;
+// Procura o binario do Claude em multiplos locais (npm global, installer, etc)
+function findClaudeCli() {
+  const candidates = [
+    'claude',
+    path.join(os.homedir(), 'AppData', 'Roaming', 'npm', 'claude.cmd'),
+    path.join(os.homedir(), 'AppData', 'Roaming', 'npm', 'claude.exe'),
+    path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'claude-code', 'claude.exe'),
+    'C:\\Program Files\\nodejs\\claude.cmd',
+  ];
+  for (const cmd of candidates) {
+    try {
+      execSync(`"${cmd}" --version`, { stdio: 'pipe', timeout: 5000, shell: true });
+      return cmd;
+    } catch {}
   }
+  return null;
+}
+
+let CLAUDE_CMD = 'claude'; // Atualizado em checkClaudeCliSync()
+
+function checkClaudeCliSync() {
+  const found = findClaudeCli();
+  if (found) {
+    CLAUDE_CMD = found;
+    return true;
+  }
+  claudeCliError = 'Claude Code CLI not found. Install: npm install -g @anthropic-ai/claude-code';
+  console.error(`[FELIPE] ❌ ${claudeCliError}`);
+  return false;
 }
 
 async function checkClaudeCliAuth() {
@@ -3072,11 +3091,25 @@ app.post('/api/health/preflight', async (req, res) => {
   }
 
   // 4. Test Claude CLI — ALWAYS do a fresh check (don't rely on boot check which may have timed out)
+  // Procura em multiplos locais porque o PATH do Electron pode nao ter npm global bin
   let cliFound = false;
-  try {
-    execSync('claude --version', { stdio: 'pipe', timeout: 10000, shell: true });
-    cliFound = true;
-  } catch {}
+  let claudeCmd = 'claude';
+  const claudeCandidates = [
+    'claude',
+    path.join(os.homedir(), 'AppData', 'Roaming', 'npm', 'claude.cmd'),
+    path.join(os.homedir(), 'AppData', 'Roaming', 'npm', 'claude.exe'),
+    path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'claude-code', 'claude.exe'),
+    'C:\\Program Files\\nodejs\\claude.cmd',
+  ];
+
+  for (const cmd of claudeCandidates) {
+    try {
+      execSync(`"${cmd}" --version`, { stdio: 'pipe', timeout: 5000, shell: true });
+      cliFound = true;
+      claudeCmd = cmd;
+      break;
+    } catch {}
+  }
 
   if (!cliFound) {
     results.claude_cli = { status: 'error', detail: 'Claude CLI not found. Install: npm install -g @anthropic-ai/claude-code' };
@@ -3085,7 +3118,7 @@ app.post('/api/health/preflight', async (req, res) => {
     // 4b. Check auth status (fast — just reads credentials file)
     let authOk = false;
     try {
-      const authResult = execSync('claude auth status', { encoding: 'utf-8', timeout: 10000, shell: true });
+      const authResult = execSync(`"${claudeCmd}" auth status`, { encoding: 'utf-8', timeout: 10000, shell: true });
       authOk = authResult.includes('"loggedIn": true') || authResult.includes('"loggedIn":true');
     } catch {}
 
