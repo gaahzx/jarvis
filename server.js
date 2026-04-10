@@ -65,21 +65,52 @@ let claudeCliAvailable = false;
 let claudeCliChecking = true;
 let claudeCliError = '';
 
-// Procura o binario do Claude em multiplos locais (npm global, installer, etc)
+// Procura o binario do Claude em multiplos locais
+// Cobre: PATH, npm global, native installer (novo) e Program Files
 function findClaudeCli() {
+  // 1. Tenta via PATH primeiro (mais rapido)
+  try {
+    execSync('claude --version', { stdio: 'pipe', timeout: 5000, shell: true });
+    return 'claude';
+  } catch {}
+
+  // 2. Usa 'where' (Windows) ou 'which' (Unix) pra descobrir o caminho real
+  try {
+    const cmd = process.platform === 'win32' ? 'where claude' : 'which claude';
+    const result = execSync(cmd, { encoding: 'utf-8', timeout: 5000, shell: true });
+    const firstPath = result.split('\n')[0].trim();
+    if (firstPath && fs.existsSync(firstPath)) {
+      return firstPath;
+    }
+  } catch {}
+
+  // 3. Fallback: checa caminhos conhecidos (npm global e native installer)
+  const HOME = os.homedir();
   const candidates = [
-    'claude',
-    path.join(os.homedir(), 'AppData', 'Roaming', 'npm', 'claude.cmd'),
-    path.join(os.homedir(), 'AppData', 'Roaming', 'npm', 'claude.exe'),
-    path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'claude-code', 'claude.exe'),
+    // Native installer (novo — Claude Code v2+)
+    path.join(HOME, '.local', 'bin', 'claude.exe'),
+    path.join(HOME, '.local', 'bin', 'claude'),
+    path.join(HOME, 'AppData', 'Local', 'Programs', 'claude-code', 'claude.exe'),
+    path.join(HOME, 'AppData', 'Local', 'Programs', 'Claude', 'claude.exe'),
+    path.join(HOME, 'AppData', 'Local', 'Anthropic', 'Claude Code', 'claude.exe'),
+    path.join(HOME, 'AppData', 'Local', 'claude-code', 'claude.exe'),
+    // npm global bin (antigo)
+    path.join(HOME, 'AppData', 'Roaming', 'npm', 'claude.cmd'),
+    path.join(HOME, 'AppData', 'Roaming', 'npm', 'claude.exe'),
+    // Program Files
+    'C:\\Program Files\\Claude Code\\claude.exe',
     'C:\\Program Files\\nodejs\\claude.cmd',
   ];
+
   for (const cmd of candidates) {
-    try {
-      execSync(`"${cmd}" --version`, { stdio: 'pipe', timeout: 5000, shell: true });
-      return cmd;
-    } catch {}
+    if (fs.existsSync(cmd)) {
+      try {
+        execSync(`"${cmd}" --version`, { stdio: 'pipe', timeout: 5000, shell: true });
+        return cmd;
+      } catch {}
+    }
   }
+
   return null;
 }
 
@@ -3091,25 +3122,10 @@ app.post('/api/health/preflight', async (req, res) => {
   }
 
   // 4. Test Claude CLI — ALWAYS do a fresh check (don't rely on boot check which may have timed out)
-  // Procura em multiplos locais porque o PATH do Electron pode nao ter npm global bin
-  let cliFound = false;
-  let claudeCmd = 'claude';
-  const claudeCandidates = [
-    'claude',
-    path.join(os.homedir(), 'AppData', 'Roaming', 'npm', 'claude.cmd'),
-    path.join(os.homedir(), 'AppData', 'Roaming', 'npm', 'claude.exe'),
-    path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'claude-code', 'claude.exe'),
-    'C:\\Program Files\\nodejs\\claude.cmd',
-  ];
-
-  for (const cmd of claudeCandidates) {
-    try {
-      execSync(`"${cmd}" --version`, { stdio: 'pipe', timeout: 5000, shell: true });
-      cliFound = true;
-      claudeCmd = cmd;
-      break;
-    } catch {}
-  }
+  // Usa findClaudeCli() que cobre PATH, where claude, npm global, e native installer
+  const foundClaudePath = findClaudeCli();
+  const cliFound = !!foundClaudePath;
+  const claudeCmd = foundClaudePath || 'claude';
 
   if (!cliFound) {
     results.claude_cli = { status: 'error', detail: 'Claude CLI not found. Install: npm install -g @anthropic-ai/claude-code' };
