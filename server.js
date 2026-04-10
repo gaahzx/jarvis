@@ -167,6 +167,36 @@ function findClaudeCli() {
 
 let CLAUDE_CMD = 'claude'; // Atualizado em checkClaudeCliSync()
 
+// Localiza o Python instalado (evita o alias do Windows Store)
+function findPythonExe() {
+  const candidates = [
+    PYTHON_CMD,
+    'C:\\Program Files\\Python312\\python.exe',
+    'C:\\Program Files\\Python310\\python.exe',
+    'C:\\Program Files (x86)\\Python311\\python.exe',
+    path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python311', 'python.exe'),
+    path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python312', 'python.exe'),
+    path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python310', 'python.exe'),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  // Fallback: tentar via where (evita alias do Store que redireciona)
+  try {
+    const result = execSync('where python', { encoding: 'utf-8', timeout: 5000, shell: true });
+    const paths = result.split('\n').map(p => p.trim()).filter(Boolean);
+    for (const p of paths) {
+      // Ignora alias do Windows Store (WindowsApps)
+      if (p.includes('WindowsApps')) continue;
+      if (fs.existsSync(p)) return p;
+    }
+  } catch {}
+  return 'python';
+}
+
+const PYTHON_CMD = findPythonExe();
+console.log(`[FELIPE] Python em: ${PYTHON_CMD}`);
+
 function checkClaudeCliSync() {
   const found = findClaudeCli();
   if (found) {
@@ -921,7 +951,7 @@ function tryFastExecution(message, language = 'BR') {
     const ytPlayScript = path.join(JARVIS_DIR, 'system', 'youtube-play.py');
     try {
       // Run synchronously to get the video URL before responding
-      const ytResult = execSync(`python "${ytPlayScript}" "${clean}"`, {
+      const ytResult = execSync(`"${PYTHON_CMD}" "${ytPlayScript}" "${clean}"`, {
         encoding: 'utf-8', timeout: 10000, shell: true
       });
       console.log(`[FELIPE] ▶ YouTube: ${ytResult.trim()}`);
@@ -1012,7 +1042,7 @@ function tryFastExecution(message, language = 'BR') {
     try {
       const ssPath = path.join(PROJECTS_DIR, `screenshot-${Date.now()}.jpg`);
       const scriptPath = path.join(JARVIS_DIR, 'system', 'screenshot.py');
-      const result = execSync(`python "${scriptPath}" 1`, { encoding: 'utf-8', timeout: 10000, maxBuffer: 30*1024*1024 });
+      const result = execSync(`"${PYTHON_CMD}" "${scriptPath}" 1`, { encoding: 'utf-8', timeout: 10000, maxBuffer: 30*1024*1024 });
       const data = JSON.parse(result.trim());
       const buf = Buffer.from(data.data.split(',')[1], 'base64');
       fs.writeFileSync(ssPath, buf);
@@ -1470,10 +1500,16 @@ REGRA - PROJETOS em Documents and Projects/:
 
 CRIAÇÃO DE ARQUIVOS: PDF via HTML depois /api/pdf. Binários via bibliotecas Python.
 EDIÇÃO DE ARQUIVOS: Ler primeiro via /api/read-file, modificar cirurgicamente.
+PYTHON — IMPORTANTE:
+  SEMPRE use o caminho completo do Python, NUNCA o comando "python" direto (pra evitar o alias da Microsoft Store):
+  - Use: "${PYTHON_CMD}" -c "..."
+  - NÃO use: python -c "..."
+  - NÃO use: python3 -c "..."
+
 PLANILHAS EXCEL — REGRAS OBRIGATÓRIAS:
 
   CRIAR PLANILHA:
-  1. Crie o .xlsx com Python openpyxl JÁ COM TODOS os dados pedidos
+  1. Crie o .xlsx com openpyxl via "${PYTHON_CMD}" JÁ COM TODOS os dados pedidos
   2. Salve em: ${PROJECTS_DIR}/nome-projeto/arquivo.xlsx
   3. ABRA com: start "" "CAMINHO_COMPLETO/arquivo.xlsx"
   4. NUNCA use "start excel" sozinho — SEMPRE passe o caminho do arquivo
@@ -1499,10 +1535,16 @@ RULE - PROJECTS in Documents and Projects/:
 
 FILE CREATION: PDF via HTML then /api/pdf. Binary via Python libraries.
 FILE EDITING: Read first via /api/read-file, modify surgically.
+PYTHON — IMPORTANT:
+  ALWAYS use the full Python path, NEVER just "python" (to avoid Microsoft Store alias):
+  - Use: "${PYTHON_CMD}" -c "..."
+  - DO NOT use: python -c "..."
+  - DO NOT use: python3 -c "..."
+
 EXCEL SPREADSHEETS — CRITICAL RULES:
 
   CREATE NEW:
-  1. Create .xlsx with Python openpyxl WITH the data user requested
+  1. Create .xlsx with openpyxl via "${PYTHON_CMD}" WITH the data user requested
   2. Save to ${PROJECTS_DIR}/project-name/file.xlsx
   3. OPEN with: start "" "FULL_PATH\\file.xlsx" (ALWAYS full path in quotes!)
   4. NEVER use "start excel" alone — always "start "" FULL_PATH"
@@ -1726,8 +1768,8 @@ app.post('/api/chat', async (req, res) => {
 
         // Capture both: full monitors + cursor region
         const [ssResult, cursorResult] = await Promise.all([
-          new Promise(r => { try { r(execSync(`python "${scriptPath}" all`, { encoding: 'utf-8', timeout: 10000, maxBuffer: 30*1024*1024 })); } catch { r('{}'); } }),
-          new Promise(r => { try { r(execSync(`python "${cursorPath}"`, { encoding: 'utf-8', timeout: 10000, maxBuffer: 30*1024*1024 })); } catch { r('{}'); } }),
+          new Promise(r => { try { r(execSync(`"${PYTHON_CMD}" "${scriptPath}" all`, { encoding: 'utf-8', timeout: 10000, maxBuffer: 30*1024*1024 })); } catch { r('{}'); } }),
+          new Promise(r => { try { r(execSync(`"${PYTHON_CMD}" "${cursorPath}"`, { encoding: 'utf-8', timeout: 10000, maxBuffer: 30*1024*1024 })); } catch { r('{}'); } }),
         ]);
 
         const ssData = JSON.parse(ssResult.trim() || '{}');
@@ -1913,7 +1955,7 @@ REGRAS:
       try {
         console.log('[FELIPE] Auto-screenshot for screen query...');
         const scriptPath = path.join(JARVIS_DIR, 'system', 'screenshot.py');
-        const ssResult = execSync(`python "${scriptPath}" all`, {
+        const ssResult = execSync(`"${PYTHON_CMD}" "${scriptPath}" all`, {
           encoding: 'utf-8', timeout: 10000, maxBuffer: 30 * 1024 * 1024
         });
         const ssData = JSON.parse(ssResult.trim());
@@ -2805,7 +2847,7 @@ else:
     fs.writeFileSync(tmpScript, script);
 
     const { execFile } = await import('child_process');
-    execFile('C:\\Program Files\\Python311\\python.exe', [tmpScript], { timeout: 30000 }, (err, stdout, stderr) => {
+    execFile(PYTHON_CMD, [tmpScript], { timeout: 30000 }, (err, stdout, stderr) => {
       try { fs.unlinkSync(tmpScript); } catch {}
       if (err) return res.status(500).json({ error: err.message, stderr });
       try { res.json(JSON.parse(stdout.trim())); }
@@ -2823,7 +2865,7 @@ app.post('/api/read-excel', async (req, res) => {
     if (!filePath) return res.status(400).json({ error: 'path required' });
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
 
-    const py = `"C:\\Program Files\\Python311\\python.exe"`;
+    const py = `"${PYTHON_CMD}"`;
     const script = `
 import json, sys
 import openpyxl
@@ -2839,7 +2881,7 @@ print(json.dumps({"sheet": sheet_name, "sheets": wb.sheetnames, "rows": rows}))
     fs.writeFileSync(tmpScript, script);
 
     const { execFile } = await import('child_process');
-    execFile('C:\\Program Files\\Python311\\python.exe', [tmpScript], { timeout: 15000 }, (err, stdout) => {
+    execFile(PYTHON_CMD, [tmpScript], { timeout: 15000 }, (err, stdout) => {
       fs.unlinkSync(tmpScript);
       if (err) return res.status(500).json({ error: err.message });
       try { res.json(JSON.parse(stdout)); }
@@ -2996,7 +3038,7 @@ with pdfplumber.open(r'${tmpPath.replace(/\\/g, '\\\\')}') as pdf:
         if text:
             print(text)
 `;
-        const pdfText = execSync(`python -c "${pyScript.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`, {
+        const pdfText = execSync(`"${PYTHON_CMD}" -c "${pyScript.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`, {
           encoding: 'utf-8', timeout: 30000, maxBuffer: 10 * 1024 * 1024
         }).trim();
 
@@ -3076,7 +3118,7 @@ app.get('/api/health', (req, res) => {
       task_execution: claudeCliAvailable,
       pdf_generation: true,
       screen_analysis: claudeCliAvailable,
-      excel_live: fs.existsSync('C:\\Program Files\\Python311\\python.exe'),
+      excel_live: fs.existsSync(PYTHON_CMD),
       meta_ads: !!(process.env.META_ACCESS_TOKEN && process.env.META_AD_ACCOUNT_ID)
     }
   };
@@ -3341,7 +3383,7 @@ app.get('/api/screenshot', (req, res) => {
   try {
     const monitor = req.query.monitor || '1';
     const scriptPath = path.join(JARVIS_DIR, 'system', 'screenshot.py');
-    const result = execSync(`python "${scriptPath}" ${monitor}`, {
+    const result = execSync(`"${PYTHON_CMD}" "${scriptPath}" ${monitor}`, {
       encoding: 'utf-8', timeout: 15000, maxBuffer: 30 * 1024 * 1024
     });
     res.json(JSON.parse(result.trim()));
@@ -3356,7 +3398,7 @@ app.post('/api/computer-use', (req, res) => {
   try {
     const scriptPath = path.join(JARVIS_DIR, 'system', 'computer-action.py');
     const argsJson = JSON.stringify(req.body).replace(/"/g, '\\"');
-    execSync(`python "${scriptPath}" "${argsJson}"`, { timeout: 10000, shell: true });
+    execSync(`"${PYTHON_CMD}" "${scriptPath}" "${argsJson}"`, { timeout: 10000, shell: true });
     res.json({ success: true, action: req.body.action });
   } catch (err) {
     console.error('[FELIPE] Computer-use error:', err.message?.slice(0, 200));
@@ -3461,7 +3503,7 @@ app.listen(PORT, () => {
   console.log(`  OpenAI:     ${openai ? '✅ Connected (Voice + TTS + STT)' : '❌ Not configured — voice disabled'}`);
   console.log(`  Claude CLI: ${cliExists ? '✅ Found — verifying auth in background...' : '❌ Not installed'}`);
   console.log(`  Chrome:     ${chrome ? '✅ ' + chrome : '⚠️  Using bundled Chromium'}`);
-  console.log(`  Python:     ${fs.existsSync('C:\\Program Files\\Python311\\python.exe') ? '✅ Python 3.11' : '⚠️  Not found — Excel features disabled'}`);
+  console.log(`  Python:     ${fs.existsSync(PYTHON_CMD) ? '✅ Python 3.11' : '⚠️  Not found — Excel features disabled'}`);
   console.log('');
   if (!cliExists) {
     console.log('  ⚠️  WARNING: Claude Code CLI not found.');
