@@ -16,7 +16,7 @@ Documents and Projects/
 Documents and Projects - Backup/
 
 # Node / Puppeteer
-node_modules/
+# node_modules/ INCLUIDO pra sincronizar deps via auto-update
 .cache/
 launcher/node_modules/
 launcher/dist/
