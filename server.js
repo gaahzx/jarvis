@@ -65,12 +65,22 @@ let claudeCliAvailable = false;
 let claudeCliChecking = true;
 let claudeCliError = '';
 
-// Procura o binario do Claude CLI com QUADRUPLO CHECK:
+// Procura o binario do Claude CLI com QUINTUPLO CHECK:
+// 0. Via .env (CLAUDE_CLI_PATH) — salvo pelo instalador
 // 1. Via PATH (rapido)
 // 2. Via 'where claude' / 'which claude' (descobre caminho real)
 // 3. Via caminhos conhecidos hardcoded (npm + native installer + Program Files)
 // 4. Busca recursiva em AppData\Local\Programs (fallback final)
 function findClaudeCli() {
+  // Estrategia 0: caminho salvo no .env pelo instalador
+  if (process.env.CLAUDE_CLI_PATH && fs.existsSync(process.env.CLAUDE_CLI_PATH)) {
+    try {
+      execSync(`"${process.env.CLAUDE_CLI_PATH}" --version`, { stdio: 'pipe', timeout: 5000, shell: true });
+      console.log(`[FELIPE] Claude CLI encontrado via .env: ${process.env.CLAUDE_CLI_PATH}`);
+      return process.env.CLAUDE_CLI_PATH;
+    } catch {}
+  }
+
   // Estrategia 1: PATH direto
   try {
     execSync('claude --version', { stdio: 'pipe', timeout: 5000, shell: true });
