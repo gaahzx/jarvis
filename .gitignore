@@ -20,6 +20,7 @@ node_modules/
 .cache/
 launcher/node_modules/
 launcher/dist/
+launcher/updater.js
 
 # Build artifacts
 FELIPE-Launcher.exe
