@@ -170,7 +170,7 @@ let CLAUDE_CMD = 'claude'; // Atualizado em checkClaudeCliSync()
 // Localiza o Python instalado (evita o alias do Windows Store)
 function findPythonExe() {
   const candidates = [
-    PYTHON_CMD,
+    'C:\\Program Files\\Python311\\python.exe',
     'C:\\Program Files\\Python312\\python.exe',
     'C:\\Program Files\\Python310\\python.exe',
     'C:\\Program Files (x86)\\Python311\\python.exe',
@@ -186,7 +186,6 @@ function findPythonExe() {
     const result = execSync('where python', { encoding: 'utf-8', timeout: 5000, shell: true });
     const paths = result.split('\n').map(p => p.trim()).filter(Boolean);
     for (const p of paths) {
-      // Ignora alias do Windows Store (WindowsApps)
       if (p.includes('WindowsApps')) continue;
       if (fs.existsSync(p)) return p;
     }
@@ -3085,6 +3084,186 @@ with pdfplumber.open(r'${tmpPath.replace(/\\/g, '\\\\')}') as pdf:
   }
 });
 
+// ═══════════════════════════════════════════════
+// LibreHardwareMonitor — sensor data via local web API
+// ═══════════════════════════════════════════════
+let lhmProcess = null;
+let lhmReady = false;
+
+function startLibreHardwareMonitor() {
+  const lhmDir = path.join(JARVIS_DIR, 'sensors');
+  const lhmExe = path.join(lhmDir, 'LibreHardwareMonitor.exe');
+
+  if (!fs.existsSync(lhmExe)) {
+    console.log('[FELIPE] LibreHardwareMonitor nao encontrado — temperaturas limitadas');
+    return;
+  }
+
+  // Ja rodando?
+  try {
+    const check = execSync('tasklist /FI "IMAGENAME eq LibreHardwareMonitor.exe"', { encoding: 'utf-8' });
+    if (check.includes('LibreHardwareMonitor.exe')) {
+      console.log('[FELIPE] LibreHardwareMonitor ja rodando');
+      lhmReady = true;
+      return;
+    }
+  } catch {}
+
+  try {
+    lhmProcess = spawn(lhmExe, [], {
+      cwd: lhmDir,
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true
+    });
+    lhmProcess.unref();
+    console.log('[FELIPE] LibreHardwareMonitor iniciado');
+    // Aguarda 2s pra web server subir
+    setTimeout(() => { lhmReady = true; }, 2000);
+  } catch (err) {
+    console.log('[FELIPE] Erro ao iniciar LHM:', err.message);
+  }
+}
+
+// Parse LHM JSON recursivamente procurando sensores de temperatura
+function extractLHMSensors(node, results = { cpuTemps: [], gpuTemps: [], cpuLoad: [], gpuLoad: [] }) {
+  if (!node) return results;
+
+  if (node.Value && node.Type) {
+    // Ex: "53.0 °C" ou "42.5 %"
+    const val = parseFloat(node.Value);
+    if (!isNaN(val)) {
+      const textLower = (node.Text || '').toLowerCase();
+      const imageLower = (node.ImageURL || '').toLowerCase();
+      const isCpu = imageLower.includes('cpu') || textLower.includes('cpu');
+      const isGpu = imageLower.includes('gpu') || textLower.includes('gpu');
+
+      if (node.Value.includes('°C')) {
+        if (isCpu) results.cpuTemps.push(val);
+        else if (isGpu) results.gpuTemps.push(val);
+      } else if (node.Value.includes('%') && textLower.includes('total')) {
+        if (isCpu) results.cpuLoad.push(val);
+        else if (isGpu) results.gpuLoad.push(val);
+      }
+    }
+  }
+
+  if (Array.isArray(node.Children)) {
+    for (const child of node.Children) {
+      extractLHMSensors(child, results);
+    }
+  }
+  return results;
+}
+
+async function fetchLHMStats() {
+  if (!lhmReady) return null;
+  try {
+    const http = await import('http');
+    return new Promise((resolve) => {
+      const req = http.get('http://localhost:8085/data.json', { timeout: 2000 }, (r) => {
+        let data = '';
+        r.on('data', c => data += c);
+        r.on('end', () => {
+          try {
+            const parsed = JSON.parse(data);
+            const sensors = extractLHMSensors(parsed);
+            resolve({
+              cpuTemp: sensors.cpuTemps.length ? Math.round(Math.max(...sensors.cpuTemps)) : null,
+              gpuTemp: sensors.gpuTemps.length ? Math.round(Math.max(...sensors.gpuTemps)) : null,
+              cpuLoad: sensors.cpuLoad.length ? Math.round(sensors.cpuLoad[0]) : null,
+              gpuLoad: sensors.gpuLoad.length ? Math.round(sensors.gpuLoad[0]) : null,
+            });
+          } catch {
+            resolve(null);
+          }
+        });
+      });
+      req.on('error', () => resolve(null));
+      req.on('timeout', () => { req.destroy(); resolve(null); });
+    });
+  } catch {
+    return null;
+  }
+}
+
+// GET /api/system-stats - CPU/GPU/RAM via Python psutil+wmi (mais confiavel)
+app.get('/api/system-stats', async (req, res) => {
+  try {
+    // Tenta LHM primeiro (se rodando)
+    const lhm = await fetchLHMStats();
+    if (lhm && (lhm.cpuTemp || lhm.gpuTemp)) {
+      return res.json({
+        cpu: { usage: lhm.cpuLoad ?? Math.round(100 - (os.cpus().reduce((a,c)=>a+c.times.idle,0)/os.cpus().reduce((a,c)=>a+c.times.user+c.times.nice+c.times.sys+c.times.idle+c.times.irq,0)*100)), temp: lhm.cpuTemp, cores: os.cpus().length },
+        gpu: { name: null, usage: lhm.gpuLoad, temp: lhm.gpuTemp },
+        ram: { usage: Math.round(((os.totalmem()-os.freemem())/os.totalmem())*100), total: Math.round(os.totalmem()/(1024**3)), free: Math.round(os.freemem()/(1024**3)) },
+        source: 'LibreHardwareMonitor'
+      });
+    }
+
+    // Fallback: Python psutil + wmi (funciona com AMD/Intel/NVIDIA)
+    const pyScript = `
+import json, sys
+sys.stdout.reconfigure(encoding='utf-8')
+result = {"cpu":{"usage":None,"temp":None,"cores":0},"gpu":{"name":None,"temp":None},"ram":{"usage":None,"total":0,"free":0}}
+try:
+    import psutil
+    result["cpu"]["usage"] = round(psutil.cpu_percent(interval=0.5))
+    result["cpu"]["cores"] = psutil.cpu_count()
+    mem = psutil.virtual_memory()
+    result["ram"]["usage"] = round(mem.percent)
+    result["ram"]["total"] = round(mem.total / (1024**3))
+    result["ram"]["free"] = round(mem.available / (1024**3))
+    temps = psutil.sensors_temperatures()
+    if temps:
+        for name, entries in temps.items():
+            if entries:
+                result["cpu"]["temp"] = round(entries[0].current)
+                break
+except: pass
+try:
+    import wmi
+    w = wmi.WMI()
+    gpus = [g for g in w.Win32_VideoController() if g.Name and 'Microsoft' not in g.Name]
+    if gpus:
+        result["gpu"]["name"] = gpus[0].Name
+except: pass
+try:
+    import subprocess
+    r = subprocess.run(['nvidia-smi','--query-gpu=temperature.gpu','--format=csv,noheader,nounits'], capture_output=True, text=True, timeout=3)
+    if r.returncode == 0:
+        result["gpu"]["temp"] = int(r.stdout.strip())
+except: pass
+print(json.dumps(result))
+`;
+    const tmpScript = path.join(os.tmpdir(), 'jarvis_stats.py');
+    fs.writeFileSync(tmpScript, pyScript);
+
+    const { execFile } = await import('child_process');
+    execFile(PYTHON_CMD, [tmpScript], { timeout: 8000 }, (err, stdout) => {
+      try { fs.unlinkSync(tmpScript); } catch {}
+      if (err) {
+        // Fallback puro Node
+        return res.json({
+          cpu: { usage: null, temp: null, cores: os.cpus().length },
+          gpu: { name: null, temp: null },
+          ram: { usage: Math.round(((os.totalmem()-os.freemem())/os.totalmem())*100), total: Math.round(os.totalmem()/(1024**3)), free: Math.round(os.freemem()/(1024**3)) },
+          source: 'node-only'
+        });
+      }
+      try {
+        const data = JSON.parse(stdout.trim());
+        data.source = 'psutil';
+        res.json(data);
+      } catch {
+        res.json({ cpu:{usage:null,temp:null,cores:os.cpus().length}, gpu:{name:null,temp:null}, ram:{usage:null,total:0,free:0}, source:'error' });
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/health - Full system health check (used by Ligar FELIPE.bat and frontend)
 app.get('/api/health', (req, res) => {
   const chrome = findChrome();
@@ -3364,6 +3543,220 @@ After fixing, output a summary of what was done.`;
 
   } catch (err) {
     console.error('[FELIPE] Auto-fix error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════
+// OBSIDIAN BRAIN — Vault endpoints
+// ═══════════════════════════════════════════════
+const OBSIDIAN_VAULT = path.join(os.homedir(), 'Documents', 'Felipe');
+
+// GET /api/obsidian/stats — count notes, folders, links
+app.get('/api/obsidian/stats', (req, res) => {
+  try {
+    if (!fs.existsSync(OBSIDIAN_VAULT)) {
+      return res.json({ connected: false, error: 'Vault not found' });
+    }
+    let notes = 0, folders = 0, links = 0;
+    function walk(dir) {
+      const items = fs.readdirSync(dir);
+      for (const item of items) {
+        if (item.startsWith('.')) continue;
+        const full = path.join(dir, item);
+        const stat = fs.statSync(full);
+        if (stat.isDirectory()) {
+          folders++;
+          walk(full);
+        } else if (item.endsWith('.md')) {
+          notes++;
+          const content = fs.readFileSync(full, 'utf-8');
+          const matches = content.match(/\[\[[^\]]+\]\]/g);
+          if (matches) links += matches.length;
+        }
+      }
+    }
+    walk(OBSIDIAN_VAULT);
+    res.json({ connected: true, notes, folders, links });
+  } catch (err) {
+    res.json({ connected: false, error: err.message });
+  }
+});
+
+// GET /api/obsidian/tree — full vault tree
+app.get('/api/obsidian/tree', (req, res) => {
+  try {
+    if (!fs.existsSync(OBSIDIAN_VAULT)) return res.json({ tree: [] });
+    function buildTree(dir) {
+      const items = fs.readdirSync(dir).filter(i => !i.startsWith('.'));
+      const result = [];
+      // Folders first, then files
+      const folders = items.filter(i => fs.statSync(path.join(dir, i)).isDirectory());
+      const files = items.filter(i => i.endsWith('.md') && fs.statSync(path.join(dir, i)).isFile());
+      for (const f of folders.sort()) {
+        result.push({
+          type: 'folder',
+          name: f,
+          children: buildTree(path.join(dir, f))
+        });
+      }
+      for (const f of files.sort()) {
+        result.push({
+          type: 'note',
+          name: f.replace('.md', ''),
+          path: path.relative(OBSIDIAN_VAULT, path.join(dir, f)).replace(/\\/g, '/')
+        });
+      }
+      return result;
+    }
+    res.json({ tree: buildTree(OBSIDIAN_VAULT) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/obsidian/note?path=... — read a note
+app.get('/api/obsidian/note', (req, res) => {
+  try {
+    const notePath = req.query.path;
+    if (!notePath) return res.status(400).json({ error: 'path required' });
+    const fullPath = path.join(OBSIDIAN_VAULT, notePath);
+    // Security: prevent path traversal
+    if (!fullPath.startsWith(OBSIDIAN_VAULT)) return res.status(403).json({ error: 'forbidden' });
+    if (!fs.existsSync(fullPath)) return res.status(404).json({ error: 'not found' });
+    const content = fs.readFileSync(fullPath, 'utf-8');
+    res.json({ path: notePath, content });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/obsidian/ingest — create note from text, file content, or session
+app.post('/api/obsidian/ingest', express.json({ limit: '10mb' }), async (req, res) => {
+  try {
+    const { type, text, category, fileName, fileContent, folderPath } = req.body;
+
+    if (type === 'text' && text) {
+      // Generate note title and content via GPT-4o-mini
+      let title = 'Novo Conhecimento';
+      let noteContent = text;
+      let folder = category || 'auto';
+
+      if (openai && folder === 'auto') {
+        try {
+          const aiRes = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [
+              { role: 'system', content: 'Organize this knowledge into an Obsidian note. Return JSON: {"title":"short title","folder":"best folder (Projetos|Negócios & Finanças|Marketing Digital|Programação & IA|Tecnologias)","content":"organized markdown with [[links]] to related concepts"}' },
+              { role: 'user', content: text }
+            ],
+            response_format: { type: 'json_object' },
+            max_tokens: 2000
+          });
+          const parsed = JSON.parse(aiRes.choices[0].message.content);
+          title = parsed.title || title;
+          folder = parsed.folder || 'geral';
+          noteContent = parsed.content || text;
+        } catch {}
+      }
+
+      // Map category to folder
+      const folderMap = {
+        projeto: 'Projetos', decisao: 'Decisões Técnicas',
+        pessoa: '', aprendizado: '', preferencia: '',
+        negocio: 'Negócios & Finanças', auto: folder
+      };
+      const targetFolder = folderMap[category] || folder;
+      const targetDir = targetFolder ? path.join(OBSIDIAN_VAULT, targetFolder) : OBSIDIAN_VAULT;
+      if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+
+      const safeName = title.replace(/[<>:"/\\|?*]/g, '').substring(0, 80);
+      const filePath = path.join(targetDir, `${safeName}.md`);
+      fs.writeFileSync(filePath, noteContent, 'utf-8');
+
+      return res.json({ ok: true, path: path.relative(OBSIDIAN_VAULT, filePath).replace(/\\/g, '/'), title });
+    }
+
+    if (type === 'file' && fileContent) {
+      // Save file content as note
+      const name = (fileName || 'Imported').replace(/\.[^.]+$/, '').replace(/[<>:"/\\|?*]/g, '');
+      const filePath = path.join(OBSIDIAN_VAULT, `${name}.md`);
+
+      let content = fileContent;
+      // If content is base64 (binary file), try to extract text
+      if (fileContent.startsWith('data:')) {
+        content = `# ${name}\n\n> Arquivo importado\n\n\`\`\`\n${fileContent.substring(0, 500)}...\n\`\`\``;
+      }
+
+      fs.writeFileSync(filePath, content, 'utf-8');
+      return res.json({ ok: true, path: `${name}.md`, title: name });
+    }
+
+    if (type === 'folder' && folderPath) {
+      // Ingest entire folder
+      if (!fs.existsSync(folderPath)) return res.status(404).json({ error: 'Folder not found' });
+      let count = 0;
+      const files = fs.readdirSync(folderPath).filter(f => f.endsWith('.md') || f.endsWith('.txt'));
+      for (const f of files) {
+        const content = fs.readFileSync(path.join(folderPath, f), 'utf-8');
+        const name = f.replace(/\.[^.]+$/, '');
+        fs.writeFileSync(path.join(OBSIDIAN_VAULT, `${name}.md`), content, 'utf-8');
+        count++;
+      }
+      return res.json({ ok: true, count, message: `${count} files ingested` });
+    }
+
+    if (type === 'session') {
+      // Ingest from current session context
+      const memoryFile = path.join(SYSTEM_DIR, 'FELIPE-MEMORY.md');
+      const historyFile = path.join(SYSTEM_DIR, 'FELIPE-HISTORY.json');
+      let sessionData = '';
+
+      if (fs.existsSync(historyFile)) {
+        try {
+          const history = JSON.parse(fs.readFileSync(historyFile, 'utf-8'));
+          const last10 = history.slice(-10);
+          sessionData = last10.map(h => `[${h.role}] ${h.content}`).join('\n\n');
+        } catch {}
+      }
+
+      if (!sessionData) {
+        return res.json({ ok: false, error: 'No session data found' });
+      }
+
+      // Use GPT to extract valuable knowledge
+      if (openai) {
+        try {
+          const aiRes = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [
+              { role: 'system', content: 'Extract valuable knowledge from this session. Create 1-3 Obsidian notes. Return JSON array: [{"title":"...","content":"markdown with [[links]]","folder":"best folder name"}]. Only extract decisions, learnings, preferences, projects created. Skip trivial chat.' },
+              { role: 'user', content: sessionData }
+            ],
+            response_format: { type: 'json_object' },
+            max_tokens: 3000
+          });
+          const parsed = JSON.parse(aiRes.choices[0].message.content);
+          const notes = Array.isArray(parsed) ? parsed : (parsed.notes || [parsed]);
+          let created = 0;
+          for (const note of notes) {
+            if (!note.title) continue;
+            const dir = note.folder ? path.join(OBSIDIAN_VAULT, note.folder) : OBSIDIAN_VAULT;
+            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+            const safeName = note.title.replace(/[<>:"/\\|?*]/g, '').substring(0, 80);
+            fs.writeFileSync(path.join(dir, `${safeName}.md`), note.content || '', 'utf-8');
+            created++;
+          }
+          return res.json({ ok: true, count: created, notes: notes.map(n => n.title) });
+        } catch (err) {
+          return res.json({ ok: false, error: err.message });
+        }
+      }
+      return res.json({ ok: false, error: 'OpenAI not configured for session analysis' });
+    }
+
+    res.status(400).json({ error: 'Invalid type. Use: text, file, folder, or session' });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });

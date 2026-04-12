@@ -1,4 +1,4 @@
-// ========== FELIPE COCKPIT - CLIENT LOGIC ==========
+// ========== JARVIS COCKPIT - CLIENT LOGIC ==========
 
 // DOM Elements
 const terminal = document.getElementById('terminal-output');
@@ -308,8 +308,8 @@ async function captureScreen() {
 
     addTerminalLine(
       currentLang === 'BR'
-        ? '[system] 🔴 LIVE — tela compartilhada. FELIPE vê em tempo real. Fale ou digite suas perguntas.'
-        : '[system] 🔴 LIVE — screen shared. FELIPE sees in real-time. Speak or type your questions.',
+        ? '[system] 🔴 LIVE — tela compartilhada. JARVIS vê em tempo real. Fale ou digite suas perguntas.'
+        : '[system] 🔴 LIVE — screen shared. JARVIS sees in real-time. Speak or type your questions.',
       'system-line'
     );
   } catch (err) {
@@ -416,17 +416,17 @@ function initLangToggle() {
     brBtn.classList.toggle('active', lang === 'BR');
     if (esBtn) esBtn.classList.toggle('active', lang === 'ES');
     const placeholders = {
-      BR: 'Fale com o FELIPE...',
-      ES: 'Habla con FELIPE...',
-      EN: 'Talk to FELIPE...'
+      BR: 'Fale com o JARVIS...',
+      ES: 'Habla con JARVIS...',
+      EN: 'Talk to JARVIS...'
     };
     document.getElementById('chat-input').placeholder = placeholders[lang] || placeholders.EN;
     const bootMsg = document.getElementById('boot-msg');
     if (bootMsg) {
       const boots = {
-        BR: '[system] FELIPE COCKPIT INICIALIZADO. TODO SISTEMA DE INTELIGÊNCIA CARREGADO COM SUCESSO E PRONTO PARA USO.',
-        ES: '[system] FELIPE COCKPIT INICIADO. TODO EL SISTEMA DE INTELIGENCIA CARGADO CON ÉXITO Y LISTO PARA USAR.',
-        EN: '[system] FELIPE COCKPIT ONLINE. ALL SYSTEMS LOADED AND READY.'
+        BR: '[system] JARVIS COCKPIT INICIALIZADO. TODO SISTEMA DE INTELIGÊNCIA CARREGADO COM SUCESSO E PRONTO PARA USO.',
+        ES: '[system] JARVIS COCKPIT INICIADO. TODO EL SISTEMA DE INTELIGENCIA CARGADO CON ÉXITO Y LISTO PARA USAR.',
+        EN: '[system] JARVIS COCKPIT ONLINE. ALL SYSTEMS LOADED AND READY.'
       };
       bootMsg.textContent = boots[lang] || boots.EN;
     }
@@ -1031,7 +1031,7 @@ function announceToRealtime(message) {
       realtimeDC.send(JSON.stringify({ type: 'response.create' }));
       return;
     } catch (e) {
-      console.warn('[FELIPE] Realtime DC send failed, falling back to TTS:', e.message);
+      console.warn('[JARVIS] Realtime DC send failed, falling back to TTS:', e.message);
     }
   }
   // Fallback: Realtime is supposed to be active but DC is dead — use TTS directly
@@ -1077,7 +1077,7 @@ async function startRecording() {
       };
 
       webSpeechRec.onerror = (e) => {
-        console.warn('[FELIPE] Web Speech error:', e.error, '— falling back to Whisper');
+        console.warn('[JARVIS] Web Speech error:', e.error, '— falling back to Whisper');
         isRecording = false;
         micBtn.classList.remove('recording');
         setAvatarState('idle');
@@ -1231,7 +1231,7 @@ function stopRecording() {
   }
 }
 
-// After FELIPE finishes responding in continuous mode — restart listening
+// After JARVIS finishes responding in continuous mode — restart listening
 function scheduleNextListen(delayMs = 1200) {
   if (!continuousMode) return;
   clearTimeout(continuousTimer);
@@ -1363,7 +1363,7 @@ function startWakeWord() {
   wakeWordRecognition.onresult = (event) => {
     for (let i = event.resultIndex; i < event.results.length; i++) {
       const transcript = event.results[i][0].transcript.toLowerCase();
-      if (transcript.includes('felipe')) {
+      if (transcript.includes('jarvis')) {
         // Wake word → activate Realtime voice (continuous mode)
         if (!realtimeActive && !realtimeConnecting) {
           addTerminalLine(
@@ -1412,7 +1412,7 @@ async function loadFiles() {
     const fileList = document.getElementById('file-list');
 
     if (!data.files || data.files.length === 0) {
-      fileList.innerHTML = '<div class="file-empty">No files yet. Ask FELIPE to create something.</div>';
+      fileList.innerHTML = '<div class="file-empty">No files yet. Ask JARVIS to create something.</div>';
       return;
     }
 
@@ -1565,7 +1565,7 @@ document.getElementById('config-wakeword')?.addEventListener('change', (e) => {
   wakeWordEnabled = e.target.checked;
   if (wakeWordEnabled) {
     startWakeWord();
-    addTerminalLine('[system] Wake word "Felipe" activated', 'system-line');
+    addTerminalLine('[system] Wake word "Jarvis" activated', 'system-line');
   } else {
     stopWakeWord();
     addTerminalLine('[system] Wake word deactivated', 'system-line');
@@ -1653,7 +1653,7 @@ initRealtimeBtn();
       const payload = JSON.parse(e.data);
       if (payload.type === 'build-complete' && payload.message) {
         addTerminalLine(`[info] ✓ ${payload.message}`, 'info-line');
-        console.log('[FELIPE] Build complete notification received:', payload.message);
+        console.log('[JARVIS] Build complete notification received:', payload.message);
         // Route to Realtime when active (GPT-realtime speaks the completion); otherwise use TTS
         // announceToRealtime has its own fallback to TTS if DC is dead
         if (realtimeActive) {
@@ -1736,15 +1736,15 @@ initRealtimeBtn();
     }
 
     if (data.status === 'ready') {
-      msgEl.textContent = 'Todos os sistemas operacionais. FELIPE esta pronto.';
+      msgEl.textContent = 'Todos os sistemas operacionais. JARVIS esta pronto.';
       msgEl.style.color = '#00ff88';
-      okBtn.textContent = 'Iniciar FELIPE';
+      okBtn.textContent = 'Iniciar JARVIS';
       okBtn.style.background = '#00d4ff';
       okBtn.style.display = 'inline-block';
       retryBtn.style.display = 'none';
       fixBtn.style.display = 'none';
     } else {
-      msgEl.textContent = 'Problemas detectados. FELIPE pode funcionar com recursos limitados.';
+      msgEl.textContent = 'Problemas detectados. JARVIS pode funcionar com recursos limitados.';
       msgEl.style.color = '#ffaa00';
       okBtn.textContent = 'Continuar Assim';
       okBtn.style.background = '#555';
@@ -1781,7 +1781,7 @@ initRealtimeBtn();
       retryBtn.disabled = true;
       okBtn.disabled = true;
       fixLog.style.display = 'block';
-      fixLog.textContent = '[FELIPE] Acionando Claude para corrigir problemas...\n\n';
+      fixLog.textContent = '[JARVIS] Acionando Claude para corrigir problemas...\n\n';
 
       try {
         const fixRes = await fetch('/api/health/autofix', {
@@ -1801,7 +1801,7 @@ initRealtimeBtn();
           fixLog.scrollTop = fixLog.scrollHeight;
         }
 
-        fixLog.textContent += '\n\n[FELIPE] Correcao concluida. Executando verificacao novamente...\n';
+        fixLog.textContent += '\n\n[JARVIS] Correcao concluida. Executando verificacao novamente...\n';
 
         // Wait 2s then re-run preflight
         await new Promise(r => setTimeout(r, 2000));
@@ -1830,7 +1830,601 @@ initRealtimeBtn();
     const resultDiv = document.getElementById('preflight-result');
     const msgEl = document.getElementById('preflight-msg');
     resultDiv.style.display = 'block';
-    msgEl.textContent = '❌ Cannot reach FELIPE server. Is it running?';
+    msgEl.textContent = '❌ Cannot reach JARVIS server. Is it running?';
     msgEl.style.color = '#ff4444';
   }
+})();
+
+
+
+// ═══════════════════════════════════════════════
+// COCKPIT HUD LOGIC — Iron Man Edition
+// ═══════════════════════════════════════════════
+
+(function() {
+  // ── Quick Access Buttons (HUD esquerdo) ──
+  document.querySelectorAll('.hud-qbtn[data-quick-tab]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const targetTab = btn.dataset.quickTab;
+      const tabBtn = document.querySelector(`.tab-btn[data-tab="${targetTab}"]`);
+      if (tabBtn) tabBtn.click();
+    });
+  });
+
+  // ── Weather Widget ──
+  async function loadWeather() {
+    try {
+      // Tenta detectar localizacao via IP (gratis)
+      let city = 'São Paulo';
+      try {
+        const geoRes = await fetch('https://ipapi.co/json/', { timeout: 5000 });
+        if (geoRes.ok) {
+          const geo = await geoRes.json();
+          if (geo.city) city = geo.city;
+        }
+      } catch {}
+
+      // Primeiro tenta endpoint local (se JARVIS server tiver)
+      let data = null;
+      try {
+        const r = await fetch(`/api/weather?city=${encodeURIComponent(city)}`);
+        if (r.ok) data = await r.json();
+      } catch {}
+
+      // Fallback: wttr.in direto (nao precisa de server)
+      if (!data) {
+        const r2 = await fetch(`https://wttr.in/${encodeURIComponent(city)}?format=j1`);
+        if (r2.ok) {
+          const w = await r2.json();
+          const cur = w.current_condition[0];
+          data = {
+            city,
+            temp: cur.temp_C,
+            desc: cur.lang_pt?.[0]?.value || cur.weatherDesc[0].value
+          };
+        }
+      }
+
+      if (data) {
+        document.getElementById('weather-city').textContent = data.city.toUpperCase();
+        document.getElementById('weather-temp').textContent = `${data.temp}°C`;
+        document.getElementById('weather-desc').textContent = data.desc;
+      }
+    } catch (err) {
+      document.getElementById('weather-city').textContent = 'OFFLINE';
+      document.getElementById('weather-temp').textContent = '--°C';
+      document.getElementById('weather-desc').textContent = 'sem conexao';
+    }
+  }
+
+  // ── System Health Bars ──
+  async function updateHealth() {
+    const barApi = document.getElementById('bar-api');
+    const barVoice = document.getElementById('bar-voice');
+    const barClaude = document.getElementById('bar-claude');
+
+    try {
+      const r = await fetch('/api/health', { timeout: 3000 });
+      if (r.ok) {
+        const data = await r.json();
+        barApi.className = 'bar-fill ok';
+
+        if (data.capabilities?.voice_realtime) barVoice.className = 'bar-fill ok';
+        else barVoice.className = 'bar-fill err';
+
+        if (data.capabilities?.task_execution) barClaude.className = 'bar-fill ok';
+        else barClaude.className = 'bar-fill err';
+        return;
+      }
+    } catch {}
+
+    // Offline
+    barApi.className = 'bar-fill err';
+    barVoice.className = 'bar-fill err';
+    barClaude.className = 'bar-fill err';
+  }
+
+  // ── Active Model Display ──
+  function updateModel(model, status) {
+    const modelEl = document.getElementById('active-model');
+    const statusEl = document.getElementById('model-status');
+    if (!modelEl) return;
+
+    const modelMap = {
+      'claude-opus-4-6': 'Opus 4.6',
+      'claude-sonnet-4-6': 'Sonnet 4.6',
+      'claude-haiku-4-5': 'Haiku 4.5',
+      'opus': 'Opus 4.6',
+      'sonnet': 'Sonnet 4.6',
+      'haiku': 'Haiku 4.5',
+    };
+
+    modelEl.textContent = modelMap[model] || model || 'Sonnet 4.6';
+    statusEl.textContent = status || 'standby';
+  }
+
+  // Listen to server-log events for model detection
+  window.addEventListener('jarvis-log', (e) => {
+    const msg = e.detail || '';
+    if (msg.includes('opus')) updateModel('opus', 'executing');
+    else if (msg.includes('sonnet')) updateModel('sonnet', 'executing');
+    else if (msg.includes('haiku')) updateModel('haiku', 'executing');
+  });
+
+  // ── Active Agents ──
+  const agentsList = document.getElementById('agents-list');
+  const activeAgents = new Set();
+
+  function addAgent(name) {
+    activeAgents.add(name);
+    renderAgents();
+  }
+  function removeAgent(name) {
+    activeAgents.delete(name);
+    renderAgents();
+  }
+  function renderAgents() {
+    if (!agentsList) return;
+    if (activeAgents.size === 0) {
+      agentsList.innerHTML = '<span class="agent-pill idle">nenhum</span>';
+      return;
+    }
+    agentsList.innerHTML = [...activeAgents]
+      .map(a => `<span class="agent-pill active">${a}</span>`)
+      .join('');
+  }
+
+  // Expose for external calls
+  window.felipeHUD = {
+    addAgent, removeAgent, updateModel,
+    detectAgent: (text) => {
+      const agents = ['architect', 'dev', 'qa', 'pm', 'po', 'analyst', 'ux', 'devops', 'conclave'];
+      agents.forEach(a => {
+        if (text?.toLowerCase().includes(`@${a}`) || text?.toLowerCase().includes(a)) {
+          addAgent(a);
+          setTimeout(() => removeAgent(a), 30000);
+        }
+      });
+    }
+  };
+
+  // ── Metrics (tasks/uptime/voice) ──
+  let startTime = Date.now();
+  let taskCount = parseInt(localStorage.getItem('felipe-tasks-today') || '0');
+  const lastTaskDate = localStorage.getItem('felipe-last-task-date');
+  const today = new Date().toDateString();
+  if (lastTaskDate !== today) {
+    taskCount = 0;
+    localStorage.setItem('felipe-tasks-today', '0');
+    localStorage.setItem('felipe-last-task-date', today);
+  }
+
+  function updateMetrics() {
+    const tasksEl = document.getElementById('metric-tasks');
+    const uptimeEl = document.getElementById('metric-uptime');
+    const voiceEl = document.getElementById('metric-voice');
+
+    if (tasksEl) tasksEl.textContent = taskCount;
+
+    if (uptimeEl) {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      const h = Math.floor(elapsed / 3600);
+      const m = Math.floor((elapsed % 3600) / 60);
+      uptimeEl.textContent = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+    }
+
+    if (voiceEl) {
+      const micBtn = document.getElementById('mic-btn');
+      if (micBtn?.classList.contains('recording')) voiceEl.textContent = 'REC';
+      else voiceEl.textContent = 'READY';
+    }
+  }
+
+  window.felipeHUD.incrementTasks = () => {
+    taskCount++;
+    localStorage.setItem('felipe-tasks-today', String(taskCount));
+    updateMetrics();
+  };
+
+  // ── System Stats (CPU/GPU temperature + usage) ──
+  async function updateSystemStats() {
+    try {
+      const r = await fetch('/api/system-stats', { signal: AbortSignal.timeout(3000) });
+      if (!r.ok) return;
+      const s = await r.json();
+
+      const cpuTempEl = document.getElementById('cpu-temp');
+      const cpuUsageEl = document.getElementById('cpu-usage');
+      const cpuCoresEl = document.getElementById('cpu-cores');
+      const gpuTempEl = document.getElementById('gpu-temp');
+      const gpuStatusEl = document.getElementById('gpu-status');
+
+      if (cpuTempEl) {
+        if (s.cpu?.temp !== null && s.cpu?.temp !== undefined) {
+          cpuTempEl.textContent = `${s.cpu.temp}°C`;
+          cpuTempEl.style.color = s.cpu.temp > 80 ? '#ff4455' : s.cpu.temp > 65 ? '#ffaa00' : 'var(--cyan)';
+        } else {
+          cpuTempEl.textContent = '—';
+        }
+      }
+      if (cpuUsageEl) cpuUsageEl.textContent = s.cpu?.usage !== null ? `${s.cpu.usage}%` : '--%';
+      if (cpuCoresEl) cpuCoresEl.textContent = `${s.cpu?.cores || '--'} cores`;
+
+      if (gpuTempEl) {
+        if (s.gpu?.temp !== null && s.gpu?.temp !== undefined) {
+          gpuTempEl.textContent = `${s.gpu.temp}°C`;
+          gpuTempEl.style.color = s.gpu.temp > 80 ? '#ff4455' : s.gpu.temp > 65 ? '#ffaa00' : 'var(--cyan)';
+          if (gpuStatusEl) gpuStatusEl.textContent = s.gpu.name || 'active';
+        } else {
+          gpuTempEl.textContent = s.gpu?.name ? '—' : 'N/A';
+          if (gpuStatusEl) gpuStatusEl.textContent = s.gpu?.name || 'no GPU';
+        }
+      }
+      // Update GPU label with detected name
+      const gpuLabel = document.querySelector('#widget-gpu .widget-label');
+      if (gpuLabel && s.gpu?.name) {
+        gpuLabel.textContent = s.gpu.name.length > 20 ? s.gpu.name.substring(0, 20) : s.gpu.name;
+      }
+    } catch {}
+  }
+
+  // ── Init ──
+  loadWeather();
+  updateHealth();
+  updateMetrics();
+  updateSystemStats();
+
+  // Periodic updates
+  setInterval(loadWeather, 15 * 60 * 1000);     // 15 min
+  setInterval(updateHealth, 10 * 1000);         // 10 sec
+  setInterval(updateMetrics, 1000);             // 1 sec
+  setInterval(updateSystemStats, 5 * 1000);     // 5 sec
+})();
+
+// ═══════════════════════════════════════════════
+// PREFLIGHT AUTO-SKIP (se server offline)
+// ═══════════════════════════════════════════════
+(function() {
+  const overlay = document.getElementById('preflight-overlay');
+  if (!overlay) return;
+
+  // Se em 3s nao tiver /api/health-check-full, pula o preflight
+  setTimeout(async () => {
+    try {
+      const r = await fetch('/api/health-check-full', { signal: AbortSignal.timeout(2000) });
+      if (!r.ok) throw new Error('not ok');
+    } catch {
+      console.log('[JARVIS] Server offline — pulando preflight');
+      overlay.style.display = 'none';
+    }
+  }, 3000);
+})();
+
+
+// ═══════════════════════════════════════════════
+
+
+// ═══════════════════════════════════════════════
+// HUD FUNCTIONAL — Entity activation, Obsidian, Ingest, Brain Viewer
+// ═══════════════════════════════════════════════
+
+(function() {
+  // ── Entity Activation (modelos/agentes/conclave) ──
+  function setEntityActive(name, active) {
+    const row = document.querySelector('[data-entity="' + name + '"]');
+    if (!row) return;
+    if (active) { row.classList.add('active'); row.classList.remove('idle'); }
+    else { row.classList.remove('active'); row.classList.add('idle'); }
+  }
+  function pulseEntity(name, ms) {
+    setEntityActive(name, true);
+    setTimeout(function() { setEntityActive(name, false); }, ms || 15000);
+  }
+
+  // Detection rules
+  var rules = [
+    { p: /opus/i, e: 'opus' }, { p: /sonnet/i, e: 'sonnet' }, { p: /haiku/i, e: 'haiku' },
+    { p: /realtime|gpt-4o-rt/i, e: 'gpt-realtime' }, { p: /gpt-4o-mini/i, e: 'gpt-mini' },
+    { p: /@architect|aria/i, e: 'architect' }, { p: /@dev\b|dex/i, e: 'dev' },
+    { p: /@qa|quinn/i, e: 'qa' }, { p: /@pm|morgan/i, e: 'pm' },
+    { p: /@po\b|pax/i, e: 'po' }, { p: /@analyst|atlas/i, e: 'analyst' },
+    { p: /@ux|uma/i, e: 'ux' }, { p: /@devops|gage/i, e: 'devops' },
+    { p: /@sm\b|river/i, e: 'sm' }, { p: /data.engineer|dara/i, e: 'data-engineer' },
+    { p: /aios.master|orion/i, e: 'aios-master' }, { p: /squad.creator|craft/i, e: 'squad-creator' },
+    { p: /conclave.critico|critico/i, e: 'conclave-critico' },
+    { p: /conclave.advogado|advogado/i, e: 'conclave-advogado' },
+    { p: /conclave.sintetizador|sintetizador/i, e: 'conclave-sintetizador' },
+  ];
+  window.felipeHUD = window.felipeHUD || {};
+  window.felipeHUD.setEntityActive = setEntityActive;
+  window.felipeHUD.pulseEntity = pulseEntity;
+  window.felipeHUD.analyzeText = function(text) {
+    if (!text) return;
+    rules.forEach(function(r) { if (r.p.test(text)) pulseEntity(r.e, 20000); });
+  };
+
+  // ── Obsidian Stats ──
+  async function loadObsidianStats() {
+    var notesEl = document.getElementById('obsidian-notes');
+    var statusEl = document.getElementById('obsidian-status');
+    if (!notesEl) return;
+    try {
+      var r = await fetch('/api/obsidian/stats');
+      if (!r.ok) throw new Error('offline');
+      var data = await r.json();
+      if (data.connected) {
+        notesEl.textContent = data.notes + ' notas';
+        statusEl.textContent = data.folders + ' pastas \u00B7 ' + data.links + ' links';
+      } else {
+        notesEl.textContent = 'N/A';
+        statusEl.textContent = 'vault nao instalado';
+      }
+    } catch(e) {
+      notesEl.textContent = 'N/A';
+      statusEl.textContent = 'offline';
+    }
+  }
+  loadObsidianStats();
+  setInterval(loadObsidianStats, 60000);
+
+  // ── Quick Access Buttons ──
+  document.querySelectorAll('.hud-qbtn[data-quick-tab]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var tabBtn = document.querySelector('.tab-btn[data-tab="' + btn.dataset.quickTab + '"]');
+      if (tabBtn) tabBtn.click();
+    });
+  });
+
+  // ── Ingest Modal ──
+  var ingestModal = document.getElementById('ingest-modal');
+  var btnIngest = document.getElementById('btn-ingest');
+  var ingestClose = document.getElementById('ingest-close');
+  var ingestCancel = document.getElementById('ingest-cancel');
+  var ingestSubmit = document.getElementById('ingest-submit');
+  var ingestStatus = document.getElementById('ingest-status');
+
+  if (btnIngest) {
+    btnIngest.addEventListener('click', function() {
+      if (ingestModal) ingestModal.style.display = 'flex';
+    });
+  }
+  if (ingestClose) ingestClose.addEventListener('click', function() { ingestModal.style.display = 'none'; });
+  if (ingestCancel) ingestCancel.addEventListener('click', function() { ingestModal.style.display = 'none'; });
+
+  // Ingest tabs
+  document.querySelectorAll('.ingest-tab').forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      document.querySelectorAll('.ingest-tab').forEach(function(t) { t.classList.remove('active'); });
+      document.querySelectorAll('.ingest-panel').forEach(function(p) { p.classList.remove('active'); });
+      tab.classList.add('active');
+      var panel = document.getElementById('ingest-' + tab.dataset.ingest);
+      if (panel) panel.classList.add('active');
+    });
+  });
+
+  // File dropzone
+  var dropzone = document.getElementById('ingest-dropzone');
+  var fileInput = document.getElementById('ingest-file-input');
+  var fileNameEl = document.getElementById('ingest-file-name');
+  var selectedFile = null;
+
+  if (dropzone) {
+    dropzone.addEventListener('click', function() { fileInput.click(); });
+    dropzone.addEventListener('dragover', function(e) { e.preventDefault(); dropzone.classList.add('dragover'); });
+    dropzone.addEventListener('dragleave', function() { dropzone.classList.remove('dragover'); });
+    dropzone.addEventListener('drop', function(e) {
+      e.preventDefault();
+      dropzone.classList.remove('dragover');
+      if (e.dataTransfer.files.length) {
+        selectedFile = e.dataTransfer.files[0];
+        fileNameEl.textContent = '\u2705 ' + selectedFile.name + ' (' + Math.round(selectedFile.size/1024) + 'KB)';
+      }
+    });
+    fileInput.addEventListener('change', function() {
+      if (fileInput.files.length) {
+        selectedFile = fileInput.files[0];
+        fileNameEl.textContent = '\u2705 ' + selectedFile.name + ' (' + Math.round(selectedFile.size/1024) + 'KB)';
+      }
+    });
+  }
+
+  // Submit ingest
+  if (ingestSubmit) {
+    ingestSubmit.addEventListener('click', async function() {
+      var activeTab = document.querySelector('.ingest-tab.active');
+      var tabType = activeTab ? activeTab.dataset.ingest : 'text';
+      ingestStatus.textContent = '\u23F3 Processando...';
+      ingestSubmit.disabled = true;
+
+      try {
+        var body = {};
+
+        if (tabType === 'text') {
+          var text = document.getElementById('ingest-text-input').value.trim();
+          var cat = document.getElementById('ingest-text-category').value;
+          if (!text) { ingestStatus.textContent = '\u274C Digite algo primeiro'; ingestSubmit.disabled = false; return; }
+          body = { type: 'text', text: text, category: cat };
+        }
+
+        if (tabType === 'file') {
+          if (!selectedFile) { ingestStatus.textContent = '\u274C Selecione um arquivo'; ingestSubmit.disabled = false; return; }
+          var reader = new FileReader();
+          var content = await new Promise(function(resolve) {
+            reader.onload = function() { resolve(reader.result); };
+            reader.readAsText(selectedFile);
+          });
+          body = { type: 'file', fileName: selectedFile.name, fileContent: content };
+        }
+
+        if (tabType === 'session') {
+          body = { type: 'session' };
+        }
+
+        var r = await fetch('/api/obsidian/ingest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        var data = await r.json();
+
+        if (data.ok) {
+          ingestStatus.textContent = '\u2705 Salvo no Obsidian: ' + (data.title || data.count + ' notas');
+          loadObsidianStats();
+          setTimeout(function() { ingestModal.style.display = 'none'; ingestStatus.textContent = ''; }, 2000);
+        } else {
+          ingestStatus.textContent = '\u274C ' + (data.error || 'Erro desconhecido');
+        }
+      } catch(err) {
+        ingestStatus.textContent = '\u274C ' + err.message;
+      }
+      ingestSubmit.disabled = false;
+    });
+  }
+
+  // ── Brain Viewer Modal ──
+  var brainModal = document.getElementById('brain-modal');
+  var btnBrain = document.getElementById('btn-brain');
+  var brainClose = document.getElementById('brain-close');
+  var brainMaximize = document.getElementById('brain-maximize');
+  var brainTree = document.getElementById('brain-tree');
+  var brainPreview = document.getElementById('brain-preview');
+  var brainSearch = document.getElementById('brain-search');
+
+  if (btnBrain) {
+    btnBrain.addEventListener('click', function() {
+      if (brainModal) {
+        brainModal.style.display = 'flex';
+        loadBrainTree();
+      }
+    });
+  }
+  if (brainClose) brainClose.addEventListener('click', function() { brainModal.style.display = 'none'; });
+  if (brainMaximize) {
+    brainMaximize.addEventListener('click', function() {
+      var card = brainModal.querySelector('.modal-brain');
+      card.classList.toggle('maximized');
+      brainMaximize.textContent = card.classList.contains('maximized') ? '\u2750' : '\u2B1C';
+    });
+  }
+
+  // Close modals on overlay click
+  document.querySelectorAll('.modal-overlay').forEach(function(overlay) {
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) overlay.style.display = 'none';
+    });
+  });
+
+  // Load brain tree
+  async function loadBrainTree() {
+    if (!brainTree) return;
+    brainTree.innerHTML = '<div class="brain-loading">Carregando vault...</div>';
+    try {
+      var r = await fetch('/api/obsidian/tree');
+      var data = await r.json();
+      if (!data.tree || !data.tree.length) {
+        brainTree.innerHTML = '<div class="brain-loading">Vault vazio ou nao encontrado</div>';
+        return;
+      }
+      brainTree.innerHTML = '';
+      renderTree(data.tree, brainTree);
+    } catch(err) {
+      brainTree.innerHTML = '<div class="brain-loading">Erro: ' + err.message + '</div>';
+    }
+  }
+
+  function renderTree(items, parent) {
+    items.forEach(function(item) {
+      if (item.type === 'folder') {
+        var folder = document.createElement('div');
+        folder.className = 'brain-folder';
+        var header = document.createElement('div');
+        header.className = 'brain-folder-header';
+        header.innerHTML = '<span class="folder-icon">\uD83D\uDCC1</span><span class="folder-name">' + item.name + '</span><span class="folder-count">' + (item.children ? item.children.length : 0) + '</span>';
+        var items_div = document.createElement('div');
+        items_div.className = 'brain-folder-items';
+        items_div.style.display = 'none';
+        header.addEventListener('click', function() {
+          items_div.style.display = items_div.style.display === 'none' ? 'block' : 'none';
+          header.querySelector('.folder-icon').textContent = items_div.style.display === 'none' ? '\uD83D\uDCC1' : '\uD83D\uDCC2';
+        });
+        folder.appendChild(header);
+        folder.appendChild(items_div);
+        if (item.children) renderTree(item.children, items_div);
+        parent.appendChild(folder);
+      } else {
+        var note = document.createElement('div');
+        note.className = 'brain-note';
+        note.innerHTML = '<span class="note-icon">\uD83D\uDCC4</span> ' + item.name;
+        note.addEventListener('click', function() {
+          document.querySelectorAll('.brain-note').forEach(function(n) { n.classList.remove('active'); });
+          note.classList.add('active');
+          loadNote(item.path);
+        });
+        parent.appendChild(note);
+      }
+    });
+  }
+
+  // Load note content
+  async function loadNote(notePath) {
+    if (!brainPreview) return;
+    brainPreview.innerHTML = '<div class="brain-loading">Carregando...</div>';
+    try {
+      var r = await fetch('/api/obsidian/note?path=' + encodeURIComponent(notePath));
+      var data = await r.json();
+      if (data.content) {
+        // Render markdown
+        var html = marked.parse(data.content);
+        // Convert [[links]] to clickable elements
+        html = html.replace(/\[\[([^\]|#]+)\]\]/g, '<span class="brain-link" data-link="$1">$1</span>');
+        brainPreview.innerHTML = html;
+        // Make [[links]] clickable
+        brainPreview.querySelectorAll('.brain-link').forEach(function(link) {
+          link.addEventListener('click', function() {
+            var target = link.dataset.link;
+            // Find note in tree by name
+            var noteEl = null;
+            document.querySelectorAll('.brain-note').forEach(function(n) {
+              if (n.textContent.trim().includes(target)) noteEl = n;
+            });
+            if (noteEl) noteEl.click();
+          });
+        });
+      } else {
+        brainPreview.innerHTML = '<div class="brain-empty"><p>Nota nao encontrada</p></div>';
+      }
+    } catch(err) {
+      brainPreview.innerHTML = '<div class="brain-empty"><p>Erro: ' + err.message + '</p></div>';
+    }
+  }
+
+  // Brain search
+  if (brainSearch) {
+    brainSearch.addEventListener('input', function() {
+      var q = brainSearch.value.toLowerCase();
+      document.querySelectorAll('.brain-note').forEach(function(n) {
+        n.style.display = n.textContent.toLowerCase().includes(q) ? '' : 'none';
+      });
+      // Show all parent folders
+      document.querySelectorAll('.brain-folder-items').forEach(function(fi) {
+        var hasVisible = fi.querySelector('.brain-note:not([style*="display: none"])');
+        fi.style.display = q && hasVisible ? 'block' : (q ? 'none' : '');
+      });
+    });
+  }
+
+  // ── RAM metric ──
+  async function updateRAM() {
+    var el = document.getElementById('metric-ram');
+    if (!el) return;
+    try {
+      var r = await fetch('/api/system-stats');
+      if (r.ok) {
+        var d = await r.json();
+        if (d.ram) el.textContent = d.ram.usage + '%';
+      }
+    } catch(e) {}
+  }
+  updateRAM();
+  setInterval(updateRAM, 10000);
 })();

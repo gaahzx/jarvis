@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>F.E.L.I.P.E.</title>
+  <title>J.A.R.V.I.S.</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -22,7 +22,7 @@
   <!-- NAVBAR — minimal -->
   <nav class="navbar">
     <div class="navbar-left">
-      <span class="navbar-title">F·E·L·I·P·E</span>
+      <span class="navbar-title">J·A·R·V·I·S</span>
     </div>
     <div class="navbar-tabs">
       <button class="tab-btn active" data-tab="principal" data-lang-br="Cockpit" data-lang-en="Cockpit" data-lang-es="Cockpit">Cockpit</button>
@@ -41,17 +41,152 @@
   </nav>
 
   <!-- ═══════════════════════════════════
-       TAB: COCKPIT — PURE ORB
+       TAB: COCKPIT — IRON MAN HUD
   ═══════════════════════════════════ -->
   <div class="tab-panel active" id="tab-principal">
-    <div class="cockpit-clean">
+    <div class="cockpit-iron">
+
+      <!-- ═══ HUD CORNER DECORATIONS ═══ -->
+      <div class="hud-corner hud-tl"></div>
+      <div class="hud-corner hud-tr"></div>
+      <div class="hud-corner hud-bl"></div>
+      <div class="hud-corner hud-br"></div>
+
+      <!-- ═══ LEFT HUD — SYSTEMS (compacto) ═══ -->
+      <aside class="hud-panel hud-left">
+        <div class="hud-section">
+          <div class="hud-section-title">◉ SYSTEMS</div>
+          <div class="hud-widget" id="widget-weather">
+            <div class="widget-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.5 19a4.5 4.5 0 1 0 0-9h-1.8A7 7 0 1 0 4 15.75"/></svg></div>
+            <div class="widget-content">
+              <div class="widget-label" id="weather-city">---</div>
+              <div class="widget-value" id="weather-temp">--°C</div>
+              <div class="widget-sub" id="weather-desc">carregando...</div>
+            </div>
+          </div>
+          <div class="hud-widget" id="widget-health">
+            <div class="widget-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+            <div class="widget-content">
+              <div class="widget-label">SERVER</div>
+              <div class="widget-bars">
+                <div class="bar-row"><span>API</span><div class="bar"><div class="bar-fill" id="bar-api"></div></div></div>
+                <div class="bar-row"><span>VOICE</span><div class="bar"><div class="bar-fill" id="bar-voice"></div></div></div>
+                <div class="bar-row"><span>CLAUDE</span><div class="bar"><div class="bar-fill" id="bar-claude"></div></div></div>
+              </div>
+            </div>
+          </div>
+          <div class="hud-widget" id="widget-cpu">
+            <div class="widget-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/></svg></div>
+            <div class="widget-content">
+              <div class="widget-label">CPU</div>
+              <div class="widget-value" id="cpu-temp">--°C</div>
+              <div class="widget-sub"><span id="cpu-usage">--%</span> · <span id="cpu-cores">--</span> cores</div>
+            </div>
+          </div>
+          <div class="hud-widget" id="widget-gpu">
+            <div class="widget-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="8" cy="12" r="2"/><circle cx="15" cy="12" r="2"/></svg></div>
+            <div class="widget-content">
+              <div class="widget-label">GPU</div>
+              <div class="widget-value" id="gpu-temp">--°C</div>
+              <div class="widget-sub" id="gpu-status">standby</div>
+            </div>
+          </div>
+        </div>
+        <div class="hud-section">
+          <div class="hud-section-title">▸ QUICK</div>
+          <div class="hud-quick-btns">
+            <button class="hud-qbtn" data-quick-tab="file"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><span>Projetos</span></button>
+            <button class="hud-qbtn" data-quick-tab="terminal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><span>Terminal</span></button>
+            <button class="hud-qbtn" data-quick-tab="config"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.38.17.64.55.7.95l.01.14V21"/></svg><span>Config</span></button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- ═══ CENTER ORB ═══ -->
       <div class="orb-section">
+        <div class="orb-rings">
+          <div class="orb-ring orb-ring-1"></div>
+          <div class="orb-ring orb-ring-2"></div>
+          <div class="orb-ring orb-ring-3"></div>
+        </div>
         <div class="avatar-container">
           <canvas id="particle-orb"></canvas>
         </div>
-        <div class="avatar-status" id="avatar-status"></div>
+        <div class="avatar-status" id="avatar-status">IDLE</div>
       </div>
-      <!-- Mic button only -->
+
+      <!-- ═══ RIGHT HUD — AI MODELS + AGENTS (compacto) ═══ -->
+      <aside class="hud-panel hud-right">
+        <div class="hud-section">
+          <div class="hud-section-title">◉ AI MODELS</div>
+          <div class="entity-list">
+            <div class="entity-row" data-entity="opus"><span class="entity-dot"></span><span class="entity-name">Opus 4.6</span><span class="entity-tag">deep</span></div>
+            <div class="entity-row" data-entity="sonnet"><span class="entity-dot"></span><span class="entity-name">Sonnet 4.6</span><span class="entity-tag">build</span></div>
+            <div class="entity-row" data-entity="haiku"><span class="entity-dot"></span><span class="entity-name">Haiku 4.5</span><span class="entity-tag">fast</span></div>
+            <div class="entity-row" data-entity="gpt-realtime"><span class="entity-dot"></span><span class="entity-name">GPT-4o RT</span><span class="entity-tag">voice</span></div>
+            <div class="entity-row" data-entity="gpt-mini"><span class="entity-dot"></span><span class="entity-name">GPT-4o-mini</span><span class="entity-tag">quick</span></div>
+          </div>
+        </div>
+        <div class="hud-section">
+          <div class="hud-section-title">◉ AIOX-CORE</div>
+          <div class="entity-list entity-grid" id="aiox-list">
+            <div class="entity-row" data-entity="aios-master"><span class="entity-dot"></span><span class="entity-emoji">👑</span><span class="entity-name">Orion</span></div>
+            <div class="entity-row" data-entity="architect"><span class="entity-dot"></span><span class="entity-emoji">🏛️</span><span class="entity-name">Aria</span></div>
+            <div class="entity-row" data-entity="dev"><span class="entity-dot"></span><span class="entity-emoji">💻</span><span class="entity-name">Dex</span></div>
+            <div class="entity-row" data-entity="data-engineer"><span class="entity-dot"></span><span class="entity-emoji">📊</span><span class="entity-name">Dara</span></div>
+            <div class="entity-row" data-entity="devops"><span class="entity-dot"></span><span class="entity-emoji">⚡</span><span class="entity-name">Gage</span></div>
+            <div class="entity-row" data-entity="ux"><span class="entity-dot"></span><span class="entity-emoji">🎨</span><span class="entity-name">Uma</span></div>
+            <div class="entity-row" data-entity="pm"><span class="entity-dot"></span><span class="entity-emoji">📋</span><span class="entity-name">Morgan</span></div>
+            <div class="entity-row" data-entity="po"><span class="entity-dot"></span><span class="entity-emoji">🎯</span><span class="entity-name">Pax</span></div>
+            <div class="entity-row" data-entity="analyst"><span class="entity-dot"></span><span class="entity-emoji">🔍</span><span class="entity-name">Atlas</span></div>
+            <div class="entity-row" data-entity="qa"><span class="entity-dot"></span><span class="entity-emoji">✅</span><span class="entity-name">Quinn</span></div>
+            <div class="entity-row" data-entity="sm"><span class="entity-dot"></span><span class="entity-emoji">🌊</span><span class="entity-name">River</span></div>
+            <div class="entity-row" data-entity="squad-creator"><span class="entity-dot"></span><span class="entity-emoji">🏗️</span><span class="entity-name">Craft</span></div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- ═══ BOTTOM HUD — MEGA-BRAIN + OBSIDIAN + METRICS ═══ -->
+      <div class="hud-bottom">
+        <!-- Mega-Brain Conclave -->
+        <div class="hud-bottom-card">
+          <div class="hud-section-title">◉ MEGA-BRAIN</div>
+          <div class="entity-list entity-row-h">
+            <div class="entity-row" data-entity="conclave-critico"><span class="entity-dot"></span><span class="entity-emoji">🔍</span><span class="entity-name">Critico</span></div>
+            <div class="entity-row" data-entity="conclave-advogado"><span class="entity-dot"></span><span class="entity-emoji">😈</span><span class="entity-name">Advogado</span></div>
+            <div class="entity-row" data-entity="conclave-sintetizador"><span class="entity-dot"></span><span class="entity-emoji">🔮</span><span class="entity-name">Sintetizador</span></div>
+          </div>
+          <button class="hud-ingest-btn" id="btn-ingest" title="Alimentar o Mega-Brain">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="6"/><path d="M12 9v6m-3-3h6"/></svg>
+            <span>Ingerir Conhecimento</span>
+          </button>
+        </div>
+
+        <!-- Obsidian Brain -->
+        <div class="hud-bottom-card hud-bottom-brain" id="btn-brain" title="Explorar o Obsidian Brain">
+          <div class="hud-section-title">◉ OBSIDIAN</div>
+          <div class="brain-mini">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="brain-mini-icon"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="8"/><line x1="12" y1="16" x2="12" y2="22"/><line x1="2" y1="12" x2="8" y2="12"/><line x1="16" y1="12" x2="22" y2="12"/></svg>
+            <div>
+              <div class="widget-value" id="obsidian-notes">-- notas</div>
+              <div class="widget-sub" id="obsidian-status">conectando...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Metrics -->
+        <div class="hud-bottom-card">
+          <div class="hud-section-title">▸ METRICS</div>
+          <div class="hud-metrics">
+            <div class="metric-item"><div class="metric-label">TASKS</div><div class="metric-value" id="metric-tasks">0</div></div>
+            <div class="metric-item"><div class="metric-label">UPTIME</div><div class="metric-value" id="metric-uptime">00:00</div></div>
+            <div class="metric-item"><div class="metric-label">VOZ</div><div class="metric-value" id="metric-voice">OFF</div></div>
+            <div class="metric-item"><div class="metric-label">RAM</div><div class="metric-value" id="metric-ram">--%</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ MIC BUTTON ═══ -->
       <div class="cockpit-controls">
         <button class="mic-fab" id="mic-btn" title="Voice Input">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -78,7 +213,7 @@
             <span class="ttb-dot ttb-y"></span>
             <span class="ttb-dot ttb-g"></span>
           </div>
-          <span class="ttb-title">FELIPE · TERMINAL</span>
+          <span class="ttb-title">JARVIS · TERMINAL</span>
           <div class="ttb-right">
             <span class="ttb-badge" id="ttb-model">—</span>
           </div>
@@ -86,7 +221,7 @@
         <div class="terminal-output" id="terminal-output">
           <div class="terminal-line system-line">
             <span class="ts">[BOOT]</span>
-            <span class="msg" id="boot-msg">[system] FELIPE inicializado. Pronto para uso.</span>
+            <span class="msg" id="boot-msg">[system] JARVIS inicializado. Pronto para uso.</span>
           </div>
         </div>
       </div>
@@ -99,7 +234,7 @@
           </svg>
         </button>
         <div class="input-wrap">
-          <input type="text" class="chat-input" id="chat-input" placeholder="Fale com o FELIPE..." autocomplete="off">
+          <input type="text" class="chat-input" id="chat-input" placeholder="Fale com o JARVIS..." autocomplete="off">
           <div class="input-glow"></div>
         </div>
         <label class="attach-btn" title="Attach File">
@@ -124,7 +259,7 @@
     <div class="file-browser">
       <h2 class="section-title">Documents &amp; Projects</h2>
       <div class="file-list" id="file-list">
-        <div class="file-empty">No files yet. Ask FELIPE to create something.</div>
+        <div class="file-empty">No files yet. Ask JARVIS to create something.</div>
       </div>
     </div>
   </div>
@@ -149,7 +284,7 @@
         </label>
       </div>
       <div class="config-group">
-        <label class="config-label">Wake Word "Felipe"</label>
+        <label class="config-label">Wake Word "Jarvis"</label>
         <label class="toggle">
           <input type="checkbox" id="config-wakeword">
           <span class="toggle-slider"></span>
@@ -182,10 +317,123 @@
     </div>
   </div>
 
+  <!-- ═══════════════════════════════════
+       MODAL: MEGA-BRAIN INGESTÃO
+  ═══════════════════════════════════ -->
+  <div class="modal-overlay" id="ingest-modal" style="display:none">
+    <div class="modal-card modal-ingest">
+      <div class="modal-header">
+        <span class="modal-title">🧠 MEGA-BRAIN — Ingestão de Conhecimento</span>
+        <button class="modal-close" id="ingest-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="ingest-tabs">
+          <button class="ingest-tab active" data-ingest="text">Texto</button>
+          <button class="ingest-tab" data-ingest="file">Arquivo</button>
+          <button class="ingest-tab" data-ingest="session">Sessão</button>
+        </div>
+
+        <!-- Tab: Texto -->
+        <div class="ingest-panel active" id="ingest-text">
+          <label class="ingest-label">Cole ou digite o conhecimento:</label>
+          <textarea class="ingest-textarea" id="ingest-text-input" placeholder="Ex: Meu cliente principal é a empresa X, setor de tecnologia, faturamento R$ 2M/ano..."></textarea>
+          <label class="ingest-label" style="margin-top:10px">Categoria:</label>
+          <select class="ingest-select" id="ingest-text-category">
+            <option value="auto">Automática (IA decide)</option>
+            <option value="projeto">Projeto</option>
+            <option value="decisao">Decisão Técnica</option>
+            <option value="pessoa">Pessoa / Cliente</option>
+            <option value="aprendizado">Aprendizado</option>
+            <option value="preferencia">Preferência</option>
+            <option value="negocio">Negócio</option>
+          </select>
+        </div>
+
+        <!-- Tab: Arquivo -->
+        <div class="ingest-panel" id="ingest-file">
+          <div class="ingest-dropzone" id="ingest-dropzone">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="40" height="40">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <p>Arraste um arquivo aqui<br>ou <strong>clique para selecionar</strong></p>
+            <p class="ingest-filetypes">.md .txt .pdf .docx .json .csv</p>
+            <input type="file" id="ingest-file-input" hidden accept=".md,.txt,.pdf,.docx,.json,.csv">
+          </div>
+          <div class="ingest-file-name" id="ingest-file-name"></div>
+        </div>
+
+        <!-- Tab: Sessão -->
+        <div class="ingest-panel" id="ingest-session">
+          <p class="ingest-session-desc">O Mega-Brain analisa a sessão atual e extrai automaticamente:</p>
+          <div class="ingest-session-items">
+            <div class="ingest-check"><span>✓</span> Decisões técnicas tomadas</div>
+            <div class="ingest-check"><span>✓</span> Problemas resolvidos</div>
+            <div class="ingest-check"><span>✓</span> Projetos criados ou modificados</div>
+            <div class="ingest-check"><span>✓</span> Preferências descobertas</div>
+            <div class="ingest-check"><span>✓</span> Aprendizados importantes</div>
+          </div>
+          <p class="ingest-session-note">Baseado nas últimas mensagens da conversa atual.</p>
+        </div>
+
+        <div class="ingest-status" id="ingest-status"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-btn modal-btn-secondary" id="ingest-cancel">Cancelar</button>
+        <button class="modal-btn modal-btn-primary" id="ingest-submit">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <path d="M12 2v4m0 12v4M2 12h4m12 0h4"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+          Ingerir no Obsidian
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════
+       MODAL: OBSIDIAN BRAIN VIEWER
+  ═══════════════════════════════════ -->
+  <div class="modal-overlay" id="brain-modal" style="display:none">
+    <div class="modal-card modal-brain">
+      <div class="modal-header">
+        <span class="modal-title">🧠 OBSIDIAN BRAIN — Explorador</span>
+        <div class="modal-header-btns">
+          <button class="modal-size-btn" id="brain-maximize" title="Maximizar">⬜</button>
+          <button class="modal-close" id="brain-close">&times;</button>
+        </div>
+      </div>
+      <div class="modal-body modal-brain-body">
+        <!-- Sidebar: árvore de pastas -->
+        <div class="brain-sidebar">
+          <div class="brain-search">
+            <input type="text" class="brain-search-input" id="brain-search" placeholder="Buscar notas...">
+          </div>
+          <div class="brain-tree" id="brain-tree">
+            <div class="brain-loading">Carregando vault...</div>
+          </div>
+        </div>
+        <!-- Preview da nota -->
+        <div class="brain-preview" id="brain-preview">
+          <div class="brain-empty">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" width="48" height="48" style="opacity:0.3">
+              <circle cx="12" cy="12" r="10"/>
+              <circle cx="12" cy="12" r="4"/>
+              <line x1="12" y1="2" x2="12" y2="8"/>
+              <line x1="12" y1="16" x2="12" y2="22"/>
+            </svg>
+            <p>Selecione uma nota para visualizar</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Pre-flight verification modal -->
   <div id="preflight-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.92); z-index:9999; display:flex; align-items:center; justify-content:center;">
     <div style="background:#0d1117; border:1px solid #1a3a5c; border-radius:16px; padding:36px 40px; max-width:480px; width:90%; color:#e0e0e0; font-family:'Inter',sans-serif;">
-      <h2 style="color:#00d4ff; font-size:18px; margin-bottom:6px; text-align:center;">FELIPE — System Verification</h2>
+      <h2 style="color:#00d4ff; font-size:18px; margin-bottom:6px; text-align:center;">JARVIS — System Verification</h2>
       <p style="color:#888; font-size:11px; text-align:center; margin-bottom:24px;">Checking all systems before first use...</p>
       <div id="preflight-checks" style="display:flex; flex-direction:column; gap:10px;">
         <div class="pf-item" data-key="openai_api"><span class="pf-icon">⏳</span> OpenAI API (GPT-4o-mini)</div>
@@ -196,7 +444,7 @@
       </div>
       <div id="preflight-result" style="margin-top:20px; text-align:center; display:none;">
         <p id="preflight-msg" style="font-size:13px; margin-bottom:14px;"></p>
-        <button id="preflight-ok" style="background:#00d4ff; color:#000; border:none; padding:10px 32px; border-radius:8px; font-weight:700; cursor:pointer; font-size:13px;">Start FELIPE</button>
+        <button id="preflight-ok" style="background:#00d4ff; color:#000; border:none; padding:10px 32px; border-radius:8px; font-weight:700; cursor:pointer; font-size:13px;">Start JARVIS</button>
         <button id="preflight-retry" style="background:#333; color:#ccc; border:1px solid #555; padding:10px 24px; border-radius:8px; cursor:pointer; font-size:12px; margin-left:8px; display:none;">Retry</button>
       </div>
     </div>
