@@ -4187,6 +4187,183 @@ app.post('/api/workflow', express.json(), async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════
+// ═══════════════════════════════════════════════
+// COWORK MODE — JARVIS observa e ajuda em paralelo
+// ═══════════════════════════════════════════════
+let coworkActive = false;
+let coworkInterval = null;
+let coworkLastState = '';
+
+app.post('/api/cowork/start', (req, res) => {
+  if (coworkActive) return res.json({ ok: true, status: 'already running' });
+  coworkActive = true;
+
+  coworkInterval = setInterval(async () => {
+    if (!coworkActive || !_screenState.value) return;
+
+    const state = _screenState.value;
+    const fg = state.fg;
+    if (!fg || !fg.title) return;
+
+    // Só analisa se o contexto mudou (janela diferente)
+    const currentContext = fg.title + '|' + fg.proc;
+    if (currentContext === coworkLastState) return;
+    coworkLastState = currentContext;
+
+    // Análise leve: Claude decide se tem algo útil pra fazer
+    try {
+      const analysisPrompt = `You are JARVIS in Cowork mode. The user just switched to: "${fg.title}" (${fg.proc}).
+Other open windows: ${(state.windows || []).slice(0, 5).map(w => w.title).join(', ')}
+
+Based on this context, should JARVIS proactively do anything useful?
+Reply with JSON: {"action":"none"} if nothing to do, or {"action":"suggest","message":"brief suggestion in Portuguese"} if you have a useful suggestion.
+Only suggest if it's genuinely helpful. Don't be annoying. Max 1 sentence.`;
+
+      const proc = spawn(CLAUDE_CMD, [
+        '--print', '--output-format', 'text',
+        '--model', 'claude-haiku-4-5-20251001',
+        '--dangerously-skip-permissions'
+      ], { shell: true, cwd: JARVIS_DIR, timeout: 15000 });
+
+      proc.stdin.write(analysisPrompt);
+      proc.stdin.end();
+
+      let stdout = '';
+      proc.stdout.on('data', d => { stdout += d; });
+      proc.on('close', () => {
+        try {
+          const match = stdout.match(/\{[\s\S]*\}/);
+          if (match) {
+            const result = JSON.parse(match[0]);
+            if (result.action === 'suggest' && result.message) {
+              // Push suggestion to client
+              pushNotification({ type: 'cowork-suggest', message: result.message });
+              console.log(`[JARVIS Cowork] 💡 ${result.message}`);
+            }
+          }
+        } catch {}
+      });
+    } catch {}
+  }, 10000); // Analisa a cada 10 segundos
+
+  console.log('[JARVIS] Cowork mode ACTIVATED');
+  res.json({ ok: true, status: 'started' });
+});
+
+app.post('/api/cowork/stop', (req, res) => {
+  coworkActive = false;
+  if (coworkInterval) { clearInterval(coworkInterval); coworkInterval = null; }
+  coworkLastState = '';
+  console.log('[JARVIS] Cowork mode DEACTIVATED');
+  res.json({ ok: true, status: 'stopped' });
+});
+
+app.get('/api/cowork/status', (req, res) => {
+  res.json({ active: coworkActive });
+});
+
+// ═══════════════════════════════════════════════
+// CONTENT GENERATOR — Gerador de conteúdo automático (free via Claude)
+// ═══════════════════════════════════════════════
+app.post('/api/generate-content', express.json({ limit: '5mb' }), async (req, res) => {
+  const { type, topic, platform, quantity, language = 'BR', style } = req.body;
+
+  if (!topic) return res.status(400).json({ error: 'topic required' });
+
+  const templates = {
+    'instagram-posts': `Crie ${quantity || 10} posts para Instagram sobre "${topic}".
+Para cada post inclua:
+- Texto com emojis e hashtags (max 300 chars)
+- Sugestão de imagem (descrição visual)
+- Melhor horário pra postar
+Formato: JSON array [{"text":"...","image_desc":"...","best_time":"..."}]`,
+
+    'linkedin-posts': `Crie ${quantity || 5} posts profissionais para LinkedIn sobre "${topic}".
+Para cada post:
+- Texto com storytelling (500-1000 chars)
+- Hook forte na primeira linha
+- CTA no final
+Formato: JSON array [{"text":"...","hook":"...","cta":"..."}]`,
+
+    'blog-articles': `Crie ${quantity || 3} outlines de artigos de blog sobre "${topic}".
+Para cada artigo:
+- Título SEO otimizado
+- Meta description (155 chars)
+- H2 subtitles (5-7)
+- Keywords alvo
+Formato: JSON array [{"title":"...","meta":"...","subtitles":[...],"keywords":[...]}]`,
+
+    'email-sequence': `Crie uma sequência de ${quantity || 7} emails sobre "${topic}".
+Para cada email:
+- Subject line (curta, curiosidade)
+- Preview text
+- Body (200-400 chars)
+- CTA
+Formato: JSON array [{"day":1,"subject":"...","preview":"...","body":"...","cta":"..."}]`,
+
+    'video-scripts': `Crie ${quantity || 5} roteiros de vídeo curto (Reels/Shorts) sobre "${topic}".
+Para cada vídeo:
+- Hook (primeiros 3 segundos)
+- Corpo (30-60 segundos)
+- CTA final
+- Sugestão de música/mood
+Formato: JSON array [{"hook":"...","body":"...","cta":"...","music":"...","duration":"..."}]`,
+
+    'ad-copy': `Crie ${quantity || 10} variações de copy para anúncios sobre "${topic}".
+Para cada ad:
+- Headline (max 40 chars)
+- Primary text (max 125 chars)
+- Description (max 30 chars)
+- CTA button text
+Formato: JSON array [{"headline":"...","primary":"...","description":"...","cta":"..."}]`,
+
+    'ebook-outline': `Crie o outline completo de um e-book sobre "${topic}".
+Inclua:
+- Título e subtítulo
+- 8-12 capítulos com resumo de cada
+- Introdução sugerida (300 chars)
+- Público-alvo
+Formato: JSON {"title":"...","subtitle":"...","audience":"...","intro":"...","chapters":[{"title":"...","summary":"..."}]}`,
+  };
+
+  const contentType = type || 'instagram-posts';
+  const prompt = templates[contentType] || templates['instagram-posts'];
+  const fullPrompt = `${prompt}\n\nEstilo: ${style || 'profissional e engajante'}\nIdioma: ${language === 'BR' ? 'Português Brasileiro' : language === 'ES' ? 'Espanhol' : 'Inglês'}\n\nResponda APENAS com o JSON, sem explicação.`;
+
+  try {
+    const result = await new Promise((resolve, reject) => {
+      const proc = spawn(CLAUDE_CMD, [
+        '--print', '--output-format', 'text',
+        '--model', 'claude-sonnet-4-6',
+        '--dangerously-skip-permissions'
+      ], { shell: true, cwd: JARVIS_DIR, timeout: 60000 });
+
+      proc.stdin.write(fullPrompt);
+      proc.stdin.end();
+
+      let stdout = '';
+      proc.stdout.on('data', d => { stdout += d; });
+      proc.on('close', (code) => {
+        if (code === 0 && stdout.trim()) resolve(stdout.trim());
+        else reject(new Error('Claude failed'));
+      });
+      proc.on('error', reject);
+    });
+
+    // Parse JSON from response
+    const jsonMatch = result.match(/[\[\{][\s\S]*[\]\}]/);
+    if (jsonMatch) {
+      const content = JSON.parse(jsonMatch[0]);
+      res.json({ ok: true, type: contentType, topic, count: Array.isArray(content) ? content.length : 1, content });
+    } else {
+      res.json({ ok: true, type: contentType, topic, raw: result });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════
 // LEGACY ENDPOINTS (kept for backward compatibility)
 // ═══════════════════════════════════════════════
 

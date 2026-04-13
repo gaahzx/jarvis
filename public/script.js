@@ -150,7 +150,7 @@ class NeuralTree {
       const center = box.getCenter(new THREE.Vector3());
       const size = box.getSize(new THREE.Vector3());
       const maxDim = Math.max(size.x, size.y, size.z);
-      const brainScale = 4.5 / maxDim;
+      const brainScale = 2.7 / maxDim;
 
       // Wrap in a group for clean transform
       const brainPivot = new THREE.Group();
@@ -228,18 +228,9 @@ class NeuralTree {
     }
     tryLoadBrain();
 
-    // ── Outer glow shells ──
-    const glowGeo = new THREE.SphereGeometry(2.8, 32, 24);
-    this.brainGlow = new THREE.Mesh(glowGeo,
-      new THREE.MeshBasicMaterial({ color: 0x005577, transparent: true, opacity: 0.03, side: THREE.BackSide, depthWrite: false })
-    );
-    this.scene.add(this.brainGlow);
-
-    const glow2Geo = new THREE.SphereGeometry(3.5, 24, 16);
-    this.brainGlow2 = new THREE.Mesh(glow2Geo,
-      new THREE.MeshBasicMaterial({ color: 0x002233, transparent: true, opacity: 0.015, side: THREE.BackSide, depthWrite: false })
-    );
-    this.scene.add(this.brainGlow2);
+    // Glow shells removidos — cerebro limpo sem esferas ao redor
+    this.brainGlow = null;
+    this.brainGlow2 = null;
 
     // ── NEURAL TREE — Full width root system below brain ──
     this.treeGroup = new THREE.Group();
@@ -254,14 +245,42 @@ class NeuralTree {
     const goldNodeMat = new THREE.MeshBasicMaterial({ color: 0xffd700, transparent: true, opacity: 0.5 });
     this._treeNodes = [];
 
-    // Helper: add bezier branch + node
+    // Helper: add circuit-board style branch (L-shaped lines) + octahedron node
+    const octGeo = new THREE.OctahedronGeometry(0.06, 0);
     const addBranch = (from, to, mat, nodeM, nodeScale) => {
-      const mid = new THREE.Vector3().lerpVectors(from, to, 0.5);
-      mid.x += (Math.random() - 0.5) * 0.3;
-      mid.z += (Math.random() - 0.5) * 0.2;
-      const curve = new THREE.QuadraticBezierCurve3(from, mid, to);
-      this.treeGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(16)), mat));
-      const n = new THREE.Mesh(nodeGeo, nodeM.clone());
+      // Circuit board style: go down first, then horizontal (L-shape)
+      const midY = from.y + (to.y - from.y) * (0.3 + Math.random() * 0.4);
+      const cornerPt = new THREE.Vector3(from.x, midY, from.z);
+      const cornerPt2 = new THREE.Vector3(to.x, midY, to.z);
+
+      // Vertical segment (down from parent)
+      this.treeGroup.add(new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([from, cornerPt]),
+        mat
+      ));
+      // Horizontal segment (to the side)
+      this.treeGroup.add(new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([cornerPt, cornerPt2]),
+        mat
+      ));
+      // Vertical segment (down to target)
+      this.treeGroup.add(new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([cornerPt2, to]),
+        mat
+      ));
+
+      // Corner dots (circuit junction points)
+      const dotGeo = new THREE.SphereGeometry(0.025, 4, 4);
+      const dotMat = new THREE.MeshBasicMaterial({ color: 0x00e4ff, transparent: true, opacity: 0.4 });
+      const dot1 = new THREE.Mesh(dotGeo, dotMat);
+      dot1.position.copy(cornerPt);
+      this.treeGroup.add(dot1);
+      const dot2 = new THREE.Mesh(dotGeo, dotMat.clone());
+      dot2.position.copy(cornerPt2);
+      this.treeGroup.add(dot2);
+
+      // Octahedron node (sci-fi diamond shape)
+      const n = new THREE.Mesh(octGeo, nodeM.clone());
       n.position.copy(to);
       n.scale.setScalar(nodeScale || 0.7);
       this.treeGroup.add(n);
@@ -269,19 +288,39 @@ class NeuralTree {
       return to;
     };
 
-    // Brain stem (thicker, from brain base)
-    const stemStart = new THREE.Vector3(0, -1.6, 0);
+    // Brain stem — connects from brain CENTER (0,0,0) down to tree
+    const stemOrigin = new THREE.Vector3(0, 0, 0);  // centro do cerebro
     const stemEnd = new THREE.Vector3(0, -2.5, 0);
-    const stemCurve = new THREE.LineCurve3(stemStart, stemEnd);
-    const stemLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(stemCurve.getPoints(10)), branchMat);
-    this.treeGroup.add(stemLine);
+    // Main stem (thick, bright)
+    const mainStem = new THREE.QuadraticBezierCurve3(stemOrigin, new THREE.Vector3(0, -1.2, 0), stemEnd);
+    this.treeGroup.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(mainStem.getPoints(25)),
+      new THREE.LineBasicMaterial({ color: 0x00e4ff, transparent: true, opacity: 0.7 })
+    ));
+    // Spinal cord effect (5 secondary lines from brain center)
+    for (let si = 0; si < 5; si++) {
+      const angle = (si / 5) * Math.PI * 2;
+      const ox = Math.cos(angle) * 0.12;
+      const oz = Math.sin(angle) * 0.08;
+      const sCurve = new THREE.QuadraticBezierCurve3(
+        new THREE.Vector3(ox, -0.2, oz),
+        new THREE.Vector3(ox * 0.3, -1.3, oz * 0.3),
+        new THREE.Vector3(0, -2.5, 0)
+      );
+      this.treeGroup.add(new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints(sCurve.getPoints(18)),
+        new THREE.LineBasicMaterial({ color: 0x00aacc, transparent: true, opacity: 0.25 })
+      ));
+    }
 
-    // 7 primary branches — spread wide
+    // 9 primary branches — spread wide from stem base
     const primaries = [
-      { x: -3.0, y: -3.5, z: 0.6 }, { x: -2.0, y: -3.8, z: -0.4 },
-      { x: -0.8, y: -3.6, z: 0.3 }, { x: 0, y: -3.4, z: -0.2 },
-      { x: 0.8, y: -3.6, z: 0.3 }, { x: 2.0, y: -3.8, z: -0.4 },
-      { x: 3.0, y: -3.5, z: 0.6 }
+      { x: -3.5, y: -3.5, z: 0.7 }, { x: -2.5, y: -3.8, z: -0.5 },
+      { x: -1.2, y: -3.6, z: 0.4 }, { x: -0.4, y: -3.4, z: -0.3 },
+      { x: 0.4, y: -3.4, z: 0.3 },
+      { x: 1.2, y: -3.6, z: -0.4 }, { x: 2.5, y: -3.8, z: 0.5 },
+      { x: 3.5, y: -3.5, z: -0.7 },
+      { x: 0, y: -3.2, z: 0.6 }
     ];
     const primEnds = [];
     for (const p of primaries) {
@@ -289,45 +328,64 @@ class NeuralTree {
       primEnds.push(end);
     }
 
-    // Secondary branches (3-4 per primary, spread further)
+    // Secondary branches (4-5 per primary)
     const secEnds = [];
     for (const pe of primEnds) {
-      const count = 3 + Math.floor(Math.random() * 2);
+      const count = 4 + Math.floor(Math.random() * 2);
       for (let j = 0; j < count; j++) {
-        const sx = pe.x + (Math.random() - 0.5) * 1.5;
-        const sy = pe.y - 0.5 - Math.random() * 0.8;
-        const sz = pe.z + (Math.random() - 0.5) * 1.0;
+        const sx = pe.x + (Math.random() - 0.5) * 1.8;
+        const sy = pe.y - 0.4 - Math.random() * 0.9;
+        const sz = pe.z + (Math.random() - 0.5) * 1.2;
         const end = addBranch(pe, new THREE.Vector3(
-          Math.max(-4.5, Math.min(4.5, sx)), Math.max(-6, sy), sz
+          Math.max(-5, Math.min(5, sx)), Math.max(-6.5, sy), sz
         ), secMat, j % 2 === 0 ? goldNodeMat : nodeMat, 0.5);
         secEnds.push(end);
       }
     }
 
-    // Leaf/root nodes (2-3 per secondary, fill bottom plane)
+    // Tertiary/leaf nodes (2-3 per secondary)
+    const leafEnds = [];
     for (const se of secEnds) {
       const count = 2 + Math.floor(Math.random() * 2);
       for (let k = 0; k < count; k++) {
-        const lx = se.x + (Math.random() - 0.5) * 1.2;
-        const ly = se.y - 0.4 - Math.random() * 0.6;
-        const lz = se.z + (Math.random() - 0.5) * 0.8;
-        addBranch(se, new THREE.Vector3(
-          Math.max(-5, Math.min(5, lx)), Math.max(-7, ly), lz
-        ), leafMat, goldNodeMat, 0.35);
+        const lx = se.x + (Math.random() - 0.5) * 1.4;
+        const ly = se.y - 0.3 - Math.random() * 0.7;
+        const lz = se.z + (Math.random() - 0.5) * 0.9;
+        const end = addBranch(se, new THREE.Vector3(
+          Math.max(-6, Math.min(6, lx)), Math.max(-8, ly), lz
+        ), leafMat, goldNodeMat, 0.3);
+        leafEnds.push(end);
       }
     }
 
-    // Bottom root tendrils (fade into the void — decorative)
-    for (let i = 0; i < 12; i++) {
-      const rx = (Math.random() - 0.5) * 8;
-      const ry = -6 - Math.random() * 2;
-      const rz = (Math.random() - 0.5) * 2;
-      const startY = -5 - Math.random();
-      const pts = [
-        new THREE.Vector3(rx + (Math.random()-0.5)*0.5, startY, rz),
-        new THREE.Vector3(rx, ry, rz + (Math.random()-0.5)*0.3)
-      ];
-      this.treeGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), rootMat));
+    // Cross-connections between nearby nodes (neural web effect)
+    for (let i = 0; i < 20; i++) {
+      const allEnds = [...primEnds, ...secEnds.slice(0, 20)];
+      const a = Math.floor(Math.random() * allEnds.length);
+      const b = Math.floor(Math.random() * allEnds.length);
+      if (a !== b) {
+        const dist = allEnds[a].distanceTo(allEnds[b]);
+        if (dist < 2.5 && dist > 0.5) {
+          this.treeGroup.add(new THREE.Line(
+            new THREE.BufferGeometry().setFromPoints([allEnds[a], allEnds[b]]),
+            new THREE.LineBasicMaterial({ color: 0x006688, transparent: true, opacity: 0.08 })
+          ));
+        }
+      }
+    }
+
+    // Bottom root tendrils (fade into void)
+    for (let i = 0; i < 20; i++) {
+      const rx = (Math.random() - 0.5) * 10;
+      const ry = -6.5 - Math.random() * 2.5;
+      const rz = (Math.random() - 0.5) * 2.5;
+      const startY = -5.5 - Math.random();
+      this.treeGroup.add(new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(rx + (Math.random()-0.5)*0.5, startY, rz),
+          new THREE.Vector3(rx, ry, rz + (Math.random()-0.5)*0.3)
+        ]), rootMat
+      ));
     }
 
     // ── Floating particles (more, bigger, spread across entire tree area) ──
@@ -360,13 +418,7 @@ class NeuralTree {
       this._lightningLines.push(line);
     }
 
-    // ── Scan ring ──
-    const ringGeo = new THREE.RingGeometry(2.2, 2.4, 64);
-    this.scanRing = new THREE.Mesh(ringGeo,
-      new THREE.MeshBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.15, side: THREE.DoubleSide, depthWrite: false })
-    );
-    this.scanRing.rotation.x = Math.PI / 2;
-    this.scene.add(this.scanRing);
+    // Scan ring removido — cerebro limpo sem anel
 
     // ── Electric pulse points ──
     this._pulsePoints = [];
@@ -438,18 +490,7 @@ class NeuralTree {
       }
     }
 
-    // ── Glow pulse ──
-    this.brainGlow.material.opacity = 0.03 + 0.04 * pulse;
-    this.brainGlow.scale.setScalar(1.2 + 0.1 * pulse);
-    if (this.brainGlow2) {
-      this.brainGlow2.material.opacity = 0.015 + 0.02 * pulse;
-      this.brainGlow2.scale.setScalar(1.5 + 0.12 * pulse);
-    }
-
-    // ── Scan ring sweeps up and down ──
-    const scanY = Math.sin(this.time * 0.8) * 0.7;
-    this.scanRing.position.y = scanY;
-    this.scanRing.material.opacity = 0.1 + 0.15 * (1 - Math.abs(scanY));
+    // Glow + scan ring removidos
 
     // ── Lightning bolts (random arcs between brain surface points) ──
     for (let i = 0; i < this._lightningLines.length; i++) {
@@ -2266,26 +2307,43 @@ initRealtimeBtn();
     const barApi = document.getElementById('bar-api');
     const barVoice = document.getElementById('bar-voice');
     const barClaude = document.getElementById('bar-claude');
+    const sApi = document.getElementById('bar-api-status');
+    const sVoice = document.getElementById('bar-voice-status');
+    const sClaude = document.getElementById('bar-claude-status');
 
     try {
       const r = await fetch('/api/health', { timeout: 3000 });
       if (r.ok) {
         const data = await r.json();
         barApi.className = 'bar-fill ok';
+        if (sApi) { sApi.textContent = 'OK'; sApi.style.color = 'var(--green, #00ff88)'; }
 
-        if (data.capabilities?.voice_realtime) barVoice.className = 'bar-fill ok';
-        else barVoice.className = 'bar-fill err';
+        if (data.capabilities?.voice_realtime) {
+          barVoice.className = 'bar-fill ok';
+          if (sVoice) { sVoice.textContent = 'OK'; sVoice.style.color = 'var(--green, #00ff88)'; }
+        } else {
+          barVoice.className = 'bar-fill err';
+          if (sVoice) { sVoice.textContent = 'OFF'; sVoice.style.color = '#ff4455'; }
+        }
 
-        if (data.capabilities?.task_execution) barClaude.className = 'bar-fill ok';
-        else barClaude.className = 'bar-fill err';
+        if (data.capabilities?.task_execution) {
+          barClaude.className = 'bar-fill ok';
+          if (sClaude) { sClaude.textContent = 'OK'; sClaude.style.color = 'var(--green, #00ff88)'; }
+        } else {
+          barClaude.className = 'bar-fill err';
+          if (sClaude) { sClaude.textContent = 'OFF'; sClaude.style.color = '#ff4455'; }
+        }
         return;
       }
     } catch {}
 
     // Offline
-    barApi.className = 'bar-fill err';
-    barVoice.className = 'bar-fill err';
-    barClaude.className = 'bar-fill err';
+    if (barApi) barApi.className = 'bar-fill err';
+    if (barVoice) barVoice.className = 'bar-fill err';
+    if (barClaude) barClaude.className = 'bar-fill err';
+    if (sApi) { sApi.textContent = 'ERR'; sApi.style.color = '#ff4455'; }
+    if (sVoice) { sVoice.textContent = 'ERR'; sVoice.style.color = '#ff4455'; }
+    if (sClaude) { sClaude.textContent = 'ERR'; sClaude.style.color = '#ff4455'; }
   }
 
   // ── Active Model Display ──
@@ -2454,6 +2512,50 @@ initRealtimeBtn();
       // ── Server status (marcar OK online) ──
       const serverLabel = document.querySelector('#widget-health .widget-label');
       if (serverLabel) serverLabel.textContent = 'SERVER · ONLINE';
+
+      // ── Update circular gauges (CSS --value) ──
+      // CPU gauge
+      const cpuGauge = document.querySelector('#widget-cpu .gauge-ring, #widget-cpu [style*="--value"]');
+      if (cpuGauge && s.cpu?.usage !== null) {
+        cpuGauge.style.setProperty('--value', s.cpu.usage);
+      }
+      // Also try generic gauge elements inside cpu widget
+      document.querySelectorAll('#widget-cpu .gauge-ring').forEach(g => {
+        if (s.cpu?.usage !== null) g.style.setProperty('--value', s.cpu.usage);
+      });
+      const cpuGaugeVal = document.querySelector('#widget-cpu .gauge-value, #widget-cpu .gauge-pct');
+      if (cpuGaugeVal && s.cpu?.usage !== null) cpuGaugeVal.textContent = s.cpu.usage + '%';
+
+      // GPU gauge
+      document.querySelectorAll('#widget-gpu .gauge-ring').forEach(g => {
+        // GPU doesn't have usage %, show VRAM as fraction (vram/16 = %)
+        g.style.setProperty('--value', s.gpu?.vram ? Math.min(100, Math.round(s.gpu.vram / 16 * 100)) : 0);
+      });
+      const gpuGaugeVal = document.querySelector('#widget-gpu .gauge-value, #widget-gpu .gauge-pct');
+      if (gpuGaugeVal) gpuGaugeVal.textContent = s.gpu?.vram ? s.gpu.vram + 'GB' : '--';
+
+      // RAM gauge
+      document.querySelectorAll('#widget-ram .gauge-ring, .widget-ram .gauge-ring').forEach(g => {
+        if (s.ram?.usage !== null) g.style.setProperty('--value', s.ram.usage);
+      });
+      const ramGaugeVal = document.querySelector('#widget-ram .gauge-value, #widget-ram .gauge-pct, .widget-ram .gauge-value');
+      if (ramGaugeVal && s.ram?.usage !== null) ramGaugeVal.textContent = s.ram.usage + '%';
+
+      // Also update any gauge with data-metric attribute
+      document.querySelectorAll('[data-metric="cpu"]').forEach(g => {
+        if (s.cpu?.usage !== null) g.style.setProperty('--value', s.cpu.usage);
+      });
+      document.querySelectorAll('[data-metric="ram"]').forEach(g => {
+        if (s.ram?.usage !== null) g.style.setProperty('--value', s.ram.usage);
+      });
+
+      // ── System uptime ──
+      const uptimeEl = document.querySelector('.sys-uptime-value, #sys-uptime');
+      if (uptimeEl) {
+        const now = new Date();
+        uptimeEl.textContent = now.toLocaleTimeString('pt-BR');
+      }
+
     } catch {}
   }
 
@@ -2546,7 +2648,12 @@ initRealtimeBtn();
       var data = await r.json();
       if (data.connected) {
         notesEl.textContent = data.notes + ' notas';
-        statusEl.textContent = data.folders + ' pastas \u00B7 ' + data.links + ' links';
+        statusEl.textContent = 'conectado';
+        // Update detail cards
+        var foldersEl = document.getElementById('obs-folders');
+        var linksEl = document.getElementById('obs-links');
+        if (foldersEl) foldersEl.textContent = data.folders;
+        if (linksEl) linksEl.textContent = data.links;
       } else {
         notesEl.textContent = 'N/A';
         statusEl.textContent = 'vault nao instalado';
@@ -2840,4 +2947,26 @@ initRealtimeBtn();
       }
     };
   }
+})();
+
+
+// === DATE + TIME WIDGET ===
+(function() {
+  var days = ['Domingo', 'Segunda-feira', 'Terca-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sabado'];
+  function updateDateTime() {
+    var now = new Date();
+    var dayEl = document.getElementById('date-day');
+    var timeEl = document.getElementById('date-time');
+    var fullEl = document.getElementById('date-full');
+    if (dayEl) dayEl.textContent = days[now.getDay()].toUpperCase();
+    if (timeEl) timeEl.textContent = now.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    if (fullEl) {
+      var d = String(now.getDate()).padStart(2,'0');
+      var m = String(now.getMonth()+1).padStart(2,'0');
+      var y = String(now.getFullYear()).slice(-2);
+      fullEl.textContent = d + '/' + m + '/' + y;
+    }
+  }
+  updateDateTime();
+  setInterval(updateDateTime, 1000);
 })();

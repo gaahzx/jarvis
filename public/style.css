@@ -1725,7 +1725,7 @@ html, body {
 
 /* Override do cockpit-iron grid */
 .cockpit-iron {
-  grid-template-columns: 240px 1fr 240px !important;
+  grid-template-columns: 300px 1fr 300px !important;
   grid-template-rows: 1fr auto !important;
   grid-template-areas:
     "left   orb     right"
@@ -1924,7 +1924,7 @@ html, body {
 /* ═══ RESPONSIVE ═══ */
 @media (max-width: 1100px) {
   .cockpit-iron {
-    grid-template-columns: 200px 1fr 200px !important;
+    grid-template-columns: 260px 1fr 260px !important;
   }
 }
 @media (max-width: 900px) {
@@ -2848,3 +2848,1212 @@ body {
 .cockpit-iron {
   overflow: visible !important;
 }
+
+
+/* ═══════════════════════════════════════════════
+   HUD REFINEMENT v8 — Fix cortando + polish
+═══════════════════════════════════════════════ */
+
+/* Fix HUD direito: nomes cortados — dar mais espaço */
+.hud-right {
+  min-width: 240px !important;
+  overflow-x: hidden !important;
+}
+.hud-right .entity-row {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+.hud-right .entity-name {
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  max-width: 60px !important;
+}
+.hud-right .entity-grid {
+  gap: 3px !important;
+}
+.hud-right .entity-grid .entity-row {
+  padding: 5px 6px !important;
+}
+
+/* Fix HUD esquerdo: widgets mais compactos */
+.hud-left .hud-widget {
+  padding: 8px 10px !important;
+}
+.hud-left .widget-value {
+  font-size: 13px !important;
+}
+.hud-left .widget-sub {
+  font-size: 7px !important;
+}
+
+/* Health bars radial: menores e mais refinadas */
+.bar-row {
+  height: 28px !important;
+}
+.bar-row span {
+  font-size: 7px !important;
+  width: 35px !important;
+}
+
+/* Bottom HUD: mais compacto */
+.hud-bottom-card {
+  padding: 10px 12px !important;
+}
+.hud-bottom .hud-section-title {
+  font-size: 8px !important;
+  margin-bottom: 4px !important;
+}
+
+/* Metrics: valores menores */
+.hud-bottom .metric-value {
+  font-size: 11px !important;
+}
+.hud-bottom .metric-label {
+  font-size: 6px !important;
+}
+
+/* Quick buttons: mais compactos */
+.hud-bottom .hud-qbtn {
+  padding: 6px 4px !important;
+  font-size: 7px !important;
+}
+.hud-bottom .hud-qbtn svg {
+  width: 12px !important;
+  height: 12px !important;
+}
+
+/* Ingest button: mais fino */
+.hud-ingest-btn {
+  padding: 7px 10px !important;
+  font-size: 7px !important;
+}
+
+/* Conclave entities: mais compactos no bottom */
+.entity-row-h .entity-row {
+  padding: 4px 6px !important;
+  font-size: 8px !important;
+}
+
+/* Obsidian card: notas menores */
+.hud-bottom-brain .widget-value {
+  font-size: 13px !important;
+}
+
+/* Navbar: clock mais visivel */
+.clock {
+  font-size: 12px !important;
+  color: var(--cyan) !important;
+  text-shadow: 0 0 8px rgba(0,228,255,0.5) !important;
+}
+
+/* Section titles: diamante mais sutil */
+.hud-section-title::after {
+  width: 5px !important;
+  height: 5px !important;
+}
+
+/* Corner brackets: mais finos */
+.hud-corner {
+  width: 60px !important;
+  height: 60px !important;
+}
+
+/* Weather fallback: mostrar algo util quando nao tem GPS */
+
+
+/* ═══ Server bar status labels ═══ */
+.bar-status {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 7px;
+  color: var(--green, #00ff88);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  width: 20px;
+  text-align: right;
+}
+
+/* ═══ Obsidian details grid ═══ */
+.obsidian-details {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  margin-top: 6px;
+}
+.obs-detail {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  background: rgba(255,215,0,0.04);
+  border: 1px solid rgba(255,215,0,0.12);
+  border-radius: 4px;
+  font-size: 9px;
+}
+.obs-icon { font-size: 10px; }
+.obs-label {
+  color: var(--text-dim);
+  font-family: "Orbitron", sans-serif;
+  font-size: 7px;
+  letter-spacing: 0.5px;
+}
+.obs-val {
+  margin-left: auto;
+  color: var(--gold, #ffd700);
+  font-family: "Orbitron", sans-serif;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+
+/* ═══ Server status grid (legivel) ═══ */
+.server-status-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 4px;
+}
+.server-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  background: rgba(0,255,136,0.04);
+  border: 1px solid rgba(0,255,136,0.15);
+  border-radius: 4px;
+  font-family: "JetBrains Mono", monospace;
+}
+.server-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #00ff88;
+  box-shadow: 0 0 6px #00ff88;
+  flex-shrink: 0;
+}
+.server-dot.err {
+  background: #ff4455;
+  box-shadow: 0 0 6px #ff4455;
+}
+.server-name {
+  font-size: 8px;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+  flex: 1;
+}
+.server-state {
+  font-size: 8px;
+  font-weight: 700;
+  color: #00ff88;
+  letter-spacing: 0.5px;
+}
+.server-state.err {
+  color: #ff4455;
+}
+
+
+/* ═══ REMOVER corner brackets (quadrados nos cantos) ═══ */
+.hud-corner {
+  display: none !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   ADVANCED SCI-FI HUD COMPONENTS v1.0
+   Circular Gauge · Radar · Waveform · Activity · Graph · Flow
+═══════════════════════════════════════════════════════════ */
+
+/* ─── 1. CIRCULAR GAUGE ─── */
+.gauge {
+  --value: 0;
+  position: relative;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.gauge-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(
+    #00e4ff calc(var(--value) * 1%),
+    rgba(90,109,153,0.2) calc(var(--value) * 1%)
+  );
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 4px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 4px));
+  transition: --value 0.6s ease;
+  will-change: transform;
+  filter: drop-shadow(0 0 4px rgba(0,228,255,0.45));
+}
+/* tick marks at 0, 25, 50, 75 */
+.gauge::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    conic-gradient(from 0deg,   rgba(0,228,255,0.5) 0.8%, transparent 0.8%),
+    conic-gradient(from 90deg,  rgba(0,228,255,0.5) 0.8%, transparent 0.8%),
+    conic-gradient(from 180deg, rgba(0,228,255,0.5) 0.8%, transparent 0.8%),
+    conic-gradient(from 270deg, rgba(0,228,255,0.5) 0.8%, transparent 0.8%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 6px), #000 calc(100% - 2px), transparent calc(100% - 2px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 6px), #000 calc(100% - 2px), transparent calc(100% - 2px));
+  pointer-events: none;
+  z-index: 1;
+}
+.gauge-value {
+  position: relative;
+  z-index: 2;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: #00e4ff;
+  text-shadow: 0 0 6px rgba(0,228,255,0.4);
+}
+
+/* ─── 2. RADAR / SONAR DISPLAY ─── */
+.radar {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0,255,136,0.03) 0%, rgba(5,7,20,0.95) 70%);
+  border: 1px solid rgba(0,255,136,0.2);
+  overflow: hidden;
+}
+/* concentric rings */
+.radar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, transparent 19%, rgba(0,255,136,0.1) 20%, transparent 21%),
+    radial-gradient(circle, transparent 39%, rgba(0,255,136,0.08) 40%, transparent 41%),
+    radial-gradient(circle, transparent 59%, rgba(0,255,136,0.06) 60%, transparent 61%);
+  pointer-events: none;
+}
+/* cross-hair lines */
+.radar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(0deg,   transparent 49.5%, rgba(0,255,136,0.1) 49.5%, rgba(0,255,136,0.1) 50.5%, transparent 50.5%),
+    linear-gradient(90deg,  transparent 49.5%, rgba(0,255,136,0.1) 49.5%, rgba(0,255,136,0.1) 50.5%, transparent 50.5%);
+  pointer-events: none;
+}
+/* sweep line */
+.radar-sweep {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 50%;
+  height: 2px;
+  transform-origin: left center;
+  background: linear-gradient(90deg, rgba(0,255,136,0.6), transparent);
+  will-change: transform;
+  animation: radar-spin 5s linear infinite;
+}
+.radar-sweep::before {
+  content: "";
+  position: absolute;
+  top: -30px;
+  left: 0;
+  width: 100%;
+  height: 60px;
+  background: conic-gradient(from -30deg at 0% 50%, rgba(0,255,136,0.12), transparent 60deg);
+  pointer-events: none;
+}
+@keyframes radar-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+/* blips */
+.radar-blip {
+  --angle: 0deg;
+  --dist: 50%;
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #00ff88;
+  box-shadow: 0 0 6px #00ff88, 0 0 12px rgba(0,255,136,0.3);
+  top: 50%;
+  left: 50%;
+  transform:
+    rotate(var(--angle))
+    translateX(calc(var(--dist) * 0.6))
+    translate(-50%, -50%);
+  will-change: opacity;
+  animation: blip-pulse 2s ease-in-out infinite;
+}
+@keyframes blip-pulse {
+  0%, 100% { opacity: 0.6; }
+  50%      { opacity: 1; }
+}
+
+/* ─── 3. WAVEFORM / HEARTBEAT LINE ─── */
+.waveform {
+  width: 100%;
+  height: 30px;
+  position: relative;
+  overflow: hidden;
+}
+.waveform::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg,
+      transparent 0%,
+      transparent 10%,
+      rgba(0,228,255,0.0) 10%,
+      rgba(0,228,255,0.0) 12%,
+      transparent 12%,
+      transparent 35%,
+      rgba(0,228,255,0.0) 35%,
+      rgba(0,228,255,0.0) 36%,
+      transparent 36%,
+      transparent 38%
+    );
+  will-change: transform;
+}
+.waveform::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 200%;
+  height: 100%;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 30'%3E%3Cpath d='M0,15 L20,15 L25,15 L30,5 L35,25 L40,12 L45,18 L50,15 L70,15 L75,15 L80,2 L85,28 L90,10 L95,20 L100,15 L120,15 L125,15 L130,5 L135,25 L140,12 L145,18 L150,15 L170,15 L175,15 L180,2 L185,28 L190,10 L195,20 L200,15' fill='none' stroke='%2300e4ff' stroke-width='1.5'/%3E%3C/svg%3E") repeat-x center / 200px 30px;
+  filter: drop-shadow(0 0 4px rgba(0,228,255,0.5));
+  will-change: transform;
+  animation: waveform-scroll 3s linear infinite;
+}
+@keyframes waveform-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(50%); }
+}
+
+/* ─── 4. ACTIVITY BAR (AI Models) ─── */
+.activity-bar {
+  width: 100%;
+  height: 3px;
+  background: rgba(90,109,153,0.15);
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
+}
+.activity-fill {
+  height: 100%;
+  width: 10%;
+  border-radius: 2px;
+  background: rgba(0,228,255,0.25);
+  transition: width 0.4s ease, opacity 0.4s ease;
+  will-change: width, opacity;
+}
+.activity-bar.active .activity-fill {
+  width: 100%;
+  opacity: 1;
+  background: linear-gradient(90deg, transparent, #00e4ff, transparent);
+  animation: activity-sweep 1.8s ease-in-out infinite;
+}
+@keyframes activity-sweep {
+  0%   { transform: translateX(-100%); opacity: 0.6; }
+  50%  { opacity: 1; }
+  100% { transform: translateX(100%); opacity: 0.6; }
+}
+
+/* ─── 5. MINI KNOWLEDGE GRAPH (Obsidian) ─── */
+.mini-graph {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 80px;
+  overflow: hidden;
+}
+.graph-node {
+  --x: 50%;
+  --y: 50%;
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #ffd700;
+  box-shadow: 0 0 6px rgba(255,215,0,0.5), 0 0 12px rgba(255,215,0,0.2);
+  will-change: transform, opacity;
+  animation: node-glow 3s ease-in-out infinite;
+  animation-delay: calc(var(--x, 50%) * 0.01s);
+  transform: translate(-50%, -50%);
+}
+.graph-node::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(255,215,0,0.08);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+@keyframes node-glow {
+  0%, 100% { opacity: 0.5; transform: translate(-50%, -50%) scale(1); }
+  50%      { opacity: 1;   transform: translate(-50%, -50%) scale(1.3); }
+}
+/* graph lines drawn via embedded SVG in the component */
+.mini-graph svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.mini-graph svg line {
+  stroke: rgba(255,215,0,0.15);
+  stroke-width: 1;
+}
+
+/* ─── 6. DATA FLOW INDICATOR ─── */
+.data-flow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+}
+.flow-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #00e4ff;
+  opacity: 0.2;
+  will-change: opacity, transform;
+  animation: flow-move 1.5s ease-in-out infinite;
+}
+.flow-dot:nth-child(1) { animation-delay: 0s; }
+.flow-dot:nth-child(2) { animation-delay: 0.2s; }
+.flow-dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes flow-move {
+  0%, 100% { opacity: 0.15; transform: scale(0.8); }
+  40%      { opacity: 1;    transform: scale(1.3); }
+  60%      { opacity: 1;    transform: scale(1.3); }
+}
+
+/* ─── 7. EXPANDED LAYOUT OVERRIDE ─── */
+.cockpit-iron.expanded {
+  grid-template-columns: 300px 1fr 300px;
+  gap: 20px;
+  padding: 60px 28px 100px;
+}
+.cockpit-iron.expanded .hud-panel {
+  min-width: 280px;
+}
+.cockpit-iron.expanded .hud-bottom .hud-card {
+  min-height: 120px;
+}
+
+/* ─── 8. ENHANCED PANEL BORDERS ─── */
+.hud-panel.enhanced {
+  border: 1px solid rgba(0,228,255,0.3);
+  outline: 1px dashed rgba(0,228,255,0.08);
+  outline-offset: 3px;
+  animation: panel-glow-pulse 4s ease-in-out infinite;
+}
+@keyframes panel-glow-pulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(0,228,255,0.08), inset 0 0 30px rgba(0,228,255,0.02); }
+  50%      { box-shadow: 0 0 35px rgba(0,228,255,0.15), inset 0 0 40px rgba(0,228,255,0.04); }
+}
+/* corner accents */
+.hud-panel.enhanced::before,
+.hud-panel.enhanced::after {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-color: rgba(0,228,255,0.4);
+  border-style: solid;
+  pointer-events: none;
+  z-index: 3;
+}
+.hud-panel.enhanced::before {
+  top: -1px;
+  left: -1px;
+  border-width: 2px 0 0 2px;
+  border-radius: 4px 0 0 0;
+}
+.hud-panel.enhanced::after {
+  bottom: -1px;
+  right: -1px;
+  border-width: 0 2px 2px 0;
+  border-radius: 0 0 4px 0;
+}
+/* second set of corner accents via wrapper */
+.panel-accent-tr,
+.panel-accent-bl {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-color: rgba(0,228,255,0.4);
+  border-style: solid;
+  pointer-events: none;
+  z-index: 3;
+}
+.panel-accent-tr {
+  top: -1px;
+  right: -1px;
+  border-width: 2px 2px 0 0;
+  border-radius: 0 4px 0 0;
+}
+.panel-accent-bl {
+  bottom: -1px;
+  left: -1px;
+  border-width: 0 0 2px 2px;
+  border-radius: 0 0 0 4px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SCI-FI HUD COCKPIT COMPONENTS v8.0
+   Circular gauges, radar, waveforms, data flow, knowledge graph
+═══════════════════════════════════════════════════════════ */
+
+/* ── 1. CIRCULAR GAUGE (conic-gradient) ── */
+.hud-widget-gauge {
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+.gauge-ring {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--sf-primary) 0deg,
+    var(--sf-primary) calc(var(--value, 0) * 3.6deg),
+    rgba(0,228,255,0.08) calc(var(--value, 0) * 3.6deg),
+    rgba(0,228,255,0.08) 360deg
+  );
+  flex-shrink: 0;
+  box-shadow: 0 0 12px rgba(0,228,255,0.15), inset 0 0 6px rgba(0,228,255,0.05);
+  transition: background 0.6s ease;
+}
+.gauge-inner {
+  position: absolute;
+  inset: 5px;
+  background: var(--sf-bg-deep);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.gauge-pct {
+  font-family: 'Orbitron', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--sf-primary);
+  text-shadow: 0 0 6px rgba(0,228,255,0.5);
+}
+.gauge-ticks {
+  position: absolute;
+  inset: -3px;
+  width: calc(100% + 6px);
+  height: calc(100% + 6px);
+  animation: gauge-tick-spin 30s linear infinite;
+  pointer-events: none;
+}
+@keyframes gauge-tick-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+/* Outer dashed ring on gauge */
+.gauge-ring::before {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 1px dashed rgba(0,228,255,0.15);
+  animation: gauge-tick-spin 20s linear infinite reverse;
+  pointer-events: none;
+}
+
+/* ── 2. WEATHER ANIMATED CANVAS ── */
+.weather-anim-canvas {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 36px;
+  height: 36px;
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* ── 3. NETWORK DATA FLOW ── */
+.hud-widget-net {
+  flex-direction: column !important;
+  align-items: stretch !important;
+  padding: 8px 10px !important;
+  gap: 6px !important;
+}
+.net-flow {
+  position: relative;
+  height: 16px;
+  background: rgba(0,228,255,0.03);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.net-line {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0,228,255,0.3), transparent);
+}
+.net-dot {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: var(--sf-primary);
+  border-radius: 50%;
+  top: 50%;
+  transform: translateY(-50%);
+  box-shadow: 0 0 6px var(--sf-primary);
+  animation: net-flow-move 2s linear infinite;
+}
+.net-dot.nd1 { left: -4px; animation-delay: 0s; }
+.net-dot.nd2 { left: -4px; animation-delay: 0.33s; }
+.net-dot.nd3 { left: -4px; animation-delay: 0.66s; }
+.net-dot.nd4 { left: -4px; animation-delay: 1s; }
+.net-dot.nd5 { left: -4px; animation-delay: 1.33s; }
+.net-dot.nd6 { left: -4px; animation-delay: 1.66s; }
+@keyframes net-flow-move {
+  0% { left: -4px; opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { left: calc(100% + 4px); opacity: 0; }
+}
+.net-stats {
+  display: flex;
+  justify-content: space-between;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 8px;
+  letter-spacing: 0.5px;
+}
+.net-up {
+  color: var(--sf-accent);
+  text-shadow: 0 0 4px rgba(0,255,136,0.3);
+}
+.net-down {
+  color: var(--sf-primary);
+  text-shadow: 0 0 4px rgba(0,228,255,0.3);
+}
+
+/* ── 4. SYSTEM UPTIME MINI WIDGET ── */
+.hud-widget-mini {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: linear-gradient(90deg, rgba(0,228,255,0.04), rgba(5,7,20,0.8));
+  border: 1px solid rgba(0,228,255,0.12);
+  border-radius: 3px;
+  clip-path: polygon(0 0, calc(100% - 5px) 0, 100% 5px, 100% 100%, 5px 100%, 0 calc(100% - 5px));
+}
+.uptime-val {
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 11px !important;
+  color: var(--sf-primary) !important;
+}
+
+/* ── 5. AI MODEL ACTIVITY BARS ── */
+.activity-bar {
+  position: absolute;
+  bottom: 1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: rgba(0,228,255,0.06);
+  overflow: hidden;
+  border-radius: 0 0 2px 2px;
+}
+.activity-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--sf-primary), var(--sf-accent));
+  border-radius: 2px;
+  transition: width 0.4s ease;
+  box-shadow: 0 0 4px var(--sf-primary);
+}
+/* Active state: animate the bar */
+.entity-row.active .activity-bar-fill {
+  width: 100%;
+  animation: activity-bar-pulse 1.5s ease-in-out infinite;
+}
+@keyframes activity-bar-pulse {
+  0%, 100% { width: 30%; opacity: 0.6; }
+  50% { width: 100%; opacity: 1; }
+}
+
+/* ── 6. RADAR / SONAR DISPLAY ── */
+.radar-container {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  margin: 4px auto 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0,228,255,0.04) 0%, rgba(5,7,20,0.95) 100%);
+  border: 1px solid rgba(0,228,255,0.2);
+  overflow: hidden;
+}
+.radar-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(0,228,255,0.1);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+.radar-ring.r1 { width: 25%; height: 25%; }
+.radar-ring.r2 { width: 55%; height: 55%; }
+.radar-ring.r3 { width: 85%; height: 85%; }
+.radar-center-dot {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: var(--sf-primary);
+  border-radius: 50%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 6px var(--sf-primary);
+}
+.radar-sweep {
+  position: absolute;
+  width: 50%;
+  height: 50%;
+  top: 0;
+  left: 50%;
+  transform-origin: bottom left;
+  background: linear-gradient(0deg, rgba(0,228,255,0.25) 0%, transparent 100%);
+  animation: radar-spin 3s linear infinite;
+}
+@keyframes radar-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.radar-blip {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: var(--sf-primary);
+  border-radius: 50%;
+  box-shadow: 0 0 6px var(--sf-primary), 0 0 12px rgba(0,228,255,0.3);
+  animation: radar-blip-fade 3s ease-in-out infinite;
+}
+.radar-blip.rb1 { top: 20%; left: 60%; animation-delay: 0s; }
+.radar-blip.rb2 { top: 55%; left: 25%; animation-delay: 0.8s; }
+.radar-blip.rb3 { top: 35%; left: 72%; animation-delay: 1.5s; }
+.radar-blip.rb4 { top: 70%; left: 55%; animation-delay: 2.2s; }
+@keyframes radar-blip-fade {
+  0%, 100% { opacity: 0.2; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.3); }
+}
+
+/* ── 7. AGENT READINESS BARS ── */
+.agent-ready-bar {
+  position: absolute;
+  bottom: 1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: rgba(0,228,255,0.06);
+  overflow: hidden;
+}
+.agent-ready-fill {
+  height: 100%;
+  width: calc(var(--ready, 0) * 1%);
+  background: linear-gradient(90deg, rgba(0,228,255,0.3), var(--sf-primary));
+  transition: width 0.5s ease;
+}
+
+/* ── 8. CONCLAVE CIRCULAR GAUGES ── */
+.conclave-gauges {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin: 4px 0;
+}
+.conclave-gauge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.cg-ring {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: conic-gradient(
+    rgba(0,228,255,0.6) 0deg,
+    rgba(0,228,255,0.6) calc(var(--value, 0) * 3.6deg),
+    rgba(0,228,255,0.08) calc(var(--value, 0) * 3.6deg),
+    rgba(0,228,255,0.08) 360deg
+  );
+  box-shadow: 0 0 8px rgba(0,228,255,0.1);
+  transition: background 0.6s ease;
+}
+.cg-inner {
+  position: absolute;
+  inset: 4px;
+  background: var(--sf-bg-deep);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+.cg-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 6px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--sf-text-dim);
+}
+
+/* ── 9. KNOWLEDGE GRAPH MINI (Obsidian card) ── */
+.kg-mini {
+  position: relative;
+  height: 50px;
+  margin: 4px 0;
+  overflow: hidden;
+}
+.kg-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.kg-node {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: var(--sf-secondary);
+  border-radius: 50%;
+  box-shadow: 0 0 6px rgba(255,215,0,0.4);
+  animation: kg-pulse 3s ease-in-out infinite;
+}
+.kg-node.kn1 { top: 20%; left: 15%; animation-delay: 0s; }
+.kg-node.kn2 { top: 20%; left: 85%; animation-delay: 0.5s; }
+.kg-node.kn3 { top: 45%; left: 50%; animation-delay: 1s; width: 8px; height: 8px; }
+.kg-node.kn4 { top: 72%; left: 30%; animation-delay: 1.5s; }
+.kg-node.kn5 { top: 72%; left: 70%; animation-delay: 2s; }
+.kg-node.kn6 { top: 8%; left: 50%; animation-delay: 0.3s; width: 4px; height: 4px; }
+.kg-node.kn7 { top: 88%; left: 50%; animation-delay: 1.8s; width: 4px; height: 4px; }
+@keyframes kg-pulse {
+  0%, 100% { opacity: 0.5; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+/* Animate the SVG lines */
+.kg-lines line {
+  animation: kg-line-glow 4s ease-in-out infinite alternate;
+}
+.kg-lines line:nth-child(2n) { animation-delay: -1s; }
+.kg-lines line:nth-child(3n) { animation-delay: -2s; }
+@keyframes kg-line-glow {
+  0% { stroke-opacity: 0.15; }
+  100% { stroke-opacity: 0.5; }
+}
+
+/* ── 10. WAVEFORM / HEARTBEAT LINE ── */
+.hud-waveform {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 18px;
+  padding: 0 4px;
+  margin-bottom: 4px;
+}
+.wf-bar {
+  flex: 1;
+  min-width: 3px;
+  background: linear-gradient(to top, var(--sf-primary), rgba(0,228,255,0.3));
+  border-radius: 1px 1px 0 0;
+  animation: wf-wave 1.5s ease-in-out infinite;
+  box-shadow: 0 0 3px rgba(0,228,255,0.2);
+}
+.wf-bar:nth-child(1)  { animation-delay: 0.00s; height: 30%; }
+.wf-bar:nth-child(2)  { animation-delay: 0.06s; height: 50%; }
+.wf-bar:nth-child(3)  { animation-delay: 0.12s; height: 80%; }
+.wf-bar:nth-child(4)  { animation-delay: 0.18s; height: 100%; }
+.wf-bar:nth-child(5)  { animation-delay: 0.24s; height: 70%; }
+.wf-bar:nth-child(6)  { animation-delay: 0.30s; height: 40%; }
+.wf-bar:nth-child(7)  { animation-delay: 0.36s; height: 20%; }
+.wf-bar:nth-child(8)  { animation-delay: 0.42s; height: 55%; }
+.wf-bar:nth-child(9)  { animation-delay: 0.48s; height: 90%; }
+.wf-bar:nth-child(10) { animation-delay: 0.54s; height: 60%; }
+.wf-bar:nth-child(11) { animation-delay: 0.60s; height: 35%; }
+.wf-bar:nth-child(12) { animation-delay: 0.66s; height: 75%; }
+.wf-bar:nth-child(13) { animation-delay: 0.72s; height: 45%; }
+.wf-bar:nth-child(14) { animation-delay: 0.78s; height: 85%; }
+.wf-bar:nth-child(15) { animation-delay: 0.84s; height: 25%; }
+.wf-bar:nth-child(16) { animation-delay: 0.90s; height: 65%; }
+.wf-bar:nth-child(17) { animation-delay: 0.96s; height: 95%; }
+.wf-bar:nth-child(18) { animation-delay: 1.02s; height: 50%; }
+.wf-bar:nth-child(19) { animation-delay: 1.08s; height: 30%; }
+.wf-bar:nth-child(20) { animation-delay: 1.14s; height: 70%; }
+.wf-bar:nth-child(21) { animation-delay: 1.20s; height: 40%; }
+.wf-bar:nth-child(22) { animation-delay: 1.26s; height: 80%; }
+.wf-bar:nth-child(23) { animation-delay: 1.30s; height: 55%; }
+.wf-bar:nth-child(24) { animation-delay: 1.34s; height: 35%; }
+@keyframes wf-wave {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.3); }
+}
+
+/* ── 11. EQUALIZER BARS ── */
+.hud-equalizer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3px;
+  height: 16px;
+  margin: 4px 0;
+}
+.eq-bar {
+  width: 6px;
+  background: linear-gradient(to top, var(--sf-accent), rgba(0,255,136,0.2));
+  border-radius: 1px 1px 0 0;
+  animation: eq-bounce 1s ease-in-out infinite;
+  box-shadow: 0 0 3px rgba(0,255,136,0.15);
+}
+.eq-bar:nth-child(1) { height: 40%; animation-delay: 0.0s; }
+.eq-bar:nth-child(2) { height: 70%; animation-delay: 0.1s; }
+.eq-bar:nth-child(3) { height: 55%; animation-delay: 0.2s; }
+.eq-bar:nth-child(4) { height: 90%; animation-delay: 0.3s; }
+.eq-bar:nth-child(5) { height: 45%; animation-delay: 0.15s; }
+.eq-bar:nth-child(6) { height: 80%; animation-delay: 0.25s; }
+.eq-bar:nth-child(7) { height: 60%; animation-delay: 0.35s; }
+.eq-bar:nth-child(8) { height: 35%; animation-delay: 0.05s; }
+@keyframes eq-bounce {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.2); }
+}
+
+/* ── 12. BOTTOM HUD — Taller with more content ── */
+.hud-bottom {
+  min-height: 220px !important;
+}
+.hud-bottom-card {
+  padding: 14px 16px !important;
+  gap: 6px !important;
+}
+
+/* ═══════════════════════════════════════════════
+   HUD ULTRA REFINEMENT v9 — Premium Sci-Fi Polish
+═══════════════════════════════════════════════ */
+
+/* Gauges: gradient fill + glow */
+.gauge-ring {
+  background: conic-gradient(
+    #00e4ff 0%,
+    #00ffaa calc(var(--value, 0) * 0.7%),
+    #ffd700 calc(var(--value, 0) * 1%),
+    rgba(0,228,255,0.08) calc(var(--value, 0) * 1%),
+    rgba(0,228,255,0.08) 100%
+  ) !important;
+  filter: drop-shadow(0 0 6px rgba(0,228,255,0.5)) !important;
+  transition: background 0.8s ease !important;
+}
+.gauge-value, .gauge-pct {
+  font-family: 'Orbitron', sans-serif !important;
+  font-size: 11px !important;
+  color: var(--cyan) !important;
+  text-shadow: 0 0 8px rgba(0,228,255,0.6) !important;
+}
+
+/* Circuit lines between widgets */
+.hud-left .hud-widget { position: relative !important; }
+.hud-left .hud-widget::after {
+  content: '';
+  position: absolute;
+  bottom: -8px;
+  left: 20px;
+  width: 2px;
+  height: 8px;
+  background: linear-gradient(180deg, rgba(0,228,255,0.4), transparent);
+}
+.hud-left .hud-widget:last-child::after { display: none; }
+.hud-left .hud-widget::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: -6px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--cyan);
+  box-shadow: 0 0 4px var(--cyan);
+  opacity: 0.4;
+}
+
+/* Data flow sweep on panels */
+.hud-panel::after {
+  content: '';
+  position: absolute;
+  bottom: 8px;
+  left: 10%;
+  width: 80%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0,228,255,0.3), transparent);
+  animation: data-sweep 4s ease-in-out infinite;
+}
+@keyframes data-sweep {
+  0%, 100% { opacity: 0.2; transform: scaleX(0.5); }
+  50% { opacity: 0.8; transform: scaleX(1); }
+}
+
+/* Radar: bigger + brighter */
+.radar-container {
+  width: 140px !important;
+  height: 140px !important;
+  margin: 0 auto 8px !important;
+}
+.radar-sweep {
+  background: conic-gradient(
+    transparent 0deg, transparent 340deg,
+    rgba(0,255,136,0.4) 355deg, rgba(0,255,136,0.15) 360deg
+  ) !important;
+}
+
+/* AI Model tags: colored per model */
+.entity-row[data-entity='opus'] .entity-tag { color: #ff6b6b !important; border-color: #ff6b6b !important; }
+.entity-row[data-entity='sonnet'] .entity-tag { color: #00e4ff !important; border-color: #00e4ff !important; }
+.entity-row[data-entity='haiku'] .entity-tag { color: #ffd700 !important; border-color: #ffd700 !important; }
+.entity-row[data-entity='gpt-realtime'] .entity-tag { color: #00ff88 !important; border-color: #00ff88 !important; }
+.entity-row[data-entity='gpt-mini'] .entity-tag { color: #cc88ff !important; border-color: #cc88ff !important; }
+.entity-tag { text-shadow: 0 0 4px currentColor !important; border: 1px solid currentColor !important; background: rgba(0,228,255,0.06) !important; }
+
+/* Agent readiness bars */
+.agent-ready-bar { height: 2px !important; background: rgba(0,228,255,0.1) !important; border-radius: 1px !important; overflow: hidden !important; margin-top: 2px !important; }
+.agent-ready-bar::after {
+  content: '';
+  display: block;
+  height: 100%;
+  width: var(--ready, 80%);
+  background: linear-gradient(90deg, #00e4ff, #00ffaa) !important;
+  box-shadow: 0 0 4px #00e4ff;
+  animation: bar-pulse 3s ease-in-out infinite;
+}
+@keyframes bar-pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+
+/* Waveform bars: glow */
+.waveform-bar {
+  background: linear-gradient(180deg, #00e4ff, #004466) !important;
+  box-shadow: 0 0 3px rgba(0,228,255,0.5) !important;
+}
+
+/* Bottom cards: richer */
+.hud-bottom-card {
+  min-height: 130px !important;
+  background: linear-gradient(180deg, rgba(0,228,255,0.06) 0%, rgba(0,10,30,0.9) 100%) !important;
+}
+
+/* Conclave gauges colored */
+.conclave-gauge:nth-child(1) .cg-ring { filter: drop-shadow(0 0 4px rgba(255,107,107,0.4)) !important; }
+.conclave-gauge:nth-child(2) .cg-ring { filter: drop-shadow(0 0 4px rgba(255,215,0,0.4)) !important; }
+.conclave-gauge:nth-child(3) .cg-ring { filter: drop-shadow(0 0 4px rgba(204,136,255,0.4)) !important; }
+
+/* Knowledge graph nodes: brighter */
+.graph-node { width: 6px !important; height: 6px !important; box-shadow: 0 0 8px rgba(255,215,0,0.6), 0 0 15px rgba(255,215,0,0.2) !important; }
+
+/* Network flow dots */
+.flow-dot { width: 5px !important; height: 5px !important; background: #00e4ff !important; box-shadow: 0 0 6px #00e4ff !important; }
+
+/* Scanning line across cockpit */
+.cockpit-iron::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0,228,255,0.5), transparent);
+  animation: top-scan 6s ease-in-out infinite;
+  z-index: 50;
+  pointer-events: none;
+}
+@keyframes top-scan {
+  0% { transform: translateY(0); opacity: 0.3; }
+  50% { transform: translateY(50vh); opacity: 0.8; }
+  100% { transform: translateY(100vh); opacity: 0.3; }
+}
+
+/* Section separators */
+.hud-section + .hud-section::before {
+  content: '';
+  display: block;
+  height: 1px;
+  margin: 8px 0;
+  background: linear-gradient(90deg, transparent, rgba(0,228,255,0.25), transparent);
+}
+
+/* Section title accent dot */
+.hud-section-title::before {
+  content: '';
+  display: inline-block;
+  width: 4px; height: 4px;
+  background: var(--cyan);
+  box-shadow: 0 0 6px var(--cyan);
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+/* Equalizer bounce */
+.eq-bar { animation: eq-bounce 0.8s ease-in-out infinite alternate !important; }
+.eq-bar:nth-child(2) { animation-delay: 0.1s !important; }
+.eq-bar:nth-child(3) { animation-delay: 0.2s !important; }
+.eq-bar:nth-child(4) { animation-delay: 0.3s !important; }
+.eq-bar:nth-child(5) { animation-delay: 0.15s !important; }
+.eq-bar:nth-child(6) { animation-delay: 0.25s !important; }
+@keyframes eq-bounce { 0% { transform: scaleY(0.3); } 100% { transform: scaleY(1); } }
+
+/* Server dots pulse */
+.server-dot { animation: status-pulse 2s ease-in-out infinite !important; }
+@keyframes status-pulse {
+  0%, 100% { box-shadow: 0 0 4px currentColor; }
+  50% { box-shadow: 0 0 10px currentColor, 0 0 20px currentColor; }
+}
+
+/* Entity hover glow */
+.entity-row:hover .entity-dot {
+  background: var(--cyan) !important;
+  box-shadow: 0 0 8px var(--cyan) !important;
+  transform: scale(1.5) !important;
+}
+
+/* Panel ambient glow */
+.hud-left, .hud-right {
+  box-shadow: 0 0 30px rgba(0,228,255,0.06), inset 0 1px 0 rgba(0,228,255,0.15) !important;
+}
+
+/* Obsidian gold accent */
+.hud-bottom-brain { border-top: 2px solid rgba(255,215,0,0.4) !important; }
+
+/* Text glow on values */
+.metric-value, .widget-value { text-shadow: 0 0 6px rgba(0,228,255,0.4) !important; }
+
+/* Navbar bottom line */
+.navbar { border-bottom: 1px solid rgba(0,228,255,0.2) !important; box-shadow: 0 2px 20px rgba(0,228,255,0.05) !important; }
+
+
+/* Terminal tab hidden */
+#tab-terminal { display: none !important; }
+.hud-qbtn[data-quick-tab="terminal"] { display: none !important; }
