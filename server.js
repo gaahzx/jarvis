@@ -4364,6 +4364,52 @@ Formato: JSON {"title":"...","subtitle":"...","audience":"...","intro":"...","ch
 });
 
 // ═══════════════════════════════════════════════
+// ═══════════════════════════════════════════════
+// IMAGE PROXY — Pollinations sem referrer block
+// ═══════════════════════════════════════════════
+app.get('/api/image-gen', async (req, res) => {
+  const prompt = req.query.prompt || 'abstract art';
+  const width = req.query.width || 768;
+  const height = req.query.height || 768;
+  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${width}&height=${height}&model=flux&enhance=true&quality=high`;
+
+  // Timeout de 60s (Pollinations pode demorar 10-20s pra gerar)
+  req.setTimeout(60000);
+  res.setTimeout(60000);
+
+  try {
+    const https = await import('https');
+
+    function fetchImage(imageUrl, depth) {
+      if (depth > 5) return res.status(500).json({ error: 'Too many redirects' });
+
+      https.get(imageUrl, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 45000 }, (imgRes) => {
+        // Follow redirects
+        if (imgRes.statusCode === 301 || imgRes.statusCode === 302 || imgRes.statusCode === 307) {
+          fetchImage(imgRes.headers.location, depth + 1);
+          return;
+        }
+        if (imgRes.statusCode !== 200) {
+          return res.status(imgRes.statusCode).json({ error: 'Pollinations returned ' + imgRes.statusCode });
+        }
+        res.setHeader('Content-Type', imgRes.headers['content-type'] || 'image/jpeg');
+        res.setHeader('Content-Disposition', 'inline; filename="criativo.jpg"');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        imgRes.pipe(res);
+      }).on('error', (err) => {
+        if (!res.headersSent) res.status(500).json({ error: err.message });
+      }).on('timeout', function() {
+        this.destroy();
+        if (!res.headersSent) res.status(504).json({ error: 'Pollinations timeout' });
+      });
+    }
+
+    fetchImage(url, 0);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // LEGACY ENDPOINTS (kept for backward compatibility)
 // ═══════════════════════════════════════════════
 

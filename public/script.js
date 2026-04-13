@@ -2974,47 +2974,148 @@ initRealtimeBtn();
 
 // === CONTENT GENERATOR MODAL ===
 (function() {
-  var btn = document.getElementById("btn-content-gen");
-  var modal = document.getElementById("content-modal");
-  var genBtn = document.getElementById("content-generate");
   var statusEl = document.getElementById("content-status");
   var resultEl = document.getElementById("content-result");
+  var cardsEl = document.getElementById("content-cards");
 
-  if (btn && modal) {
-    btn.addEventListener("click", function() { modal.style.display = "flex"; });
+  function getInputs() {
+    return {
+      type: document.getElementById("content-type").value,
+      topic: document.getElementById("content-topic").value,
+      qty: document.getElementById("content-qty").value,
+      style: document.getElementById("content-style").value
+    };
   }
 
+  function renderCards(items, withImages) {
+    if (!cardsEl) return;
+    cardsEl.innerHTML = "";
+    if (!Array.isArray(items)) items = [items];
+
+    items.forEach(function(item, idx) {
+      var card = document.createElement("div");
+      card.style.cssText = "display:flex;gap:12px;padding:12px;background:rgba(0,228,255,0.04);border:1px solid rgba(0,228,255,0.2);border-radius:8px;";
+
+      // Image (Pollinations)
+      if (withImages && item.image_desc) {
+        var imgWrap = document.createElement("div");
+        imgWrap.style.cssText = "flex-shrink:0;width:120px;height:120px;border-radius:6px;overflow:hidden;background:rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;";
+        var img = document.createElement("img");
+        var prompt = encodeURIComponent(item.image_desc || item.text || "marketing ad");
+        img.src = "/api/image-gen?prompt=" + prompt + "&width=512&height=512";
+        img.style.cssText = "width:100%;height:100%;object-fit:cover;";
+        img.alt = "Creative " + (idx + 1);
+        img.loading = "lazy";
+        imgWrap.appendChild(img);
+        card.appendChild(imgWrap);
+      }
+
+      // Text content
+      var textDiv = document.createElement("div");
+      textDiv.style.cssText = "flex:1;min-width:0;";
+
+      var title = document.createElement("div");
+      title.style.cssText = "font-family:Orbitron,sans-serif;font-size:9px;color:var(--cyan);letter-spacing:1px;margin-bottom:4px;";
+      title.textContent = "POST " + (idx + 1);
+      textDiv.appendChild(title);
+
+      var text = document.createElement("div");
+      text.style.cssText = "font-size:11px;color:var(--text-dim);line-height:1.5;margin-bottom:8px;white-space:pre-wrap;max-height:80px;overflow-y:auto;";
+      text.textContent = item.text || item.hook || item.subject || item.title || JSON.stringify(item).substring(0, 200);
+      textDiv.appendChild(text);
+
+      // Extra info
+      if (item.hashtags || item.best_time || item.cta) {
+        var extra = document.createElement("div");
+        extra.style.cssText = "font-size:9px;color:var(--text-dim);opacity:0.6;";
+        var parts = [];
+        if (item.best_time) parts.push(item.best_time);
+        if (item.cta) parts.push("CTA: " + item.cta);
+        extra.textContent = parts.join(" | ");
+        textDiv.appendChild(extra);
+      }
+
+      // Action buttons
+      var actions = document.createElement("div");
+      actions.style.cssText = "display:flex;gap:6px;margin-top:6px;";
+
+      var copyBtn = document.createElement("button");
+      copyBtn.style.cssText = "padding:3px 8px;background:rgba(0,228,255,0.1);border:1px solid rgba(0,228,255,0.3);border-radius:4px;color:var(--cyan);font-size:9px;cursor:pointer;";
+      copyBtn.textContent = "Copiar";
+      copyBtn.onclick = function() {
+        navigator.clipboard.writeText(item.text || JSON.stringify(item));
+        copyBtn.textContent = "Copiado!";
+        setTimeout(function() { copyBtn.textContent = "Copiar"; }, 1500);
+      };
+      actions.appendChild(copyBtn);
+
+      if (withImages && item.image_desc) {
+        var dlBtn = document.createElement("button");
+        dlBtn.style.cssText = "padding:3px 8px;background:rgba(255,215,0,0.1);border:1px solid rgba(255,215,0,0.3);border-radius:4px;color:var(--gold);font-size:9px;cursor:pointer;";
+        dlBtn.textContent = "Download IMG";
+        dlBtn.onclick = function() {
+          window.open("/api/image-gen?prompt=" + encodeURIComponent(item.image_desc) + "&width=1080&height=1080", "_blank");
+        };
+        actions.appendChild(dlBtn);
+      }
+
+      textDiv.appendChild(actions);
+      card.appendChild(textDiv);
+      cardsEl.appendChild(card);
+    });
+
+    resultEl.style.display = "block";
+  }
+
+  // Generate text only
+  var genBtn = document.getElementById("content-generate");
   if (genBtn) {
     genBtn.addEventListener("click", async function() {
-      var type = document.getElementById("content-type").value;
-      var topic = document.getElementById("content-topic").value;
-      var qty = document.getElementById("content-qty").value;
-      var style = document.getElementById("content-style").value;
-
-      if (!topic) { statusEl.textContent = "Digite um tema!"; return; }
-
-      statusEl.textContent = "Gerando conteudo... aguarde (15-30s)";
+      var inp = getInputs();
+      if (!inp.topic) { statusEl.textContent = "Digite um tema!"; return; }
+      statusEl.textContent = "Gerando conteudo... (15-30s)";
       genBtn.disabled = true;
-      resultEl.style.display = "none";
-
       try {
         var r = await fetch("/api/generate-content", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: type, topic: topic, quantity: parseInt(qty), style: style })
+          body: JSON.stringify({ type: inp.type, topic: inp.topic, quantity: parseInt(inp.qty), style: inp.style })
         });
         var data = await r.json();
         if (data.ok) {
           statusEl.textContent = "Gerado! " + (data.count || "") + " itens";
-          resultEl.textContent = JSON.stringify(data.content, null, 2);
-          resultEl.style.display = "block";
+          renderCards(data.content, false);
         } else {
           statusEl.textContent = "Erro: " + (data.error || "falha");
         }
-      } catch(e) {
-        statusEl.textContent = "Erro: " + e.message;
-      }
+      } catch(e) { statusEl.textContent = "Erro: " + e.message; }
       genBtn.disabled = false;
+    });
+  }
+
+  // Generate with images (Pollinations)
+  var genImgBtn = document.getElementById("content-generate-images");
+  if (genImgBtn) {
+    genImgBtn.addEventListener("click", async function() {
+      var inp = getInputs();
+      if (!inp.topic) { statusEl.textContent = "Digite um tema!"; return; }
+      statusEl.textContent = "Gerando conteudo + criativos... (20-40s)";
+      genImgBtn.disabled = true;
+      try {
+        var r = await fetch("/api/generate-content", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: inp.type, topic: inp.topic, quantity: parseInt(inp.qty), style: inp.style })
+        });
+        var data = await r.json();
+        if (data.ok) {
+          statusEl.textContent = "Gerado! " + (data.count || "") + " itens com criativos";
+          renderCards(data.content, true);
+        } else {
+          statusEl.textContent = "Erro: " + (data.error || "falha");
+        }
+      } catch(e) { statusEl.textContent = "Erro: " + e.message; }
+      genImgBtn.disabled = false;
     });
   }
 })();
@@ -3447,4 +3548,57 @@ initRealtimeBtn();
     });
   }
 
+})();
+
+
+// === CREATOR HUB — Unified button opens picker ===
+(function() {
+  var btn = document.getElementById("btn-creator-hub");
+  if (!btn) return;
+
+  btn.addEventListener("click", function() {
+    var existing = document.getElementById("creator-picker");
+    if (existing) { existing.remove(); return; }
+
+    var overlay = document.createElement("div");
+    overlay.id = "creator-picker";
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9500;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);";
+
+    var container = document.createElement("div");
+    container.style.cssText = "display:flex;gap:20px;";
+
+    // Content button
+    var btnContent = document.createElement("button");
+    btnContent.style.cssText = "padding:28px 36px;background:linear-gradient(135deg,rgba(0,228,255,0.12),rgba(0,228,255,0.04));border:2px solid rgba(0,228,255,0.5);border-radius:16px;color:#00e4ff;font-family:Orbitron,sans-serif;font-size:13px;letter-spacing:2px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:14px;min-width:170px;transition:all 0.3s;text-transform:uppercase;";
+    btnContent.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="36" height="36"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>Conteudo';
+    btnContent.onmouseover = function() { this.style.boxShadow = "0 0 30px rgba(0,228,255,0.4)"; this.style.transform = "translateY(-3px)"; };
+    btnContent.onmouseout = function() { this.style.boxShadow = "none"; this.style.transform = "none"; };
+    btnContent.onclick = function() {
+      overlay.remove();
+      var m = document.getElementById("content-modal");
+      if (m) m.style.display = "flex";
+    };
+
+    // Video button
+    var btnVideo = document.createElement("button");
+    btnVideo.style.cssText = "padding:28px 36px;background:linear-gradient(135deg,rgba(255,215,0,0.12),rgba(255,215,0,0.04));border:2px solid rgba(255,215,0,0.5);border-radius:16px;color:#ffd700;font-family:Orbitron,sans-serif;font-size:13px;letter-spacing:2px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:14px;min-width:170px;transition:all 0.3s;text-transform:uppercase;";
+    btnVideo.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="36" height="36"><rect x="2" y="4" width="20" height="16" rx="2"/><polygon points="10,9 10,15 15,12"/></svg>Video';
+    btnVideo.onmouseover = function() { this.style.boxShadow = "0 0 30px rgba(255,215,0,0.4)"; this.style.transform = "translateY(-3px)"; };
+    btnVideo.onmouseout = function() { this.style.boxShadow = "none"; this.style.transform = "none"; };
+    btnVideo.onclick = function() {
+      overlay.remove();
+      var m = document.getElementById("video-modal");
+      if (m) m.style.display = "flex";
+    };
+
+    container.appendChild(btnContent);
+    container.appendChild(btnVideo);
+    overlay.appendChild(container);
+
+    overlay.addEventListener("click", function(e) {
+      if (e.target === overlay) overlay.remove();
+    });
+
+    document.body.appendChild(overlay);
+  });
 })();
