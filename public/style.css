@@ -2789,3 +2789,62 @@ body {
 .cockpit-iron .avatar-status {
   bottom: -40px !important;
 }
+
+
+/* ═══════════════════════════════════════════════
+   ULTIMATE FIX: Cerebro 3D ocupa TODA area central
+   Override FINAL de todas as regras anteriores
+═══════════════════════════════════════════════ */
+.cockpit-iron .orb-section {
+  grid-area: orb !important;
+  position: relative !important;
+  overflow: visible !important;
+  min-height: 0 !important;
+  min-width: 0 !important;
+  clip-path: none !important;
+  -webkit-clip-path: none !important;
+}
+
+.cockpit-iron .avatar-container {
+  position: absolute !important;
+  top: -20px !important;
+  left: -20px !important;
+  right: -20px !important;
+  bottom: -20px !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: none !important;
+  max-height: none !important;
+  overflow: visible !important;
+  clip-path: none !important;
+  -webkit-clip-path: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+/* Canvas do Three.js preenche o container */
+.cockpit-iron .avatar-container canvas,
+.cockpit-iron .avatar-container > div[style] {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  clip-path: none !important;
+  -webkit-clip-path: none !important;
+  overflow: visible !important;
+}
+
+/* Status text fica no fundo */
+.cockpit-iron .avatar-status {
+  position: absolute !important;
+  bottom: 10px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  z-index: 10 !important;
+}
+
+/* Garantir que o grid do cockpit nao corta overflow */
+.cockpit-iron {
+  overflow: visible !important;
+}

@@ -841,6 +841,12 @@ function isTaskRequest(message) {
 // Screen/vision queries — always route to Claude (never GPT-mini)
 const SCREEN_PATTERN = /\b(tela|monitor|screen|olh[aeo]|vej[ao]|mostr[ae]|v[eê]|see|look|what.*screen|o que.*tela|o que.*monitor|consegue.*ver|can.*see|minha tela|my screen|está aberto|what.*open)\b/i;
 
+// Computer Use v2 patterns — actions that interact with the PC directly
+const COMPUTER_USE_PATTERN = /\b(abre|abra|abrir|fecha|feche|fechar|minimiza|minimize|minimizar|maximiza|maximize|maximizar|alterna|alterne|alternar|foca|foque|focar|digita|digite|digitar|clica|clique|clicar|pressiona|pressione|scroll|rola|role|navega|navegue|navegar|preenche|preencha|preencher|configura|configure|configurar|instala|instale|instalar|desliga|desligue|desligar|reinicia|reinicie|reiniciar|bloco de notas|notepad|calculadora|calculator|explorador|explorer|gerenciador|task.?manager|prompt|cmd|terminal|powershell)\b/i;
+
+// Needs screenshot? (visual tasks that require seeing the screen)
+const NEEDS_SCREENSHOT_PATTERN = /\b(o que|what|mostra|show|veja|see|olha|look|onde|where|qual|which|como.*tá|how.*look|identifica|identify|encontra|find.*screen|acha.*tela|botão|button|ícone|icon|cor|color|imagem|image|visual)\b/i;
+
 // Detect multi-task requests that can run in parallel
 // "cria o site, a planilha e a apresentação" → 3 parallel tasks
 function detectParallelTasks(message) {
@@ -1843,6 +1849,49 @@ REGRAS:
       });
       try { res.end(); } catch {}
       return;
+    }
+
+    // ── COMPUTER USE v2: Direct PC interaction (~1-3s) ──
+    if (COMPUTER_USE_PATTERN.test(fullMessage) && !fullMessage.match(/planilha|spreadsheet|pdf|site|app|projeto|code|código/i)) {
+      try {
+        const needsScreenshot = NEEDS_SCREENSHOT_PATTERN.test(fullMessage) || SCREEN_PATTERN.test(fullMessage);
+        console.log(`[JARVIS] 🖥️ Computer Use v2 → screenshot=${needsScreenshot}`);
+
+        const cuBody = JSON.stringify({ task: fullMessage, screenshot: needsScreenshot });
+        const cuRes = await new Promise((resolve, reject) => {
+          const http = require('http');
+          const req = http.request({ hostname: '127.0.0.1', port: PORT, path: '/api/computer-use/v2', method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(cuBody) }
+          }, (r) => {
+            let data = '';
+            r.on('data', c => data += c);
+            r.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve(null); } });
+          });
+          req.on('error', () => resolve(null));
+          req.setTimeout(45000, () => { req.destroy(); resolve(null); });
+          req.write(cuBody);
+          req.end();
+        });
+
+        if (cuRes && cuRes.ok) {
+          const elapsed = Date.now() - t0;
+          const summary = language === 'BR' ? `Feito, senhor. ${cuRes.plan} executadas com sucesso.`
+                        : language === 'ES' ? `Hecho, señor. ${cuRes.plan} ejecutadas con éxito.`
+                        : `Done, sir. ${cuRes.plan} executed successfully.`;
+          console.log(`[JARVIS] 🖥️ Computer Use v2 → ${elapsed}ms | ${cuRes.plan}`);
+          res.write(summary);
+          setImmediate(() => {
+            appendHistoryFast('user', message);
+            appendHistoryFast('jarvis', summary);
+            pushNotification({ type: 'build-complete', message: summary, language });
+          });
+          try { res.end(); } catch {}
+          return;
+        }
+        // If CU v2 failed, fall through to other paths
+      } catch (cuErr) {
+        console.error('[JARVIS] Computer Use v2 error:', cuErr.message?.slice(0, 200));
+      }
     }
 
     // ── FAST-PATH Level 2: GPT-mini smart command (~500ms) ──
