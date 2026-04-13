@@ -329,6 +329,8 @@
             <button class="hud-qbtn" data-quick-tab="terminal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><span>Terminal</span></button>
             <button class="hud-qbtn" data-quick-tab="file"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><span>Projetos</span></button>
             <button class="hud-qbtn" data-quick-tab="config"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33"/></svg><span>Config</span></button>
+            <button class="hud-qbtn" id="btn-content-gen" title="Gerador de Conteúdo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg><span>Conteúdo</span></button>
+            <button class="hud-qbtn" id="btn-video-editor" title="Video Editor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><polygon points="10,9 10,15 15,12"/></svg><span>Video</span></button>
           </div>
         </div>
       </div>
@@ -566,7 +568,243 @@
     </div>
   </div>
 
-  <!-- Preflight removido — verificação é feita no setup/bat, não na página -->
+  <!-- ═══════════════════════════════════
+       MODAL: CONTENT GENERATOR
+  ═══════════════════════════════════ -->
+  <div class="modal-overlay" id="content-modal" style="display:none">
+    <div class="modal-card modal-ingest" style="max-width:650px">
+      <div class="modal-header">
+        <span class="modal-title">✍️ GERADOR DE CONTEÚDO</span>
+        <button class="modal-close" onclick="document.getElementById('content-modal').style.display='none'">&times;</button>
+      </div>
+      <div class="modal-body">
+        <label class="ingest-label">Tipo de Conteúdo:</label>
+        <select class="ingest-select" id="content-type">
+          <option value="instagram-posts">📸 Instagram Posts</option>
+          <option value="linkedin-posts">💼 LinkedIn Posts</option>
+          <option value="blog-articles">📝 Blog Articles</option>
+          <option value="email-sequence">📧 Email Sequence</option>
+          <option value="video-scripts">🎬 Video Scripts (Reels/Shorts)</option>
+          <option value="ad-copy">📢 Ad Copy (Meta/Google)</option>
+          <option value="ebook-outline">📖 E-book Outline</option>
+        </select>
+
+        <label class="ingest-label" style="margin-top:12px">Tema/Tópico:</label>
+        <input type="text" class="ingest-textarea" id="content-topic" style="min-height:40px;resize:none" placeholder="Ex: finanças pessoais para jovens, marketing digital, investimentos...">
+
+        <div style="display:flex;gap:10px;margin-top:12px">
+          <div style="flex:1">
+            <label class="ingest-label">Quantidade:</label>
+            <input type="number" class="ingest-textarea" id="content-qty" style="min-height:36px;resize:none" value="10" min="1" max="50">
+          </div>
+          <div style="flex:1">
+            <label class="ingest-label">Estilo:</label>
+            <select class="ingest-select" id="content-style">
+              <option value="profissional e engajante">Profissional</option>
+              <option value="casual e divertido">Casual</option>
+              <option value="educativo e didatico">Educativo</option>
+              <option value="provocativo e ousado">Provocativo</option>
+              <option value="inspiracional e motivacional">Inspiracional</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="ingest-status" id="content-status"></div>
+
+        <div id="content-result" style="display:none;margin-top:12px;max-height:300px;overflow-y:auto;background:rgba(0,0,0,0.3);border:1px solid rgba(0,228,255,0.2);border-radius:8px;padding:12px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);white-space:pre-wrap"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-btn modal-btn-secondary" onclick="document.getElementById('content-modal').style.display='none'">Fechar</button>
+        <button class="modal-btn modal-btn-primary" id="content-generate">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          Gerar Conteúdo
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════
+       MODAL: VIDEO EDITOR
+  ═══════════════════════════════════ -->
+  <div class="modal-overlay" id="video-modal" style="display:none">
+    <div class="modal-card modal-brain">
+      <style>
+        .ve-layout{display:flex;flex-direction:column;height:100%;gap:10px;overflow:hidden}
+        .ve-preview-wrap{flex:0 0 auto;display:flex;justify-content:center;align-items:center;background:rgba(0,0,0,0.6);border:1px solid rgba(0,228,255,0.15);border-radius:8px;min-height:200px;max-height:40vh;position:relative;overflow:hidden}
+        .ve-preview-wrap video{max-width:100%;max-height:100%;border-radius:6px}
+        .ve-dropzone{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text-dim);cursor:pointer;transition:background .2s}
+        .ve-dropzone.has-video{display:none}
+        .ve-dropzone:hover,.ve-dropzone.drag-over{background:rgba(0,228,255,0.08)}
+        .ve-dropzone svg{opacity:0.4;margin-bottom:8px}
+        .ve-dropzone p{margin:0;font-size:12px;opacity:0.6}
+        .ve-dropzone input[type=file]{display:none}
+        .ve-timeline{position:relative;height:48px;background:rgba(0,0,0,0.5);border:1px solid rgba(0,228,255,0.2);border-radius:6px;cursor:crosshair;user-select:none;flex-shrink:0}
+        .ve-tl-fill{position:absolute;top:0;left:0;height:100%;background:rgba(0,228,255,0.08);border-radius:6px;pointer-events:none}
+        .ve-tl-playhead{position:absolute;top:0;width:2px;height:100%;background:#00e4ff;z-index:3;pointer-events:none;transition:left 0.05s linear}
+        .ve-tl-playhead::after{content:'';position:absolute;top:-4px;left:-5px;width:12px;height:12px;background:#00e4ff;border-radius:50%;box-shadow:0 0 8px #00e4ff}
+        .ve-tl-segment{position:absolute;top:0;height:100%;opacity:0.35;pointer-events:none;border-radius:3px}
+        .ve-tl-segment.keep{background:#00ff88}
+        .ve-tl-segment.cut{background:#ff4444}
+        .ve-tl-segment.effect{background:#ffaa00}
+        .ve-tl-marker{position:absolute;top:0;width:3px;height:100%;z-index:2;cursor:grab;transition:background .15s}
+        .ve-tl-marker::after{content:'';position:absolute;bottom:-6px;left:-4px;width:11px;height:11px;border-radius:50%;border:2px solid currentColor;background:rgba(0,0,0,0.7)}
+        .ve-tl-marker.cut{background:#ff4444;color:#ff4444}
+        .ve-tl-marker.keep{background:#00ff88;color:#00ff88}
+        .ve-tl-marker.effect{background:#ffaa00;color:#ffaa00}
+        .ve-tl-time{position:absolute;bottom:2px;font-size:9px;color:rgba(255,255,255,0.4);pointer-events:none;font-family:'JetBrains Mono',monospace}
+        .ve-tl-time.start{left:4px}
+        .ve-tl-time.end{right:4px}
+        .ve-markers-list{max-height:80px;overflow-y:auto;display:flex;flex-wrap:wrap;gap:4px;flex-shrink:0}
+        .ve-marker-tag{display:flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;font-size:10px;font-family:'JetBrains Mono',monospace;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.4)}
+        .ve-marker-tag.cut{border-color:rgba(255,68,68,0.4);color:#ff6666}
+        .ve-marker-tag.keep{border-color:rgba(0,255,136,0.4);color:#66ffaa}
+        .ve-marker-tag.effect{border-color:rgba(255,170,0,0.4);color:#ffcc44}
+        .ve-marker-tag .ve-rm{cursor:pointer;opacity:0.5;margin-left:2px}
+        .ve-marker-tag .ve-rm:hover{opacity:1;color:#ff4444}
+        .ve-controls{display:flex;flex-wrap:wrap;gap:6px;flex-shrink:0}
+        .ve-btn{padding:6px 14px;border:1px solid rgba(0,228,255,0.3);background:rgba(0,228,255,0.08);color:#00e4ff;border-radius:6px;font-size:11px;font-family:'Orbitron',sans-serif;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:5px;white-space:nowrap}
+        .ve-btn:hover{background:rgba(0,228,255,0.18);border-color:#00e4ff;box-shadow:0 0 12px rgba(0,228,255,0.2)}
+        .ve-btn.accent{border-color:rgba(255,170,0,0.4);color:#ffaa00;background:rgba(255,170,0,0.08)}
+        .ve-btn.accent:hover{background:rgba(255,170,0,0.18);border-color:#ffaa00}
+        .ve-btn.primary{border-color:rgba(0,255,136,0.4);color:#00ff88;background:rgba(0,255,136,0.08)}
+        .ve-btn.primary:hover{background:rgba(0,255,136,0.18);border-color:#00ff88}
+        .ve-btn svg{width:14px;height:14px}
+        .ve-fx-dropdown{position:relative;display:inline-block}
+        .ve-fx-menu{display:none;position:absolute;bottom:100%;left:0;background:rgba(10,14,20,0.95);border:1px solid rgba(0,228,255,0.25);border-radius:6px;padding:4px 0;min-width:160px;z-index:10;margin-bottom:4px}
+        .ve-fx-menu.open{display:block}
+        .ve-fx-item{padding:6px 14px;font-size:11px;color:var(--text-dim);cursor:pointer;font-family:'JetBrains Mono',monospace}
+        .ve-fx-item:hover{background:rgba(0,228,255,0.1);color:#00e4ff}
+        .ve-instructions{flex-shrink:0}
+        .ve-instructions textarea{width:100%;min-height:50px;max-height:80px;background:rgba(0,0,0,0.4);border:1px solid rgba(0,228,255,0.15);border-radius:6px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;padding:8px;resize:vertical;box-sizing:border-box}
+        .ve-instructions textarea::placeholder{color:rgba(255,255,255,0.25)}
+        .ve-suggestions{flex:1 1 auto;min-height:60px;overflow-y:auto;background:rgba(0,0,0,0.3);border:1px solid rgba(0,228,255,0.1);border-radius:6px;padding:8px;font-size:11px;color:var(--text-dim);font-family:'JetBrains Mono',monospace;white-space:pre-wrap}
+        .ve-subtitles{max-height:100px;overflow-y:auto;flex-shrink:0}
+        .ve-sub-row{display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--text-dim)}
+        .ve-sub-row input{background:rgba(0,0,0,0.3);border:1px solid rgba(0,228,255,0.12);color:var(--text);border-radius:4px;padding:2px 6px;font-size:10px;font-family:inherit}
+        .ve-sub-row .ve-sub-time{width:70px;text-align:center}
+        .ve-sub-row .ve-sub-text{flex:1}
+        .ve-sub-row .ve-rm{cursor:pointer;opacity:0.4;color:#ff4444}
+        .ve-sub-row .ve-rm:hover{opacity:1}
+        .ve-section-label{font-size:10px;color:rgba(0,228,255,0.5);font-family:'Orbitron',sans-serif;letter-spacing:1px;margin-bottom:3px}
+      </style>
+      <div class="modal-header">
+        <span class="modal-title">🎬 VIDEO EDITOR</span>
+        <div class="modal-header-btns">
+          <button class="modal-size-btn" id="video-maximize" title="Maximize">⬜</button>
+          <button class="modal-close" id="video-close">&times;</button>
+        </div>
+      </div>
+      <div class="modal-body" style="padding:10px;overflow:hidden;display:flex;flex-direction:column;height:calc(100% - 50px)">
+        <div class="ve-layout">
+
+          <!-- Video Preview -->
+          <div class="ve-preview-wrap" id="ve-preview-wrap">
+            <div class="ve-dropzone" id="ve-dropzone">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48">
+                <rect x="2" y="4" width="20" height="16" rx="2"/>
+                <polygon points="10,9 10,15 15,12"/>
+              </svg>
+              <p>Drop video here or click to upload</p>
+              <p style="font-size:10px;opacity:0.4;margin-top:4px">.mp4 .webm .mov .avi</p>
+              <input type="file" id="ve-file-input" accept="video/*">
+            </div>
+            <video id="ve-player" controls style="display:none"></video>
+          </div>
+
+          <!-- Timeline -->
+          <div>
+            <div class="ve-section-label">TIMELINE</div>
+            <div class="ve-timeline" id="ve-timeline">
+              <div class="ve-tl-fill" id="ve-tl-fill"></div>
+              <div class="ve-tl-playhead" id="ve-tl-playhead" style="left:0"></div>
+              <div class="ve-tl-time start" id="ve-time-start">0:00</div>
+              <div class="ve-tl-time end" id="ve-time-end">0:00</div>
+            </div>
+          </div>
+
+          <!-- Markers List -->
+          <div>
+            <div class="ve-section-label">MARKERS</div>
+            <div class="ve-markers-list" id="ve-markers-list">
+              <span style="font-size:10px;color:rgba(255,255,255,0.25)">Click timeline to add markers. Right-click to remove.</span>
+            </div>
+          </div>
+
+          <!-- Controls Row -->
+          <div class="ve-controls">
+            <button class="ve-btn" id="ve-upload-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Upload Video
+            </button>
+            <button class="ve-btn accent" id="ve-auto-edit">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/></svg>
+              Auto-Edit
+            </button>
+            <button class="ve-btn" id="ve-add-subtitle">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="6" y1="15" x2="14" y2="15"/></svg>
+              Add Subtitle
+            </button>
+            <div class="ve-fx-dropdown">
+              <button class="ve-btn" id="ve-fx-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                Add Effect ▾
+              </button>
+              <div class="ve-fx-menu" id="ve-fx-menu">
+                <div class="ve-fx-item" data-fx="fade-in">Fade In</div>
+                <div class="ve-fx-item" data-fx="fade-out">Fade Out</div>
+                <div class="ve-fx-item" data-fx="speed-up">Speed Up (2x)</div>
+                <div class="ve-fx-item" data-fx="slow-motion">Slow Motion (0.5x)</div>
+                <div class="ve-fx-item" data-fx="blur">Blur</div>
+                <div class="ve-fx-item" data-fx="black-white">Black &amp; White</div>
+              </div>
+            </div>
+            <button class="ve-btn" id="ve-merge-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="8" height="6" rx="1"/><rect x="14" y="4" width="8" height="6" rx="1"/><rect x="6" y="14" width="12" height="6" rx="1"/><line x1="6" y1="10" x2="9" y2="14"/><line x1="18" y1="10" x2="15" y2="14"/></svg>
+              Merge Videos
+            </button>
+            <button class="ve-btn primary" id="ve-export-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export
+            </button>
+          </div>
+
+          <!-- Resolution Preset -->
+          <div style="display:flex;gap:8px;align-items:center;margin-top:8px;padding:0 8px">
+            <span style="font-family:'Orbitron',sans-serif;font-size:8px;color:var(--text-dim);letter-spacing:1px">RESOLUÇÃO:</span>
+            <select id="ve-resolution" style="flex:1;padding:4px 8px;background:rgba(0,0,0,0.4);border:1px solid rgba(0,228,255,0.3);border-radius:4px;color:var(--cyan);font-family:'JetBrains Mono',monospace;font-size:10px">
+              <option value="1920x1080">16:9 HD — 1920×1080 (YouTube, Desktop)</option>
+              <option value="3840x2160">16:9 4K — 3840×2160 (YouTube 4K)</option>
+              <option value="1080x1920">9:16 Story — 1080×1920 (Story, Shorts)</option>
+              <option value="1080x1920" selected>9:16 Reels — 1080×1920 (Reels, TikTok)</option>
+              <option value="1080x1350">4:5 Feed — 1080×1350 (Instagram Feed)</option>
+              <option value="1080x1080">1:1 Square — 1080×1080 (Post, Facebook)</option>
+              <option value="1440x1080">4:3 — 1440×1080 (Apresentações)</option>
+              <option value="2560x1080">21:9 Ultra — 2560×1080 (Cinematic)</option>
+            </select>
+          </div>
+
+          <!-- Instructions -->
+          <div class="ve-instructions">
+            <div class="ve-section-label">INSTRUCTIONS FOR JARVIS</div>
+            <textarea id="ve-instructions" placeholder="Tell JARVIS what to do with this video... e.g. 'Cut dead air, add subtitles, speed up intro'"></textarea>
+          </div>
+
+          <!-- Subtitles -->
+          <div class="ve-subtitles" id="ve-subtitles-wrap" style="display:none">
+            <div class="ve-section-label">SUBTITLES</div>
+            <div id="ve-subtitles-list"></div>
+          </div>
+
+          <!-- JARVIS Suggestions -->
+          <div class="ve-suggestions" id="ve-suggestions">
+            JARVIS analysis will appear here after clicking Auto-Edit...
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Preflight removido -->
 
   <script src="script.js"></script>
 </body>

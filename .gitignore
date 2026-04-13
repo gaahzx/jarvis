@@ -29,6 +29,20 @@ FELIPE-Launcher.exe
 # Claude local settings
 .claude/settings.local.json
 
+# Features exclusivas do Gabriel (NÃO vai pro setup/alunos)
+pet/
+system/workflows/
+system/_file_index.json
+system/_screen_state.json
+jarvis-autostart.vbs
+jarvis-service.bat
+AUTO-UPDATE-SETUP.md
+FIX-CLIENTE.txt
+brain-test.html
+
+# Obsidian vault (pessoal)
+Felipe/
+
 # Arquivos temporários
 temp_*.jpg
 temp_*.png

@@ -2970,3 +2970,481 @@ initRealtimeBtn();
   updateDateTime();
   setInterval(updateDateTime, 1000);
 })();
+
+
+// === CONTENT GENERATOR MODAL ===
+(function() {
+  var btn = document.getElementById("btn-content-gen");
+  var modal = document.getElementById("content-modal");
+  var genBtn = document.getElementById("content-generate");
+  var statusEl = document.getElementById("content-status");
+  var resultEl = document.getElementById("content-result");
+
+  if (btn && modal) {
+    btn.addEventListener("click", function() { modal.style.display = "flex"; });
+  }
+
+  if (genBtn) {
+    genBtn.addEventListener("click", async function() {
+      var type = document.getElementById("content-type").value;
+      var topic = document.getElementById("content-topic").value;
+      var qty = document.getElementById("content-qty").value;
+      var style = document.getElementById("content-style").value;
+
+      if (!topic) { statusEl.textContent = "Digite um tema!"; return; }
+
+      statusEl.textContent = "Gerando conteudo... aguarde (15-30s)";
+      genBtn.disabled = true;
+      resultEl.style.display = "none";
+
+      try {
+        var r = await fetch("/api/generate-content", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: type, topic: topic, quantity: parseInt(qty), style: style })
+        });
+        var data = await r.json();
+        if (data.ok) {
+          statusEl.textContent = "Gerado! " + (data.count || "") + " itens";
+          resultEl.textContent = JSON.stringify(data.content, null, 2);
+          resultEl.style.display = "block";
+        } else {
+          statusEl.textContent = "Erro: " + (data.error || "falha");
+        }
+      } catch(e) {
+        statusEl.textContent = "Erro: " + e.message;
+      }
+      genBtn.disabled = false;
+    });
+  }
+})();
+
+// ========== VIDEO EDITOR MODULE ==========
+(function() {
+  const videoModal = document.getElementById('video-modal');
+  if (!videoModal) return;
+
+  const player = document.getElementById('ve-player');
+  const dropzone = document.getElementById('ve-dropzone');
+  const fileInput = document.getElementById('ve-file-input');
+  const timeline = document.getElementById('ve-timeline');
+  const playhead = document.getElementById('ve-tl-playhead');
+  const timeStart = document.getElementById('ve-time-start');
+  const timeEnd = document.getElementById('ve-time-end');
+  const markersList = document.getElementById('ve-markers-list');
+  const suggestions = document.getElementById('ve-suggestions');
+  const subtitlesWrap = document.getElementById('ve-subtitles-wrap');
+  const subtitlesList = document.getElementById('ve-subtitles-list');
+  const fxMenu = document.getElementById('ve-fx-menu');
+  const previewWrap = document.getElementById('ve-preview-wrap');
+
+  let markers = []; // {time, type:'cut'|'keep'|'effect', label?}
+  let subtitles = []; // {start, end, text}
+  let videoLoaded = false;
+  let draggingMarker = null;
+
+  // --- Open / Close ---
+  const btnOpen = document.getElementById('btn-video-editor');
+  const btnClose = document.getElementById('video-close');
+  const btnMax = document.getElementById('video-maximize');
+
+  if (btnOpen) btnOpen.addEventListener('click', () => { videoModal.style.display = 'flex'; });
+  if (btnClose) btnClose.addEventListener('click', () => { videoModal.style.display = 'none'; });
+  if (btnMax) {
+    let maximized = false;
+    btnMax.addEventListener('click', () => {
+      const card = videoModal.querySelector('.modal-card');
+      maximized = !maximized;
+      if (maximized) {
+        card.style.width = '100vw';
+        card.style.height = '100vh';
+        card.style.maxWidth = '100vw';
+        card.style.maxHeight = '100vh';
+        card.style.borderRadius = '0';
+      } else {
+        card.style.width = '';
+        card.style.height = '';
+        card.style.maxWidth = '';
+        card.style.maxHeight = '';
+        card.style.borderRadius = '';
+      }
+    });
+  }
+
+  // Close on overlay click
+  videoModal.addEventListener('click', (e) => {
+    if (e.target === videoModal) videoModal.style.display = 'none';
+  });
+
+  // --- Format time helper ---
+  function fmtTime(s) {
+    if (!s || isNaN(s)) return '0:00';
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return m + ':' + String(sec).padStart(2, '0');
+  }
+
+  // --- Video Upload ---
+  function loadVideo(file) {
+    const url = URL.createObjectURL(file);
+    player.src = url;
+    player.style.display = 'block';
+    dropzone.classList.add('has-video');
+    videoLoaded = true;
+    markers = [];
+    subtitles = [];
+    renderMarkers();
+    renderSubtitles();
+    suggestions.textContent = 'Video loaded: ' + file.name + '\nReady for editing. Click Auto-Edit for AI analysis.';
+
+    player.addEventListener('loadedmetadata', () => {
+      timeEnd.textContent = fmtTime(player.duration);
+    }, { once: true });
+  }
+
+  dropzone.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', (e) => {
+    if (e.target.files[0]) loadVideo(e.target.files[0]);
+  });
+
+  // Drag and drop
+  dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+  dropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropzone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('video/')) loadVideo(file);
+  });
+
+  // Upload button
+  const uploadBtn = document.getElementById('ve-upload-btn');
+  if (uploadBtn) uploadBtn.addEventListener('click', () => fileInput.click());
+
+  // --- Playhead sync ---
+  player.addEventListener('timeupdate', () => {
+    if (!player.duration) return;
+    const pct = (player.currentTime / player.duration) * 100;
+    playhead.style.left = pct + '%';
+    timeStart.textContent = fmtTime(player.currentTime);
+  });
+
+  // --- Timeline click to add marker ---
+  timeline.addEventListener('click', (e) => {
+    if (!videoLoaded || !player.duration) return;
+    if (draggingMarker) return;
+    const rect = timeline.getBoundingClientRect();
+    const pct = (e.clientX - rect.left) / rect.width;
+    const time = pct * player.duration;
+
+    // Determine type: alternate between cut and keep
+    const lastType = markers.length > 0 ? markers[markers.length - 1].type : 'keep';
+    const newType = lastType === 'cut' ? 'keep' : 'cut';
+    markers.push({ time, type: newType });
+    markers.sort((a, b) => a.time - b.time);
+    renderMarkers();
+    renderSegments();
+  });
+
+  // --- Timeline right-click to remove nearest marker ---
+  timeline.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    if (!videoLoaded || markers.length === 0 || !player.duration) return;
+    const rect = timeline.getBoundingClientRect();
+    const pct = (e.clientX - rect.left) / rect.width;
+    const clickTime = pct * player.duration;
+    // Find nearest marker
+    let nearest = 0;
+    let minDist = Infinity;
+    markers.forEach((m, i) => {
+      const dist = Math.abs(m.time - clickTime);
+      if (dist < minDist) { minDist = dist; nearest = i; }
+    });
+    // Remove if within 5% of duration
+    if (minDist < player.duration * 0.05) {
+      markers.splice(nearest, 1);
+      renderMarkers();
+      renderSegments();
+    }
+  });
+
+  // --- Timeline seek on click (with Shift held) ---
+  timeline.addEventListener('mousedown', (e) => {
+    if (!videoLoaded || !player.duration) return;
+    // Check if clicking a marker
+    const target = e.target.closest('.ve-tl-marker');
+    if (target) {
+      e.preventDefault();
+      const idx = parseInt(target.dataset.idx);
+      draggingMarker = { idx, startX: e.clientX };
+      return;
+    }
+    // Shift+click to seek
+    if (e.shiftKey) {
+      const rect = timeline.getBoundingClientRect();
+      const pct = (e.clientX - rect.left) / rect.width;
+      player.currentTime = pct * player.duration;
+    }
+  });
+
+  // --- Drag markers ---
+  document.addEventListener('mousemove', (e) => {
+    if (!draggingMarker || !player.duration) return;
+    const rect = timeline.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    markers[draggingMarker.idx].time = pct * player.duration;
+    renderMarkers();
+    renderSegments();
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (draggingMarker) {
+      markers.sort((a, b) => a.time - b.time);
+      renderMarkers();
+      renderSegments();
+      draggingMarker = null;
+    }
+  });
+
+  // --- Render markers on timeline + list ---
+  function renderMarkers() {
+    // Remove old markers from timeline
+    timeline.querySelectorAll('.ve-tl-marker').forEach(el => el.remove());
+
+    // Add markers to timeline
+    markers.forEach((m, i) => {
+      const el = document.createElement('div');
+      el.className = 've-tl-marker ' + m.type;
+      el.style.left = (m.time / (player.duration || 1)) * 100 + '%';
+      el.dataset.idx = i;
+      el.title = m.type.toUpperCase() + ' @ ' + fmtTime(m.time) + (m.label ? ' — ' + m.label : '');
+      timeline.appendChild(el);
+    });
+
+    // Render marker tags list
+    if (markers.length === 0) {
+      markersList.innerHTML = '<span style="font-size:10px;color:rgba(255,255,255,0.25)">Click timeline to add markers. Right-click to remove.</span>';
+    } else {
+      markersList.innerHTML = '';
+      markers.forEach((m, i) => {
+        const tag = document.createElement('div');
+        tag.className = 've-marker-tag ' + m.type;
+        tag.innerHTML = '<span>' + fmtTime(m.time) + '</span><span>' + m.type.toUpperCase() + (m.label ? ' — ' + m.label : '') + '</span><span class="ve-rm" data-idx="' + i + '">×</span>';
+        markersList.appendChild(tag);
+      });
+      // Remove handler
+      markersList.querySelectorAll('.ve-rm').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const idx = parseInt(e.target.dataset.idx);
+          markers.splice(idx, 1);
+          renderMarkers();
+          renderSegments();
+        });
+      });
+    }
+  }
+
+  // --- Render colored segments between markers ---
+  function renderSegments() {
+    timeline.querySelectorAll('.ve-tl-segment').forEach(el => el.remove());
+    if (markers.length === 0 || !player.duration) return;
+
+    const sorted = [...markers].sort((a, b) => a.time - b.time);
+    const points = [0, ...sorted.map(m => m.time), player.duration];
+
+    for (let i = 0; i < points.length - 1; i++) {
+      const startPct = (points[i] / player.duration) * 100;
+      const endPct = (points[i + 1] / player.duration) * 100;
+      // Find marker at start of this segment to get type
+      const marker = sorted.find(m => Math.abs(m.time - points[i]) < 0.01);
+      const type = marker ? marker.type : (i === 0 ? 'keep' : 'keep');
+
+      const seg = document.createElement('div');
+      seg.className = 've-tl-segment ' + type;
+      seg.style.left = startPct + '%';
+      seg.style.width = (endPct - startPct) + '%';
+      timeline.appendChild(seg);
+    }
+  }
+
+  // --- Auto-Edit button ---
+  const autoEditBtn = document.getElementById('ve-auto-edit');
+  if (autoEditBtn) {
+    autoEditBtn.addEventListener('click', async () => {
+      if (!videoLoaded) {
+        suggestions.textContent = 'Please upload a video first.';
+        return;
+      }
+      const instructions = document.getElementById('ve-instructions').value;
+      suggestions.textContent = 'JARVIS is analyzing the video... please wait...';
+      autoEditBtn.disabled = true;
+
+      try {
+        const prompt = 'You are JARVIS video editor AI. The user has a video that is ' + fmtTime(player.duration) + ' long. ' +
+          (instructions ? 'User instructions: ' + instructions + '. ' : '') +
+          'Suggest specific cut points (timestamps), effects, and subtitles. Format as JSON with arrays: cuts:[{start,end,reason}], effects:[{time,type,reason}], subtitles:[{start,end,text}]. Be precise with timestamps.';
+
+        const r = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: prompt })
+        });
+        const data = await r.json();
+        const reply = data.reply || data.response || JSON.stringify(data);
+        suggestions.textContent = reply;
+
+        // Try to parse JSON from reply
+        try {
+          const jsonMatch = reply.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            if (parsed.cuts) {
+              parsed.cuts.forEach(c => {
+                markers.push({ time: parseFloat(c.start) || 0, type: 'cut', label: c.reason || '' });
+                if (c.end) markers.push({ time: parseFloat(c.end), type: 'keep', label: 'resume' });
+              });
+            }
+            if (parsed.effects) {
+              parsed.effects.forEach(fx => {
+                markers.push({ time: parseFloat(fx.time) || 0, type: 'effect', label: fx.type + (fx.reason ? ' — ' + fx.reason : '') });
+              });
+            }
+            if (parsed.subtitles) {
+              parsed.subtitles.forEach(s => {
+                subtitles.push({ start: parseFloat(s.start) || 0, end: parseFloat(s.end) || 0, text: s.text || '' });
+              });
+              renderSubtitles();
+            }
+            markers.sort((a, b) => a.time - b.time);
+            renderMarkers();
+            renderSegments();
+          }
+        } catch(parseErr) { /* Non-JSON response, just show text */ }
+      } catch(e) {
+        suggestions.textContent = 'Error: ' + e.message;
+      }
+      autoEditBtn.disabled = false;
+    });
+  }
+
+  // --- Add Subtitle button ---
+  const addSubBtn = document.getElementById('ve-add-subtitle');
+  if (addSubBtn) {
+    addSubBtn.addEventListener('click', () => {
+      if (!videoLoaded) return;
+      const t = player.currentTime || 0;
+      subtitles.push({ start: t, end: Math.min(t + 3, player.duration || t + 3), text: 'Subtitle text here' });
+      renderSubtitles();
+    });
+  }
+
+  function renderSubtitles() {
+    if (subtitles.length === 0) {
+      subtitlesWrap.style.display = 'none';
+      return;
+    }
+    subtitlesWrap.style.display = 'block';
+    subtitlesList.innerHTML = '';
+    subtitles.forEach((s, i) => {
+      const row = document.createElement('div');
+      row.className = 've-sub-row';
+      row.innerHTML = '<input class="ve-sub-time" value="' + fmtTime(s.start) + '" data-field="start" data-idx="' + i + '" readonly>' +
+        '<span style="opacity:0.3">→</span>' +
+        '<input class="ve-sub-time" value="' + fmtTime(s.end) + '" data-field="end" data-idx="' + i + '" readonly>' +
+        '<input class="ve-sub-text" value="' + (s.text || '').replace(/"/g, '&quot;') + '" data-idx="' + i + '">' +
+        '<span class="ve-rm" data-idx="' + i + '">×</span>';
+      subtitlesList.appendChild(row);
+    });
+    // Edit text handler
+    subtitlesList.querySelectorAll('.ve-sub-text').forEach(inp => {
+      inp.addEventListener('change', (e) => {
+        subtitles[parseInt(e.target.dataset.idx)].text = e.target.value;
+      });
+    });
+    // Remove handler
+    subtitlesList.querySelectorAll('.ve-rm').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        subtitles.splice(parseInt(e.target.dataset.idx), 1);
+        renderSubtitles();
+      });
+    });
+  }
+
+  // --- Effects dropdown ---
+  const fxBtn = document.getElementById('ve-fx-btn');
+  if (fxBtn) {
+    fxBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      fxMenu.classList.toggle('open');
+    });
+  }
+  document.addEventListener('click', () => fxMenu.classList.remove('open'));
+
+  fxMenu.querySelectorAll('.ve-fx-item').forEach(item => {
+    item.addEventListener('click', () => {
+      if (!videoLoaded) return;
+      const fx = item.dataset.fx;
+      const t = player.currentTime || 0;
+      markers.push({ time: t, type: 'effect', label: fx });
+      markers.sort((a, b) => a.time - b.time);
+      renderMarkers();
+      renderSegments();
+      fxMenu.classList.remove('open');
+      suggestions.textContent = 'Effect "' + fx + '" added at ' + fmtTime(t);
+    });
+  });
+
+  // --- Merge Videos button ---
+  const mergeBtn = document.getElementById('ve-merge-btn');
+  if (mergeBtn) {
+    mergeBtn.addEventListener('click', () => {
+      const inp = document.createElement('input');
+      inp.type = 'file';
+      inp.accept = 'video/*';
+      inp.multiple = true;
+      inp.addEventListener('change', () => {
+        if (inp.files.length > 0) {
+          suggestions.textContent = 'Selected ' + inp.files.length + ' video(s) for merging.\nMerge will be processed on export via JARVIS server.';
+        }
+      });
+      inp.click();
+    });
+  }
+
+  // --- Export button ---
+  const exportBtn = document.getElementById('ve-export-btn');
+  if (exportBtn) {
+    exportBtn.addEventListener('click', async () => {
+      if (!videoLoaded) {
+        suggestions.textContent = 'Please upload a video first.';
+        return;
+      }
+      suggestions.textContent = 'Preparing export...\nMarkers: ' + markers.length + ' | Subtitles: ' + subtitles.length;
+      exportBtn.disabled = true;
+
+      try {
+        const payload = {
+          markers: markers.map(m => ({ time: m.time, type: m.type, label: m.label || '' })),
+          subtitles: subtitles,
+          instructions: document.getElementById('ve-instructions').value,
+          duration: player.duration
+        };
+        const r = await fetch('/api/video/export', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await r.json();
+        if (data.ok) {
+          suggestions.textContent = 'Export complete!\n' + (data.message || 'File ready for download.');
+        } else {
+          suggestions.textContent = 'Export response: ' + (data.error || JSON.stringify(data));
+        }
+      } catch(e) {
+        suggestions.textContent = 'Export endpoint not available yet.\nEdit data saved:\n' + JSON.stringify({ markers, subtitles }, null, 2);
+      }
+      exportBtn.disabled = false;
+    });
+  }
+
+})();
