@@ -1940,3 +1940,852 @@ html, body {
   .hud-bottom-card { min-width: 200px; }
   .cockpit-iron .avatar-container { width: 50vw !important; height: 50vw !important; max-width: 300px !important; max-height: 300px !important; }
 }
+
+/* Fix: botao ingerir sempre visivel e clicavel */
+#ingest-submit {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  cursor: pointer !important;
+  background: linear-gradient(135deg, #00e4ff, #ffd700) !important;
+  color: #050714 !important;
+  font-weight: 800 !important;
+}
+#ingest-submit:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 8px 30px rgba(0,228,255,0.6) !important;
+}
+#ingest-submit:disabled {
+  opacity: 0.5 !important;
+  cursor: wait !important;
+}
+
+/* Mic button inside Metrics VOZ card */
+.metric-voice-mic {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 6px 8px !important;
+}
+.metric-voice-mic .mic-fab {
+  position: relative !important;
+  width: 36px !important;
+  height: 36px !important;
+  bottom: auto !important;
+  left: auto !important;
+  transform: none !important;
+  flex-shrink: 0;
+}
+.metric-voice-mic .mic-fab svg { width: 16px !important; height: 16px !important; }
+.metric-voice-mic .mic-ring { inset: -3px !important; }
+/* Remove old cockpit-controls positioning */
+.cockpit-controls { display: none !important; }
+
+/* Remove borda do avatar-container pra 3D ficar limpo */
+.cockpit-iron .avatar-container {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  overflow: visible !important;
+}
+.orb-section {
+  border: none !important;
+  outline: none !important;
+  overflow: visible !important;
+}
+
+/* ═══ FIX: Three.js ocupa TODA a area central do cockpit ═══ */
+.cockpit-iron .orb-section {
+  position: relative !important;
+  overflow: visible !important;
+  min-height: 0 !important;
+}
+.cockpit-iron .avatar-container {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  overflow: visible !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+/* O canvas do Three.js ja tem position:absolute inset:0 via JS */
+.cockpit-iron .avatar-status {
+  position: absolute !important;
+  bottom: 12px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  z-index: 5 !important;
+}
+
+/* Claude activity card */
+.metric-activity {
+  min-width: 120px !important;
+  flex: 2 !important;
+}
+.metric-activity-text {
+  font-size: 9px !important;
+  letter-spacing: 0.5px !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+  color: var(--text-dim) !important;
+  transition: color 0.3s;
+}
+.metric-activity-text.active {
+  color: var(--cyan) !important;
+  animation: activity-pulse 1.5s ease-in-out infinite;
+}
+@keyframes activity-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SCI-FI MILITARY HUD OVERRIDES v7.0
+   Circuit-board aesthetics, radial gauges, scanning lines
+   Iron Man / Military Command Center feel
+═══════════════════════════════════════════════════════════ */
+
+/* ── Extended palette ── */
+:root {
+  --sf-primary: #00e4ff;
+  --sf-secondary: #ffd700;
+  --sf-accent: #00ff88;
+  --sf-bg-deep: #050714;
+  --sf-bg-mid: #0a0f24;
+  --sf-text-bright: #e8edff;
+  --sf-text-dim: #5a6d99;
+  --sf-glow: rgba(0,228,255,0.4);
+  --sf-glow-strong: rgba(0,228,255,0.6);
+  --sf-glow-soft: rgba(0,228,255,0.15);
+  --sf-circuit: rgba(0,228,255,0.08);
+  --sf-circuit-line: rgba(0,228,255,0.12);
+  --sf-gold-glow: rgba(255,215,0,0.3);
+}
+
+/* ── Background upgrade — deeper space feel ── */
+body {
+  background: linear-gradient(135deg, var(--sf-bg-deep) 0%, #080d1e 40%, #0a0f24 100%) !important;
+}
+
+/* ── Circuit board background pattern on body ── */
+.bg-hex {
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60'%3E%3Cpath d='M30 0v20M0 30h20M40 30h20M30 40v20' stroke='%2300e4ff' stroke-opacity='0.04' stroke-width='0.5'/%3E%3Ccircle cx='30' cy='30' r='2' fill='%2300e4ff' fill-opacity='0.03'/%3E%3Ccircle cx='0' cy='0' r='1' fill='%2300e4ff' fill-opacity='0.05'/%3E%3Ccircle cx='60' cy='0' r='1' fill='%2300e4ff' fill-opacity='0.05'/%3E%3Ccircle cx='0' cy='60' r='1' fill='%2300e4ff' fill-opacity='0.05'/%3E%3Ccircle cx='60' cy='60' r='1' fill='%2300e4ff' fill-opacity='0.05'/%3E%3C/svg%3E") !important;
+  opacity: 0.7 !important;
+}
+
+/* ══════════════════════════════
+   1. CORNER DECORATIONS — Thicker brackets with dot at joint
+══════════════════════════════ */
+.hud-corner {
+  width: 100px !important;
+  height: 100px !important;
+}
+.hud-corner::before {
+  height: 3px !important;
+  background: linear-gradient(90deg, var(--sf-primary), transparent) !important;
+  box-shadow: 0 0 12px var(--sf-primary), 0 0 25px rgba(0,228,255,0.2) !important;
+}
+.hud-corner::after {
+  width: 3px !important;
+  background: linear-gradient(180deg, var(--sf-primary), transparent) !important;
+  box-shadow: 0 0 12px var(--sf-primary), 0 0 25px rgba(0,228,255,0.2) !important;
+}
+/* Dot at corner joint */
+.hud-corner .corner-dot,
+.hud-tl::before,
+.hud-tr::before,
+.hud-bl::before,
+.hud-br::before {
+  border-radius: 0;
+}
+/* Use box-shadow trick on the corner to create the dot effect */
+.hud-tl { box-shadow: 4px 4px 0 0 var(--sf-primary), 4px 4px 15px 2px rgba(0,228,255,0.5) !important; border-radius: 0 !important; }
+.hud-tr { box-shadow: -4px 4px 0 0 var(--sf-primary), -4px 4px 15px 2px rgba(0,228,255,0.5) !important; border-radius: 0 !important; }
+.hud-bl { box-shadow: 4px -4px 0 0 var(--sf-primary), 4px -4px 15px 2px rgba(0,228,255,0.5) !important; border-radius: 0 !important; }
+.hud-br { box-shadow: -4px -4px 0 0 var(--sf-primary), -4px -4px 15px 2px rgba(0,228,255,0.5) !important; border-radius: 0 !important; }
+
+/* ══════════════════════════════
+   2. WIDGET CARDS — Circuit board border pattern
+══════════════════════════════ */
+.hud-widget {
+  position: relative !important;
+  background: linear-gradient(135deg, rgba(0,228,255,0.06) 0%, rgba(5,7,20,0.9) 100%) !important;
+  border: 1px dashed rgba(0,228,255,0.25) !important;
+  border-radius: 4px !important;
+  overflow: visible !important;
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px)) !important;
+}
+/* Circuit node dots at corners */
+.hud-widget::before {
+  content: "" !important;
+  position: absolute !important;
+  top: -2px !important;
+  left: -2px !important;
+  width: 5px !important;
+  height: 5px !important;
+  background: var(--sf-primary) !important;
+  border-radius: 50% !important;
+  box-shadow: 0 0 8px var(--sf-primary) !important;
+  z-index: 2 !important;
+}
+.hud-widget::after {
+  content: "" !important;
+  position: absolute !important;
+  bottom: -2px !important;
+  right: -2px !important;
+  width: 5px !important;
+  height: 5px !important;
+  background: var(--sf-primary) !important;
+  border-radius: 50% !important;
+  box-shadow: 0 0 8px var(--sf-primary) !important;
+  z-index: 2 !important;
+}
+
+/* Widget icon — hexagonal feel */
+.widget-icon {
+  background: linear-gradient(135deg, rgba(0,228,255,0.2), rgba(0,228,255,0.05)) !important;
+  border: 1px solid rgba(0,228,255,0.4) !important;
+  border-radius: 2px !important;
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%) !important;
+  width: 32px !important;
+  height: 32px !important;
+}
+
+/* ══════════════════════════════
+   3. SECTION TITLES — Diamond separator
+══════════════════════════════ */
+.hud-section-title {
+  position: relative !important;
+  text-align: center !important;
+  border-bottom: none !important;
+  padding-bottom: 10px !important;
+  margin-bottom: 4px !important;
+}
+.hud-section-title::before {
+  content: "" !important;
+  position: absolute !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: 1px !important;
+  background: linear-gradient(90deg, transparent, rgba(0,228,255,0.4) 40%, rgba(0,228,255,0.4) 60%, transparent) !important;
+}
+.hud-section-title::after {
+  content: "" !important;
+  position: absolute !important;
+  bottom: -3px !important;
+  left: 50% !important;
+  transform: translateX(-50%) rotate(45deg) !important;
+  width: 7px !important;
+  height: 7px !important;
+  background: var(--sf-primary) !important;
+  box-shadow: 0 0 8px var(--sf-primary), 0 0 16px rgba(0,228,255,0.3) !important;
+}
+
+/* ══════════════════════════════
+   4. HEALTH BARS — Radial/Circular progress via conic-gradient
+══════════════════════════════ */
+.widget-bars {
+  display: flex !important;
+  flex-direction: row !important;
+  gap: 8px !important;
+  justify-content: center !important;
+  margin-top: 6px !important;
+}
+.bar-row {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 3px !important;
+  position: relative !important;
+}
+.bar-row span {
+  width: auto !important;
+  text-align: center !important;
+  font-size: 6px !important;
+  letter-spacing: 1px !important;
+  order: 2 !important;
+}
+.bar {
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 50% !important;
+  background: conic-gradient(
+    var(--sf-primary) 0deg,
+    var(--sf-primary) 0deg,
+    rgba(255,255,255,0.06) 0deg,
+    rgba(255,255,255,0.06) 360deg
+  ) !important;
+  overflow: visible !important;
+  position: relative !important;
+  flex: none !important;
+  order: 1 !important;
+  box-shadow: 0 0 8px rgba(0,228,255,0.15) !important;
+  transition: background 0.8s ease !important;
+}
+.bar::before {
+  content: "" !important;
+  position: absolute !important;
+  inset: 4px !important;
+  background: var(--sf-bg-deep) !important;
+  border-radius: 50% !important;
+}
+/* Override fill visibility - hide the linear bar inside the circle */
+.bar-fill {
+  opacity: 0 !important;
+  position: absolute !important;
+}
+/* Active states via JS data-percent or .ok/.warn/.err classes */
+.bar-fill.ok ~ .bar,
+.bar:has(> .bar-fill.ok) {
+  background: conic-gradient(var(--sf-accent) 330deg, rgba(255,255,255,0.06) 330deg) !important;
+}
+/* Fallback: JS will set these via style; CSS provides the circular frame */
+
+/* ══════════════════════════════
+   5. ENTITY ROWS — Animated pulse dot + hexagonal border
+══════════════════════════════ */
+.entity-row {
+  position: relative !important;
+  background: linear-gradient(90deg, rgba(0,228,255,0.04) 0%, rgba(5,7,20,0.8) 100%) !important;
+  border: 1px solid rgba(0,228,255,0.12) !important;
+  border-radius: 2px !important;
+  border-left: 3px solid rgba(0,228,255,0.2) !important;
+  clip-path: polygon(0 0, calc(100% - 5px) 0, 100% 5px, 100% 100%, 5px 100%, 0 calc(100% - 5px)) !important;
+  transition: all 0.25s ease !important;
+}
+.entity-row:hover {
+  background: linear-gradient(90deg, rgba(0,228,255,0.1) 0%, rgba(5,7,20,0.9) 100%) !important;
+  border-left-color: var(--sf-primary) !important;
+  box-shadow: 0 0 12px rgba(0,228,255,0.15), inset -20px 0 30px rgba(0,228,255,0.03) !important;
+}
+
+/* Animated pulse on the left dot */
+.entity-dot {
+  width: 7px !important;
+  height: 7px !important;
+  border-radius: 50% !important;
+  position: relative !important;
+}
+.entity-dot::after {
+  content: "" !important;
+  position: absolute !important;
+  inset: -3px !important;
+  border-radius: 50% !important;
+  border: 1px solid rgba(0,228,255,0.15) !important;
+  animation: sf-dot-ping 2.5s ease-in-out infinite !important;
+  will-change: transform, opacity !important;
+}
+@keyframes sf-dot-ping {
+  0%, 100% { transform: scale(1); opacity: 0.4; }
+  50% { transform: scale(1.8); opacity: 0; }
+}
+.entity-row.active .entity-dot::after {
+  border-color: var(--sf-primary) !important;
+  animation: sf-dot-ping-active 1.2s ease-in-out infinite !important;
+}
+@keyframes sf-dot-ping-active {
+  0%, 100% { transform: scale(1); opacity: 0.6; }
+  50% { transform: scale(2.2); opacity: 0; }
+}
+
+/* Entity tag — more tactical */
+.entity-tag {
+  background: rgba(0,228,255,0.08) !important;
+  border: 1px solid rgba(0,228,255,0.15) !important;
+  border-radius: 2px !important;
+  font-size: 7px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 1.5px !important;
+}
+.entity-row.active .entity-tag {
+  background: rgba(0,228,255,0.25) !important;
+  border-color: var(--sf-primary) !important;
+  box-shadow: 0 0 6px rgba(0,228,255,0.3) !important;
+}
+
+/* ══════════════════════════════
+   6. BOTTOM HUD CARDS — Scanning line animation
+══════════════════════════════ */
+.hud-bottom-card {
+  position: relative !important;
+  overflow: hidden !important;
+  background: linear-gradient(180deg, rgba(5,7,20,0.95) 0%, rgba(10,15,36,0.9) 100%) !important;
+  border: 1px solid rgba(0,228,255,0.2) !important;
+  border-radius: 4px !important;
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px)) !important;
+  box-shadow:
+    0 0 20px rgba(0,228,255,0.06),
+    inset 0 1px 0 rgba(0,228,255,0.1) !important;
+}
+/* Scanning line sweep */
+.hud-bottom-card::before {
+  content: "" !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: 2px !important;
+  background: linear-gradient(90deg, transparent, var(--sf-primary), transparent) !important;
+  opacity: 0.6 !important;
+  animation: sf-scanline 4s ease-in-out infinite !important;
+  will-change: transform !important;
+  z-index: 3 !important;
+  pointer-events: none !important;
+}
+@keyframes sf-scanline {
+  0% { transform: translateY(0); opacity: 0.6; }
+  50% { transform: translateY(calc(var(--card-h, 120px))); opacity: 0.2; }
+  100% { transform: translateY(0); opacity: 0.6; }
+}
+/* Stagger scan animation on each card */
+.hud-bottom-card:nth-child(2)::before { animation-delay: -1.3s !important; }
+.hud-bottom-card:nth-child(3)::before { animation-delay: -2.6s !important; }
+
+/* ══════════════════════════════
+   7. METRIC VALUES — Glow effect + text-shadow animation
+══════════════════════════════ */
+.metric-value,
+.widget-value {
+  text-shadow:
+    0 0 8px rgba(0,228,255,0.5),
+    0 0 16px rgba(0,228,255,0.25),
+    0 0 32px rgba(0,228,255,0.1) !important;
+  animation: sf-value-glow 3s ease-in-out infinite !important;
+  will-change: text-shadow !important;
+}
+@keyframes sf-value-glow {
+  0%, 100% {
+    text-shadow:
+      0 0 8px rgba(0,228,255,0.5),
+      0 0 16px rgba(0,228,255,0.25),
+      0 0 32px rgba(0,228,255,0.1);
+  }
+  50% {
+    text-shadow:
+      0 0 12px rgba(0,228,255,0.7),
+      0 0 24px rgba(0,228,255,0.4),
+      0 0 48px rgba(0,228,255,0.15);
+  }
+}
+
+/* Metric items — angular corners */
+.metric-item {
+  background: linear-gradient(180deg, rgba(0,228,255,0.06) 0%, rgba(5,7,20,0.95) 100%) !important;
+  border: 1px solid rgba(0,228,255,0.18) !important;
+  border-radius: 2px !important;
+  clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px)) !important;
+  position: relative !important;
+}
+/* Subtle top-line accent */
+.metric-item::after {
+  content: "" !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 10% !important;
+  right: 10% !important;
+  height: 1px !important;
+  background: linear-gradient(90deg, transparent, var(--sf-primary), transparent) !important;
+  opacity: 0.5 !important;
+}
+
+/* ══════════════════════════════
+   8. WEATHER WIDGET — Animated ring around temperature
+══════════════════════════════ */
+#widget-weather .widget-value {
+  position: relative !important;
+  display: inline-block !important;
+}
+#widget-weather .widget-value::before {
+  content: "" !important;
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  width: 44px !important;
+  height: 44px !important;
+  transform: translate(-50%, -50%) !important;
+  border-radius: 50% !important;
+  border: 1.5px solid transparent !important;
+  border-top-color: var(--sf-primary) !important;
+  border-right-color: rgba(0,228,255,0.3) !important;
+  animation: sf-temp-ring 3s linear infinite !important;
+  will-change: transform !important;
+  pointer-events: none !important;
+}
+#widget-weather .widget-value::after {
+  content: "" !important;
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  width: 52px !important;
+  height: 52px !important;
+  transform: translate(-50%, -50%) !important;
+  border-radius: 50% !important;
+  border: 1px dashed rgba(0,228,255,0.12) !important;
+  animation: sf-temp-ring 6s linear infinite reverse !important;
+  will-change: transform !important;
+  pointer-events: none !important;
+}
+@keyframes sf-temp-ring {
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* ══════════════════════════════
+   9. HUD PANELS — Enhanced glow borders + angular clip
+══════════════════════════════ */
+.hud-panel {
+  background: linear-gradient(180deg,
+    rgba(5,7,20,0.95) 0%,
+    rgba(10,15,36,0.85) 50%,
+    rgba(5,7,20,0.95) 100%) !important;
+  border: 1px solid rgba(0,228,255,0.2) !important;
+  border-radius: 4px !important;
+  box-shadow:
+    0 0 30px rgba(0,228,255,0.08),
+    0 0 60px rgba(0,228,255,0.03),
+    inset 0 0 30px rgba(0,228,255,0.02) !important;
+  clip-path: polygon(
+    0 12px, 12px 0, calc(100% - 12px) 0, 100% 12px,
+    100% calc(100% - 12px), calc(100% - 12px) 100%, 12px 100%, 0 calc(100% - 12px)
+  ) !important;
+}
+/* Top edge highlight */
+.hud-left::before,
+.hud-right::before {
+  content: "" !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 20% !important;
+  right: 20% !important;
+  height: 1px !important;
+  background: linear-gradient(90deg, transparent, var(--sf-primary), transparent) !important;
+  z-index: 10 !important;
+}
+
+/* ══════════════════════════════
+   10. INGEST BUTTON — Pulsing border + prominence
+══════════════════════════════ */
+.hud-ingest-btn {
+  position: relative !important;
+  background: linear-gradient(135deg, rgba(255,215,0,0.12), rgba(0,228,255,0.08)) !important;
+  border: 2px solid rgba(255,215,0,0.5) !important;
+  border-radius: 4px !important;
+  clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px)) !important;
+  animation: sf-ingest-pulse 2s ease-in-out infinite !important;
+  will-change: box-shadow !important;
+  overflow: visible !important;
+  text-shadow: 0 0 6px rgba(255,215,0,0.3) !important;
+}
+@keyframes sf-ingest-pulse {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(255,215,0,0.2), inset 0 0 8px rgba(255,215,0,0.05);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(255,215,0,0.4), 0 0 40px rgba(255,215,0,0.1), inset 0 0 15px rgba(255,215,0,0.08);
+  }
+}
+.hud-ingest-btn:hover {
+  border-color: var(--sf-secondary) !important;
+  animation: none !important;
+  box-shadow: 0 0 30px rgba(255,215,0,0.5), 0 0 60px rgba(255,215,0,0.15) !important;
+}
+
+/* ══════════════════════════════
+   11. OBSIDIAN BRAIN CARD — Gold tactical variant
+══════════════════════════════ */
+.hud-bottom-brain {
+  background: linear-gradient(180deg, rgba(15,12,5,0.95) 0%, rgba(10,15,36,0.9) 100%) !important;
+  border-color: rgba(255,215,0,0.25) !important;
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px)) !important;
+}
+.hud-bottom-brain::before {
+  background: linear-gradient(90deg, transparent, var(--sf-secondary), transparent) !important;
+}
+.hud-bottom-brain:hover {
+  border-color: rgba(255,215,0,0.5) !important;
+  box-shadow: 0 0 30px rgba(255,215,0,0.12), 0 0 60px rgba(255,215,0,0.04) !important;
+}
+.brain-mini-icon {
+  filter: drop-shadow(0 0 8px rgba(255,215,0,0.4)) !important;
+}
+
+/* ══════════════════════════════
+   12. NAVBAR — Enhanced tactical feel
+══════════════════════════════ */
+.navbar {
+  background: linear-gradient(180deg, rgba(5,7,20,0.98) 0%, rgba(5,7,20,0.9) 100%) !important;
+  border-bottom: 1px solid rgba(0,228,255,0.15) !important;
+  box-shadow: 0 2px 20px rgba(0,228,255,0.06) !important;
+}
+.navbar::after {
+  content: "" !important;
+  position: absolute !important;
+  bottom: -1px !important;
+  left: 30% !important;
+  right: 30% !important;
+  height: 1px !important;
+  background: linear-gradient(90deg, transparent, var(--sf-primary), transparent) !important;
+}
+.navbar-title {
+  text-shadow: 0 0 15px rgba(255,215,0,0.4), 0 0 30px rgba(255,215,0,0.15) !important;
+}
+.clock {
+  color: var(--sf-primary) !important;
+  text-shadow: 0 0 6px rgba(0,228,255,0.3) !important;
+}
+
+/* ══════════════════════════════
+   13. QUICK BUTTONS — Tactical style
+══════════════════════════════ */
+.hud-qbtn {
+  border-radius: 2px !important;
+  border: 1px solid rgba(0,228,255,0.15) !important;
+  clip-path: polygon(0 0, calc(100% - 4px) 0, 100% 4px, 100% 100%, 4px 100%, 0 calc(100% - 4px)) !important;
+  position: relative !important;
+}
+.hud-qbtn:hover {
+  background: linear-gradient(135deg, rgba(0,228,255,0.15), rgba(0,228,255,0.05)) !important;
+  border-color: var(--sf-primary) !important;
+  box-shadow: 0 0 12px rgba(0,228,255,0.2), inset 0 0 10px rgba(0,228,255,0.05) !important;
+}
+
+/* ══════════════════════════════
+   14. MIC BUTTON — Tactical ring
+══════════════════════════════ */
+.metric-voice-mic .mic-fab {
+  border: 2px solid rgba(0,228,255,0.35) !important;
+  box-shadow: 0 0 15px rgba(0,228,255,0.1), inset 0 0 10px rgba(0,228,255,0.05) !important;
+}
+.metric-voice-mic .mic-fab:hover {
+  box-shadow: 0 0 25px rgba(0,228,255,0.3), 0 0 50px rgba(0,228,255,0.1), inset 0 0 15px rgba(0,228,255,0.1) !important;
+}
+
+/* ══════════════════════════════
+   15. AVATAR STATUS — Enhanced glow
+══════════════════════════════ */
+.cockpit-iron .avatar-status {
+  text-shadow: 0 0 10px rgba(0,228,255,0.5), 0 0 20px rgba(0,228,255,0.2) !important;
+  letter-spacing: 8px !important;
+  font-size: 10px !important;
+}
+
+/* ══════════════════════════════
+   16. CIRCUIT BOARD DECORATION — Ambient lines in panels
+══════════════════════════════ */
+.hud-left::after,
+.hud-right::after {
+  content: "" !important;
+  position: absolute !important;
+  bottom: 30px !important;
+  left: 10px !important;
+  right: 10px !important;
+  height: 40px !important;
+  pointer-events: none !important;
+  z-index: 0 !important;
+  opacity: 0.3 !important;
+  background-image:
+    linear-gradient(0deg, rgba(0,228,255,0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,228,255,0.06) 1px, transparent 1px) !important;
+  background-size: 12px 8px !important;
+  mask-image: linear-gradient(180deg, transparent, rgba(0,0,0,0.5), transparent) !important;
+  -webkit-mask-image: linear-gradient(180deg, transparent, rgba(0,0,0,0.5), transparent) !important;
+}
+
+/* ══════════════════════════════
+   17. SCROLLBAR — Tactical
+══════════════════════════════ */
+::-webkit-scrollbar { width: 5px !important; }
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--sf-primary), rgba(0,228,255,0.2)) !important;
+  border-radius: 0 !important;
+}
+::-webkit-scrollbar-track {
+  background: rgba(0,228,255,0.03) !important;
+}
+
+/* ══════════════════════════════
+   18. SCANLINES — Enhanced
+══════════════════════════════ */
+.bg-scanlines {
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    rgba(0,228,255,0.008) 3px,
+    rgba(0,228,255,0.008) 4px
+  ) !important;
+  animation: sf-scanlines-drift 8s linear infinite !important;
+  will-change: transform !important;
+}
+@keyframes sf-scanlines-drift {
+  from { transform: translateY(0); }
+  to { transform: translateY(4px); }
+}
+
+/* ══════════════════════════════
+   19. LANG BUTTONS — Tactical
+══════════════════════════════ */
+.lang-btn {
+  border-radius: 2px !important;
+}
+.lang-btn.active {
+  background: rgba(0,228,255,0.12) !important;
+  border-color: rgba(0,228,255,0.4) !important;
+  box-shadow: 0 0 8px rgba(0,228,255,0.2) !important;
+}
+
+/* ══════════════════════════════
+   20. GLOBAL GLOW ENHANCEMENTS
+══════════════════════════════ */
+/* Ambient glow corners — more dramatic */
+.bg-glow-tl {
+  background: radial-gradient(ellipse at 15% 15%, rgba(0,100,200,0.08), transparent 65%) !important;
+}
+.bg-glow-br {
+  background: radial-gradient(ellipse at 85% 85%, rgba(0,228,255,0.04), transparent 65%) !important;
+}
+
+/* Active entity row — enhanced */
+.entity-row.active {
+  background: linear-gradient(90deg, rgba(0,228,255,0.18) 0%, rgba(5,7,20,0.9) 100%) !important;
+  border-color: rgba(0,228,255,0.5) !important;
+  border-left: 3px solid var(--sf-primary) !important;
+  box-shadow: 0 0 16px rgba(0,228,255,0.2), inset -30px 0 40px rgba(0,228,255,0.04) !important;
+}
+.entity-row.active .entity-name {
+  text-shadow: 0 0 8px rgba(0,228,255,0.5) !important;
+}
+
+/* ══════════════════════════════
+   21. MODAL CARDS — Angular tactical
+══════════════════════════════ */
+.modal-card {
+  background: linear-gradient(180deg, #0a0f24, #050714) !important;
+  border: 1px solid rgba(0,228,255,0.3) !important;
+  border-radius: 4px !important;
+  box-shadow:
+    0 0 60px rgba(0,228,255,0.15),
+    0 0 120px rgba(0,228,255,0.05),
+    0 25px 60px rgba(0,0,0,0.6) !important;
+}
+.modal-header {
+  background: linear-gradient(90deg, rgba(0,228,255,0.08), rgba(0,228,255,0.03)) !important;
+  border-bottom: 1px solid rgba(0,228,255,0.2) !important;
+}
+
+/* ══════════════════════════════
+   22. SELECTION / FOCUS STATES — Cyan tactical
+══════════════════════════════ */
+::selection {
+  background: rgba(0,228,255,0.25);
+  color: #fff;
+}
+
+/* ══════════════════════════════
+   23. CONCLAVE ROW — Horizontal tactical
+══════════════════════════════ */
+.entity-row-h .entity-row {
+  border-left: 2px solid rgba(0,228,255,0.15) !important;
+}
+.entity-row-h .entity-row:hover {
+  border-left-color: var(--sf-primary) !important;
+}
+
+/* ══════════════════════════════
+   24. CPU/GPU/RAM WIDGETS — Radial gauge accent
+══════════════════════════════ */
+#widget-cpu .widget-value,
+#widget-gpu .widget-value,
+#widget-ram .widget-value {
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+/* ══════════════════════════════
+   25. AMBIENT PARTICLE DOTS (pure CSS)
+══════════════════════════════ */
+.cockpit-iron::before {
+  content: "" !important;
+  position: absolute !important;
+  inset: 0 !important;
+  pointer-events: none !important;
+  z-index: 0 !important;
+  background-image:
+    radial-gradient(1px 1px at 10% 20%, rgba(0,228,255,0.15), transparent),
+    radial-gradient(1px 1px at 30% 70%, rgba(0,228,255,0.1), transparent),
+    radial-gradient(1px 1px at 70% 30%, rgba(0,228,255,0.12), transparent),
+    radial-gradient(1px 1px at 85% 65%, rgba(255,215,0,0.08), transparent),
+    radial-gradient(1px 1px at 50% 90%, rgba(0,228,255,0.1), transparent),
+    radial-gradient(1px 1px at 15% 85%, rgba(0,255,136,0.06), transparent),
+    radial-gradient(1px 1px at 90% 10%, rgba(0,228,255,0.08), transparent) !important;
+  animation: sf-particles-float 20s ease-in-out infinite alternate !important;
+  will-change: opacity !important;
+}
+@keyframes sf-particles-float {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+
+/* ══════════════════════════════
+   26. GRID LINE OVERLAY on cockpit
+══════════════════════════════ */
+.cockpit-iron::after {
+  content: "" !important;
+  position: absolute !important;
+  inset: 0 !important;
+  pointer-events: none !important;
+  z-index: 0 !important;
+  opacity: 0.15 !important;
+  background-image:
+    linear-gradient(90deg, rgba(0,228,255,0.03) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(0,228,255,0.03) 1px, transparent 1px) !important;
+  background-size: 80px 80px !important;
+  mask-image: radial-gradient(ellipse at center, rgba(0,0,0,0.3), transparent 70%) !important;
+  -webkit-mask-image: radial-gradient(ellipse at center, rgba(0,0,0,0.3), transparent 70%) !important;
+}
+
+/* ══════════════════════════════
+   PERFORMANCE NOTES:
+   - All animations use transform/opacity only (GPU composited)
+   - will-change hints on animated properties
+   - No layout-triggering animations (no width/height/top/left animations)
+   - clip-path is GPU-accelerated in modern browsers
+   - Staggered animations prevent simultaneous repaints
+══════════════════════════════ */
+
+/* ═══ CRITICAL FIX: Cerebro 3D sem corte ═══ */
+.cockpit-iron .orb-section {
+  overflow: visible !important;
+  position: relative !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+}
+.cockpit-iron .avatar-container {
+  position: absolute !important;
+  inset: -50px !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: none !important;
+  max-height: none !important;
+  overflow: visible !important;
+  clip-path: none !important;
+  -webkit-clip-path: none !important;
+}
+.cockpit-iron .avatar-container canvas,
+.cockpit-iron .avatar-container > div {
+  clip-path: none !important;
+  -webkit-clip-path: none !important;
+  overflow: visible !important;
+}
+.cockpit-iron .avatar-status {
+  bottom: -40px !important;
+}

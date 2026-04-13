@@ -3205,14 +3205,16 @@ app.get('/api/system-stats', async (req, res) => {
     const pyScript = `
 import json, sys
 sys.stdout.reconfigure(encoding='utf-8')
-result = {"cpu":{"usage":None,"temp":None,"cores":0},"gpu":{"name":None,"temp":None},"ram":{"usage":None,"total":0,"free":0}}
+result = {"cpu":{"name":None,"usage":None,"temp":None,"cores":0},"gpu":{"name":None,"temp":None,"vram":None,"usage":None},"ram":{"usage":None,"total":0,"free":0,"type":None}}
 try:
     import psutil
     result["cpu"]["usage"] = round(psutil.cpu_percent(interval=0.5))
-    result["cpu"]["cores"] = psutil.cpu_count()
+    result["cpu"]["cores"] = psutil.cpu_count(logical=True)
     mem = psutil.virtual_memory()
     result["ram"]["usage"] = round(mem.percent)
-    result["ram"]["total"] = round(mem.total / (1024**3))
+    # Arredondar pro multiplo de 8 mais proximo (ex: 30.x → 32, 15.x → 16)
+    raw_gb = mem.total / (1024**3)
+    result["ram"]["total"] = int(round(raw_gb / 8) * 8) or round(raw_gb)
     result["ram"]["free"] = round(mem.available / (1024**3))
     temps = psutil.sensors_temperatures()
     if temps:
@@ -3224,9 +3226,70 @@ except: pass
 try:
     import wmi
     w = wmi.WMI()
-    gpus = [g for g in w.Win32_VideoController() if g.Name and 'Microsoft' not in g.Name]
-    if gpus:
-        result["gpu"]["name"] = gpus[0].Name
+    # CPU name
+    cpus = w.Win32_Processor()
+    if cpus:
+        result["cpu"]["name"] = cpus[0].Name.strip()
+    # GPU — pegar apenas a placa dedicada (ignorar integrada e Microsoft)
+    gpus = w.Win32_VideoController()
+    dedicated = [g for g in gpus if g.Name and 'Microsoft' not in g.Name and 'Radeon(TM) Graphics' not in g.Name and 'Intel' not in g.Name and 'UHD' not in g.Name]
+    gpu = None
+    if dedicated:
+        gpu = dedicated[0]
+    elif gpus:
+        real = [g for g in gpus if g.Name and 'Microsoft' not in g.Name]
+        if real: gpu = real[0]
+    if gpu:
+        result["gpu"]["name"] = gpu.Name.strip()
+        # VRAM — AdapterRAM overflow pra GPUs >4GB, usar qwMemorySize do registro
+        try:
+            vram_bytes = int(gpu.AdapterRAM or 0)
+            if vram_bytes > 0:
+                result["gpu"]["vram"] = round(vram_bytes / (1024**3))
+            else:
+                # Fallback: ler do registro do Windows (qwMemorySize = valor real)
+                import winreg
+                reg_path = "SYSTEM\\\\CurrentControlSet\\\\Control\\\\Class\\\\{4d36e968-e325-11ce-bfc1-08002be10318}"
+                for i in range(20):
+                    try:
+                        sub = reg_path + "\\\\%04d" % i
+                        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, sub)
+                        try:
+                            desc = winreg.QueryValueEx(key, "DriverDesc")[0]
+                        except:
+                            desc = ""
+                        if gpu.Name.strip().lower() in desc.lower():
+                            try:
+                                qw = winreg.QueryValueEx(key, "HardwareInformation.qwMemorySize")[0]
+                                result["gpu"]["vram"] = round(int(qw) / (1024**3))
+                            except:
+                                try:
+                                    ms = winreg.QueryValueEx(key, "HardwareInformation.MemorySize")[0]
+                                    result["gpu"]["vram"] = round(int(ms) / (1024**3))
+                                except: pass
+                            break
+                        winreg.CloseKey(key)
+                    except: pass
+        except:
+            result["gpu"]["vram"] = None
+    # RAM type
+    try:
+        rams = w.Win32_PhysicalMemory()
+        if rams:
+            speed = rams[0].Speed or ""
+            mem_type_map = {20:"DDR",21:"DDR2",24:"DDR3",26:"DDR4",34:"DDR5"}
+            smbios_type = getattr(rams[0], 'SMBIOSMemoryType', None)
+            if smbios_type and int(smbios_type) in mem_type_map:
+                result["ram"]["type"] = mem_type_map[int(smbios_type)]
+            elif speed:
+                spd = int(speed)
+                if spd >= 4800: result["ram"]["type"] = "DDR5"
+                elif spd >= 2133: result["ram"]["type"] = "DDR4"
+                elif spd >= 1066: result["ram"]["type"] = "DDR3"
+                else: result["ram"]["type"] = "DDR"
+            if speed:
+                result["ram"]["type"] = (result["ram"]["type"] or "DDR") + " " + str(speed) + "MHz"
+    except: pass
 except: pass
 try:
     import subprocess
@@ -3769,6 +3832,314 @@ app.get('/api/weather', async (req, res) => {
   if (data) res.json(data);
   else res.status(404).json({ error: 'Weather not found' });
 });
+
+// ═══════════════════════════════════════════════
+// COMPUTER USE v2 — Ultimate System
+// ═══════════════════════════════════════════════
+
+// ── Screen State Daemon (Layer 0) ──
+let screenStateDaemon = null;
+let _screenState = { value: null, ts: 0 };
+
+function startScreenStateDaemon() {
+  const script = path.join(JARVIS_DIR, 'system', 'screen-state.py');
+  if (!fs.existsSync(script)) { console.log('[JARVIS] screen-state.py not found'); return; }
+  screenStateDaemon = spawn(PYTHON_CMD, ['-u', script, '--mode=stdout'], {
+    cwd: JARVIS_DIR, stdio: ['ignore', 'pipe', 'pipe']
+  });
+  let buffer = '';
+  screenStateDaemon.stdout.on('data', (data) => {
+    buffer += data.toString();
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        _screenState.value = JSON.parse(line);
+        _screenState.ts = Date.now();
+      } catch {}
+    }
+  });
+  screenStateDaemon.stderr.on('data', (d) => {
+    const msg = d.toString().trim();
+    if (msg) console.error('[ScreenState]', msg);
+  });
+  screenStateDaemon.on('exit', (code) => {
+    console.log(`[JARVIS] Screen state daemon exited (${code})`);
+    screenStateDaemon = null;
+    // Restart after 5s
+    setTimeout(startScreenStateDaemon, 5000);
+  });
+  console.log('[JARVIS] Screen state daemon started');
+}
+
+// Start daemon on server boot (delayed 3s to not block startup)
+setTimeout(startScreenStateDaemon, 3000);
+
+// ── Clipboard Intelligence Daemon ──
+let clipboardDaemon = null;
+let _lastClipboard = null;
+
+function startClipboardDaemon() {
+  const script = path.join(JARVIS_DIR, 'system', 'clipboard-intel.py');
+  if (!fs.existsSync(script)) return;
+  clipboardDaemon = spawn(PYTHON_CMD, ['-u', script], {
+    cwd: JARVIS_DIR, stdio: ['ignore', 'pipe', 'pipe']
+  });
+  let buffer = '';
+  clipboardDaemon.stdout.on('data', (data) => {
+    buffer += data.toString();
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try { _lastClipboard = JSON.parse(line); } catch {}
+    }
+  });
+  clipboardDaemon.on('exit', () => {
+    clipboardDaemon = null;
+    setTimeout(startClipboardDaemon, 5000);
+  });
+  console.log('[JARVIS] Clipboard intelligence daemon started');
+}
+setTimeout(startClipboardDaemon, 4000);
+
+// ── GET /api/screen-state — Current desktop state (instant, no screenshot) ──
+app.get('/api/screen-state', (req, res) => {
+  if (_screenState.value && (Date.now() - _screenState.ts < 5000)) {
+    res.json(_screenState.value);
+  } else {
+    // Fallback: run screen-state.py once
+    try {
+      const script = path.join(JARVIS_DIR, 'system', 'screen-state.py');
+      const result = execSync(`"${PYTHON_CMD}" -u "${script}" --mode=stdout`, {
+        encoding: 'utf-8', timeout: 5000
+      });
+      const lines = result.trim().split('\n');
+      const last = lines[lines.length - 1];
+      res.json(JSON.parse(last));
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+});
+
+// ── GET /api/clipboard — Last clipboard analysis ──
+app.get('/api/clipboard', (req, res) => {
+  res.json(_lastClipboard || { clipboard: null, analysis: null });
+});
+
+// ── POST /api/computer-use/v2 — Ultimate Computer Use with Claude Planner ──
+app.post('/api/computer-use/v2', express.json({ limit: '5mb' }), async (req, res) => {
+  const { task, language = 'BR', screenshot: wantScreenshot = false } = req.body;
+  if (!task) return res.status(400).json({ error: 'task required' });
+
+  try {
+    // 1. Get current screen state (instant from daemon cache)
+    const state = _screenState.value || {};
+    const stateText = state.fg
+      ? `Foreground: "${state.fg.title}" (${state.fg.proc})\nOpen windows: ${(state.windows || []).map(w => w.title).filter(t => t && t !== 'Program Manager').join(', ')}\nMonitors: ${(state.monitors || []).length}\nCursor: (${state.cursor?.[0]}, ${state.cursor?.[1]})`
+      : 'Screen state unavailable';
+
+    // 2. Optional: get screenshot for hybrid mode
+    let screenshotData = null;
+    if (wantScreenshot) {
+      try {
+        const ssScript = path.join(JARVIS_DIR, 'system', 'screenshot.py');
+        const ssResult = execSync(`"${PYTHON_CMD}" "${ssScript}" all`, {
+          encoding: 'utf-8', timeout: 10000, maxBuffer: 30 * 1024 * 1024
+        });
+        const ssJson = JSON.parse(ssResult.trim());
+        screenshotData = ssJson.data;
+      } catch {}
+    }
+
+    // 3. Build Claude Planner prompt
+    const plannerPrompt = `You are JARVIS, an AI controlling a Windows 11 PC. Plan actions precisely.
+
+CURRENT SCREEN STATE:
+${stateText}
+
+AVAILABLE ACTIONS (JSON array):
+- {"type":"shell","command":"..."} — run shell command
+- {"type":"app_focus","title":"..."} — bring window to front (partial title match)
+- {"type":"app_close","title":"..."} — close window
+- {"type":"app_minimize","title":"..."} — minimize window
+- {"type":"key","keys":"ctrl+c"} — keyboard shortcut
+- {"type":"type","text":"..."} — type text via clipboard paste
+- {"type":"click","x":N,"y":N} — click at coordinates
+- {"type":"uia_click","window":"...","name":"...","control_type":"..."} — click UI element by name
+- {"type":"uia_set_value","window":"...","name":"...","value":"..."} — fill input field
+- {"type":"scroll","direction":"down","amount":5} — scroll
+- {"type":"wait","ms":1000} — wait
+- {"type":"wait_for","title_contains":"...","timeout":5000} — wait for window
+- {"type":"screenshot","mode":"all"} — take screenshot (only if needed to see result)
+
+TASK: ${task}
+
+Respond with ONLY a JSON object: {"actions":[...], "expected":"description of success state"}
+Plan ALL steps. Include app_focus/shell to open apps if needed. Use wait_for after launches. Prefer uia_click over raw coordinates. Be precise.`;
+
+    // 4. Get plan from Claude (uses Max plan, zero cost)
+    const planResult = await new Promise((resolve, reject) => {
+      const proc = spawn(CLAUDE_CMD, [
+        '--print', '--output-format', 'text',
+        '--model', 'claude-sonnet-4-6',
+        '--dangerously-skip-permissions'
+      ], { shell: true, cwd: JARVIS_DIR, timeout: 30000 });
+
+      // Send prompt via stdin (more reliable than -p flag)
+      proc.stdin.write(plannerPrompt);
+      proc.stdin.end();
+
+      let stdout = '', stderr = '';
+      proc.stdout.on('data', d => { stdout += d; });
+      proc.stderr.on('data', d => { stderr += d; });
+      proc.on('close', (code) => {
+        if (code === 0 && stdout.trim()) resolve(stdout.trim());
+        else reject(new Error(stderr || `exit code ${code}`));
+      });
+      proc.on('error', reject);
+    });
+
+    // 5. Parse the plan
+    let plan;
+    try {
+      // Extract JSON from response (Claude might wrap it in markdown)
+      const jsonMatch = planResult.match(/\{[\s\S]*\}/);
+      plan = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+    } catch {
+      return res.json({ ok: false, error: 'Failed to parse plan', raw: planResult.substring(0, 500) });
+    }
+
+    if (!plan || !plan.actions || !plan.actions.length) {
+      return res.json({ ok: false, error: 'Empty plan', raw: planResult.substring(0, 500) });
+    }
+
+    // 6. Execute plan via ui-automation.py
+    const uiaScript = path.join(JARVIS_DIR, 'system', 'ui-automation.py');
+    const execResult = await new Promise((resolve, reject) => {
+      const proc = spawn(PYTHON_CMD, ['-u', uiaScript], {
+        cwd: JARVIS_DIR, stdio: ['pipe', 'pipe', 'pipe'], timeout: 60000
+      });
+      proc.stdin.write(JSON.stringify(plan));
+      proc.stdin.end();
+
+      let stdout = '', stderr = '';
+      proc.stdout.on('data', d => { stdout += d; });
+      proc.stderr.on('data', d => { stderr += d; });
+      proc.on('close', (code) => {
+        // Parse all result lines
+        const results = stdout.trim().split('\n').filter(l => l.trim()).map(l => {
+          try { return JSON.parse(l); } catch { return { raw: l }; }
+        });
+        resolve({ code, results, stderr: stderr.trim() });
+      });
+      proc.on('error', reject);
+    });
+
+    // 7. Find summary line
+    const summary = execResult.results.find(r => r.done);
+    const failed = execResult.results.filter(r => r.ok === false);
+
+    // 8. Self-healing: if actions failed, retry with context
+    if (failed.length > 0 && failed.length < (plan.actions?.length || 99)) {
+      console.log(`[JARVIS CU v2] ${failed.length} actions failed, attempting self-heal`);
+      // Could re-plan here with error context — for now, report
+    }
+
+    res.json({
+      ok: summary ? summary.success === summary.total : failed.length === 0,
+      plan: plan.actions.length + ' actions planned',
+      executed: execResult.results.length,
+      failed: failed.length,
+      expected: plan.expected,
+      details: execResult.results
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/browser-control — CDP browser automation ──
+app.post('/api/browser-control', express.json(), async (req, res) => {
+  try {
+    const script = path.join(JARVIS_DIR, 'system', 'browser-control.py');
+    const proc = spawn(PYTHON_CMD, ['-u', script, '--auto-connect'], {
+      cwd: JARVIS_DIR, stdio: ['pipe', 'pipe', 'pipe'], timeout: 15000
+    });
+    proc.stdin.write(JSON.stringify(req.body) + '\n');
+    proc.stdin.end();
+
+    let stdout = '';
+    proc.stdout.on('data', d => { stdout += d; });
+    proc.on('close', () => {
+      try {
+        const lines = stdout.trim().split('\n').filter(l => l.trim());
+        const last = lines[lines.length - 1];
+        res.json(JSON.parse(last));
+      } catch { res.json({ ok: false, error: 'Parse error', raw: stdout }); }
+    });
+    proc.on('error', (err) => res.status(500).json({ error: err.message }));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/files/search — File Intelligence search ──
+app.post('/api/files/search', express.json(), async (req, res) => {
+  try {
+    const { query, cmd = 'search' } = req.body;
+    const script = path.join(JARVIS_DIR, 'system', 'file-index.py');
+    const args = cmd === 'search' ? [script, 'search', query || '']
+               : cmd === 'recent' ? [script, 'recent', String(req.body.days || 7)]
+               : cmd === 'large'  ? [script, 'large', String(req.body.mb || 100)]
+               : cmd === 'organize' ? [script, 'organize', req.body.path || '']
+               : [script, 'search', query || ''];
+
+    const result = execSync(`"${PYTHON_CMD}" ${args.map(a => `"${a}"`).join(' ')}`, {
+      encoding: 'utf-8', timeout: 30000, maxBuffer: 10 * 1024 * 1024
+    });
+    res.json(JSON.parse(result.trim()));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/workflow — Workflow Recording & Replay ──
+app.post('/api/workflow', express.json(), async (req, res) => {
+  try {
+    const { action, name, speed } = req.body;
+    const script = path.join(JARVIS_DIR, 'system', 'workflow-recorder.py');
+
+    if (action === 'list') {
+      const result = execSync(`"${PYTHON_CMD}" "${script}" list`, { encoding: 'utf-8', timeout: 5000 });
+      return res.json(JSON.parse(result.trim()));
+    }
+
+    if (action === 'replay' && name) {
+      const args = [`"${PYTHON_CMD}"`, `"${script}"`, 'replay', `"${name}"`];
+      if (speed) args.push(`--speed=${speed}`);
+      const proc = spawn(PYTHON_CMD, [script, 'replay', name, ...(speed ? [`--speed=${speed}`] : [])], {
+        cwd: JARVIS_DIR, stdio: ['ignore', 'pipe', 'pipe'], timeout: 120000
+      });
+      let stdout = '';
+      proc.stdout.on('data', d => { stdout += d; });
+      proc.on('close', (code) => { res.json({ ok: code === 0, output: stdout }); });
+      proc.on('error', (err) => { res.status(500).json({ error: err.message }); });
+      return;
+    }
+
+    res.status(400).json({ error: 'action required: list, replay' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════
+// LEGACY ENDPOINTS (kept for backward compatibility)
+// ═══════════════════════════════════════════════
 
 // GET /api/screenshot - Capture screen directly via Python (no browser sharing needed)
 // ?monitor=1 (primary), ?monitor=2 (second), ?monitor=all (all stitched), ?monitor=info (list)

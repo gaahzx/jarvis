@@ -9,195 +9,533 @@ const avatarContainer = document.querySelector('.avatar-container');
 const avatarStatus = document.getElementById('avatar-status');
 const fileAttach = document.getElementById('file-attach');
 
-// ========== PARTICLE ORB — Rainbow Sphere ==========
-class ParticleOrb {
-  constructor(canvas) {
-    this.canvas = canvas;
-    this.ctx = canvas.getContext('2d');
+// ========== HOLOGRAPHIC BRAIN 3D — Three.js Iron Man ==========
+class NeuralTree {
+  constructor(canvasOrContainer) {
+    // Three.js takes over the container, not the canvas directly
+    this.container = canvasOrContainer.parentElement || canvasOrContainer;
     this.state = 'idle';
     this.time = 0;
     this.speedMul = 1;
     this.targetSpeed = 1;
     this.stateSpeeds = { idle: 0.4, listening: 0.8, thinking: 1.5, speaking: 1.0 };
 
-    this.dpr = Math.min(window.devicePixelRatio || 1, 2);
-    this.resize();
-    window.addEventListener('resize', () => this.resize());
+    // Hide the original canvas (Three.js creates its own)
+    if (canvasOrContainer.tagName === 'CANVAS') canvasOrContainer.style.display = 'none';
 
-    // Rainbow colors
-    this.rainbow = [
-      [255, 0, 0],     // red
-      [255, 127, 0],   // orange
-      [255, 255, 0],   // yellow
-      [0, 255, 0],     // green
-      [0, 200, 255],   // cyan
-      [0, 100, 255],   // blue
-      [139, 0, 255],   // violet
-      [255, 0, 200],   // pink
-    ];
-
-    // Create particles — sphere distribution
-    this.count = 250;
-    this.particles = [];
-    for (let i = 0; i < this.count; i++) {
-      const roll = Math.random();
-      const sz = roll < 0.15 ? (3.5 + Math.random() * 4) :
-                 roll < 0.45 ? (2 + Math.random() * 2.5) :
-                               (1 + Math.random() * 1.5);
-      this.particles.push({
-        theta: Math.random() * Math.PI * 2,
-        phi: Math.acos(2 * Math.random() - 1),
-        radius: 0.3 + Math.random() * 0.5,
-        speed: 0.003 + Math.random() * 0.005,
-        size: sz,
-        opacity: 0.4 + Math.random() * 0.6,
-        phase: Math.random() * Math.PI * 2,
-        colorIdx: Math.random(), // 0-1 position in rainbow
-        orbitTilt: Math.random() * 0.4 - 0.2, // slight tilt variation
-      });
-    }
-
+    this._init3D();
     this.animate = this.animate.bind(this);
-    requestAnimationFrame(this.animate);
+    this.animate();
   }
 
-  setState(state) {
-    this.state = state;
-    this.targetSpeed = this.stateSpeeds[state] || 0.4;
-  }
+  setState(state) { this.state = state; this.targetSpeed = this.stateSpeeds[state] || 0.4; }
 
   resize() {
-    const rect = this.canvas.getBoundingClientRect();
-    this.size = Math.max(rect.width, rect.height, 300);
-    this.canvas.width = this.size * this.dpr;
-    this.canvas.height = this.size * this.dpr;
-    this.ctx = this.canvas.getContext('2d');
-    this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    this.cx = this.size / 2;
-    this.cy = this.size / 2;
-    this.R = this.size * 0.38;
+    if (!this.renderer || !this.camera) return;
+    const rect = this.container.getBoundingClientRect();
+    const w = rect.width || 400, h = rect.height || 400;
+    this.renderer.setSize(w, h);
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
   }
 
-  getRainbowColor(t) {
-    // t is 0-1, returns [r, g, b]
-    const idx = t * (this.rainbow.length - 1);
-    const i = Math.floor(idx);
-    const f = idx - i;
-    const c1 = this.rainbow[i % this.rainbow.length];
-    const c2 = this.rainbow[(i + 1) % this.rainbow.length];
-    return [
-      Math.round(c1[0] + (c2[0] - c1[0]) * f),
-      Math.round(c1[1] + (c2[1] - c1[1]) * f),
-      Math.round(c1[2] + (c2[2] - c1[2]) * f),
+  _init3D() {
+    const rect = this.container.getBoundingClientRect();
+    const w = rect.width || 500, h = rect.height || 500;
+
+    // Scene
+    this.scene = new THREE.Scene();
+
+    // Camera — positioned to see brain from side (like the reference image)
+    this.camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 100);
+    this.camera.position.set(0, 0, 7);
+    this.camera.lookAt(0, -1.5, 0);
+
+    // Renderer
+    this.renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
+    this.renderer.setSize(w, h);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setClearColor(0x000000, 0);
+    this.renderer.domElement.style.position = 'absolute';
+    this.renderer.domElement.style.inset = '0';
+    this.renderer.domElement.style.zIndex = '2';
+    this.renderer.domElement.style.pointerEvents = 'none';
+    this.container.appendChild(this.renderer.domElement);
+
+    window.addEventListener('resize', () => this.resize());
+
+    // ── HOLOGRAPHIC SHADER — Fresnel + scan lines + chromatic aberration ──
+    const holoVertexShader = `
+      varying vec3 vNormal;
+      varying vec3 vPosition;
+      varying vec3 vWorldPos;
+      void main() {
+        vNormal = normalize(normalMatrix * normal);
+        vPosition = (modelViewMatrix * vec4(position, 1.0)).xyz;
+        vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `;
+    const holoFragmentShader = `
+      uniform float uTime;
+      uniform float uPulse;
+      uniform float uOpacity;
+      uniform vec3 uColor;
+      uniform float uScanY;
+      varying vec3 vNormal;
+      varying vec3 vPosition;
+      varying vec3 vWorldPos;
+      void main() {
+        vec3 viewDir = normalize(-vPosition);
+        float fresnel = 1.0 - abs(dot(viewDir, vNormal));
+        fresnel = pow(fresnel, 1.8);
+        float scanLine = sin(vWorldPos.y * 60.0 + uTime * 3.0) * 0.5 + 0.5;
+        scanLine = smoothstep(0.4, 0.6, scanLine) * 0.12;
+        float scanBar = 1.0 - smoothstep(0.0, 0.15, abs(vWorldPos.y - uScanY));
+        scanBar *= 0.35;
+        float alpha = (fresnel * 0.7 + 0.06 + scanLine + scanBar) * uOpacity;
+        vec3 color = uColor;
+        color.r += fresnel * 0.08;
+        color.b += fresnel * 0.12;
+        gl_FragColor = vec4(color, alpha * uPulse);
+      }
+    `;
+
+    this.holoMaterial = new THREE.ShaderMaterial({
+      vertexShader: holoVertexShader,
+      fragmentShader: holoFragmentShader,
+      uniforms: {
+        uTime: { value: 0 },
+        uPulse: { value: 1.0 },
+        uOpacity: { value: 0.85 },
+        uColor: { value: new THREE.Color(0x00e4ff) },
+        uScanY: { value: 0 },
+      },
+      transparent: true,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+
+    // Wireframe material
+    this.wireMaterial = new THREE.MeshBasicMaterial({
+      color: 0x00e4ff, wireframe: true, transparent: true, opacity: 0.1, depthWrite: false,
+    });
+
+    // ── Load real brain model (GLB) ──
+    this.brainGroup = new THREE.Group();
+    this.scene.add(this.brainGroup);
+
+    // Placeholder meshes (used before model loads + as fallback)
+    this.brainHolo = null;
+    this.brainWire = null;
+    this.brainWire2 = null;
+    this.brainSolid = null;
+
+    // Load brain model (with retry if GLTFLoader not ready yet)
+    const self = this;
+    function tryLoadBrain() {
+      if (typeof THREE === 'undefined' || typeof THREE.GLTFLoader === 'undefined') {
+        console.log('[JARVIS] GLTFLoader not ready, retrying in 500ms...');
+        setTimeout(tryLoadBrain, 500);
+        return;
+      }
+      const loader = new THREE.GLTFLoader();
+      console.log('[JARVIS] Loading brain.glb...');
+      loader.load('brain.glb', (gltf) => {
+      const model = gltf.scene;
+      console.log('[JARVIS] Brain model loaded!');
+
+      // Center and scale — model is ~214 units, need to fit in ~3 units
+      const box = new THREE.Box3().setFromObject(model);
+      const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const brainScale = 4.5 / maxDim;
+
+      // Wrap in a group for clean transform
+      const brainPivot = new THREE.Group();
+      model.position.set(-center.x, -center.y, -center.z); // center it
+      brainPivot.add(model);
+      brainPivot.scale.setScalar(brainScale);
+
+      // Apply holographic material to all meshes
+      model.traverse(function(child) {
+        if (child.isMesh) {
+          child.material = self.holoMaterial;
+          child.renderOrder = 1;
+        }
+      });
+      self.brainHolo = brainPivot;
+      self.brainGroup.add(brainPivot);
+
+      // Wireframe clone
+      const wireModel = model.clone(true);
+      wireModel.traverse(function(child) {
+        if (child.isMesh) {
+          child.material = self.wireMaterial.clone();
+          child.renderOrder = 0;
+        }
+      });
+      const wirePivot = new THREE.Group();
+      wireModel.position.set(-center.x, -center.y, -center.z);
+      wirePivot.add(wireModel);
+      wirePivot.scale.setScalar(brainScale * 1.003);
+      self.brainWire = wirePivot;
+      self.brainGroup.add(wirePivot);
+
+      // Second wireframe (outer glow layer)
+      const wire2Model = model.clone(true);
+      wire2Model.traverse(function(child) {
+        if (child.isMesh) {
+          child.material = new THREE.MeshBasicMaterial({
+            color: 0x3366cc, wireframe: true, transparent: true, opacity: 0.04, depthWrite: false,
+          });
+        }
+      });
+      const wire2Pivot = new THREE.Group();
+      wire2Model.position.set(-center.x, -center.y, -center.z);
+      wire2Pivot.add(wire2Model);
+      wire2Pivot.scale.setScalar(brainScale * 1.02);
+      self.brainWire2 = wire2Pivot;
+      self.brainGroup.add(wire2Pivot);
+
+      // Inner volume glow
+      const solidModel = model.clone(true);
+      solidModel.traverse(function(child) {
+        if (child.isMesh) {
+          child.material = new THREE.MeshBasicMaterial({
+            color: 0x003355, transparent: true, opacity: 0.04, side: THREE.BackSide, depthWrite: false,
+          });
+        }
+      });
+      const solidPivot = new THREE.Group();
+      solidModel.position.set(-center.x, -center.y, -center.z);
+      solidPivot.add(solidModel);
+      solidPivot.scale.setScalar(brainScale * 0.98);
+      self.brainSolid = solidPivot;
+      self.brainGroup.add(solidPivot);
+
+      console.log('[JARVIS] Brain 3D model loaded successfully');
+    }, undefined, (err) => {
+      console.warn('[JARVIS] Failed to load brain.glb:', err);
+      // Fallback: deformed sphere
+      const fallbackGeo = new THREE.SphereGeometry(1.5, 48, 32);
+      self.brainHolo = new THREE.Mesh(fallbackGeo, self.holoMaterial);
+      self.brainGroup.add(self.brainHolo);
+      self.brainWire = new THREE.Mesh(fallbackGeo.clone(), self.wireMaterial);
+      self.brainGroup.add(self.brainWire);
+    });
+    }
+    tryLoadBrain();
+
+    // ── Outer glow shells ──
+    const glowGeo = new THREE.SphereGeometry(2.8, 32, 24);
+    this.brainGlow = new THREE.Mesh(glowGeo,
+      new THREE.MeshBasicMaterial({ color: 0x005577, transparent: true, opacity: 0.03, side: THREE.BackSide, depthWrite: false })
+    );
+    this.scene.add(this.brainGlow);
+
+    const glow2Geo = new THREE.SphereGeometry(3.5, 24, 16);
+    this.brainGlow2 = new THREE.Mesh(glow2Geo,
+      new THREE.MeshBasicMaterial({ color: 0x002233, transparent: true, opacity: 0.015, side: THREE.BackSide, depthWrite: false })
+    );
+    this.scene.add(this.brainGlow2);
+
+    // ── NEURAL TREE — Full width root system below brain ──
+    this.treeGroup = new THREE.Group();
+    this.scene.add(this.treeGroup);
+
+    const branchMat = new THREE.LineBasicMaterial({ color: 0x00e4ff, transparent: true, opacity: 0.4 });
+    const secMat = new THREE.LineBasicMaterial({ color: 0x00aacc, transparent: true, opacity: 0.25 });
+    const leafMat = new THREE.LineBasicMaterial({ color: 0x007799, transparent: true, opacity: 0.15 });
+    const rootMat = new THREE.LineBasicMaterial({ color: 0x005566, transparent: true, opacity: 0.1 });
+    const nodeMat = new THREE.MeshBasicMaterial({ color: 0x00e4ff, transparent: true, opacity: 0.6 });
+    const nodeGeo = new THREE.SphereGeometry(0.05, 8, 8);
+    const goldNodeMat = new THREE.MeshBasicMaterial({ color: 0xffd700, transparent: true, opacity: 0.5 });
+    this._treeNodes = [];
+
+    // Helper: add bezier branch + node
+    const addBranch = (from, to, mat, nodeM, nodeScale) => {
+      const mid = new THREE.Vector3().lerpVectors(from, to, 0.5);
+      mid.x += (Math.random() - 0.5) * 0.3;
+      mid.z += (Math.random() - 0.5) * 0.2;
+      const curve = new THREE.QuadraticBezierCurve3(from, mid, to);
+      this.treeGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(16)), mat));
+      const n = new THREE.Mesh(nodeGeo, nodeM.clone());
+      n.position.copy(to);
+      n.scale.setScalar(nodeScale || 0.7);
+      this.treeGroup.add(n);
+      this._treeNodes.push(n);
+      return to;
+    };
+
+    // Brain stem (thicker, from brain base)
+    const stemStart = new THREE.Vector3(0, -1.6, 0);
+    const stemEnd = new THREE.Vector3(0, -2.5, 0);
+    const stemCurve = new THREE.LineCurve3(stemStart, stemEnd);
+    const stemLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(stemCurve.getPoints(10)), branchMat);
+    this.treeGroup.add(stemLine);
+
+    // 7 primary branches — spread wide
+    const primaries = [
+      { x: -3.0, y: -3.5, z: 0.6 }, { x: -2.0, y: -3.8, z: -0.4 },
+      { x: -0.8, y: -3.6, z: 0.3 }, { x: 0, y: -3.4, z: -0.2 },
+      { x: 0.8, y: -3.6, z: 0.3 }, { x: 2.0, y: -3.8, z: -0.4 },
+      { x: 3.0, y: -3.5, z: 0.6 }
     ];
+    const primEnds = [];
+    for (const p of primaries) {
+      const end = addBranch(stemEnd, new THREE.Vector3(p.x, p.y, p.z), branchMat, nodeMat, 0.8);
+      primEnds.push(end);
+    }
+
+    // Secondary branches (3-4 per primary, spread further)
+    const secEnds = [];
+    for (const pe of primEnds) {
+      const count = 3 + Math.floor(Math.random() * 2);
+      for (let j = 0; j < count; j++) {
+        const sx = pe.x + (Math.random() - 0.5) * 1.5;
+        const sy = pe.y - 0.5 - Math.random() * 0.8;
+        const sz = pe.z + (Math.random() - 0.5) * 1.0;
+        const end = addBranch(pe, new THREE.Vector3(
+          Math.max(-4.5, Math.min(4.5, sx)), Math.max(-6, sy), sz
+        ), secMat, j % 2 === 0 ? goldNodeMat : nodeMat, 0.5);
+        secEnds.push(end);
+      }
+    }
+
+    // Leaf/root nodes (2-3 per secondary, fill bottom plane)
+    for (const se of secEnds) {
+      const count = 2 + Math.floor(Math.random() * 2);
+      for (let k = 0; k < count; k++) {
+        const lx = se.x + (Math.random() - 0.5) * 1.2;
+        const ly = se.y - 0.4 - Math.random() * 0.6;
+        const lz = se.z + (Math.random() - 0.5) * 0.8;
+        addBranch(se, new THREE.Vector3(
+          Math.max(-5, Math.min(5, lx)), Math.max(-7, ly), lz
+        ), leafMat, goldNodeMat, 0.35);
+      }
+    }
+
+    // Bottom root tendrils (fade into the void — decorative)
+    for (let i = 0; i < 12; i++) {
+      const rx = (Math.random() - 0.5) * 8;
+      const ry = -6 - Math.random() * 2;
+      const rz = (Math.random() - 0.5) * 2;
+      const startY = -5 - Math.random();
+      const pts = [
+        new THREE.Vector3(rx + (Math.random()-0.5)*0.5, startY, rz),
+        new THREE.Vector3(rx, ry, rz + (Math.random()-0.5)*0.3)
+      ];
+      this.treeGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), rootMat));
+    }
+
+    // ── Floating particles (more, bigger, spread across entire tree area) ──
+    this._particles = [];
+    const pMat = new THREE.MeshBasicMaterial({ color: 0x00e4ff, transparent: true, opacity: 0.5 });
+    for (let i = 0; i < 250; i++) {
+      const size = 0.02 + Math.random() * 0.04;
+      const pGeo = new THREE.SphereGeometry(size, 4, 4);
+      const p = new THREE.Mesh(pGeo, pMat.clone());
+      p.position.set((Math.random()-0.5)*8, 1+Math.random()*-9, (Math.random()-0.5)*3);
+      p.userData = {
+        speed: 0.002+Math.random()*0.01,
+        phase: Math.random()*Math.PI*2,
+        baseX: p.position.x,
+        baseZ: p.position.z,
+        drift: 0.15+Math.random()*0.5
+      };
+      this.scene.add(p);
+      this._particles.push(p);
+    }
+
+    // ── Lightning bolts (more, brighter) ──
+    this._lightningLines = [];
+    for (let i = 0; i < 16; i++) {
+      const pts = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+      const geo = new THREE.BufferGeometry().setFromPoints(pts);
+      const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x88ddff, transparent: true, opacity: 0.7 }));
+      line.visible = false;
+      this.scene.add(line);
+      this._lightningLines.push(line);
+    }
+
+    // ── Scan ring ──
+    const ringGeo = new THREE.RingGeometry(2.2, 2.4, 64);
+    this.scanRing = new THREE.Mesh(ringGeo,
+      new THREE.MeshBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.15, side: THREE.DoubleSide, depthWrite: false })
+    );
+    this.scanRing.rotation.x = Math.PI / 2;
+    this.scene.add(this.scanRing);
+
+    // ── Electric pulse points ──
+    this._pulsePoints = [];
+    const pulseMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 });
+    for (let i = 0; i < 25; i++) {
+      const pp = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), pulseMat.clone());
+      const theta = Math.random()*Math.PI*2, phi = Math.random()*Math.PI;
+      pp.position.set(Math.sin(phi)*Math.cos(theta)*2.4, Math.cos(phi)*1.7, Math.sin(phi)*Math.sin(theta)*2.0);
+      pp.userData = { phase: Math.random()*Math.PI*2, speed: 1.5+Math.random()*4 };
+      this.scene.add(pp);
+      this._pulsePoints.push(pp);
+    }
   }
 
   animate() {
-    const ctx = this.ctx;
-    const cx = this.cx;
-    const cy = this.cy;
-    const S = this.size;
-    const R = this.R;
     this.time += 0.016;
     this.speedMul += (this.targetSpeed - this.speedMul) * 0.03;
     const t = this.time * this.speedMul;
-
-    ctx.clearRect(0, 0, S, S);
-
-    // Soft ambient glow
     const pulse = 0.5 + 0.5 * Math.sin(this.time * 1.2);
-    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 1.1);
-    glow.addColorStop(0, `rgba(150,100,255,${0.06 * pulse})`);
-    glow.addColorStop(0.5, `rgba(0,200,255,${0.02 * pulse})`);
-    glow.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = glow;
-    ctx.fillRect(0, 0, S, S);
 
-    // Project and sort particles
-    const projected = [];
-    for (const p of this.particles) {
-      p.theta += p.speed * this.speedMul;
+    // ── Brain rotation (rotate entire group) ──
+    const rotSpeed = this.state === 'thinking' ? 0.008 : 0.002;
+    if (this.brainGroup) {
+      this.brainGroup.rotation.y += rotSpeed * this.speedMul;
+    }
 
-      // Sphere position
-      let r = p.radius * R;
+    // Brain subtle breathing
+    const breathe = 1 + 0.04 * Math.sin(this.time * 1.5);
+    if (this.brainGroup) {
+      this.brainGroup.scale.setScalar(breathe);
+    }
 
-      // State effects
+    // ── Update holographic shader uniforms ──
+    if (this.holoMaterial) {
+      this.holoMaterial.uniforms.uTime.value = this.time;
+      this.holoMaterial.uniforms.uPulse.value = 0.7 + 0.3 * pulse;
+      this.holoMaterial.uniforms.uScanY.value = (Math.sin(this.time * 0.8) + 1) * 0.5;
+
+      // Color shift by state
       if (this.state === 'speaking') {
-        r *= 1 + 0.1 * Math.sin(t * 5 + p.phase);
-      } else if (this.state === 'listening') {
-        r *= 0.85 + 0.15 * Math.sin(t * 2.5 + p.phase);
+        this.holoMaterial.uniforms.uColor.value.setHex(0x00ffaa);
+        this.holoMaterial.uniforms.uOpacity.value = 1.0;
       } else if (this.state === 'thinking') {
-        p.theta += p.speed * 0.5; // extra rotation
-      }
-
-      const x3d = r * Math.sin(p.phi) * Math.cos(p.theta);
-      const y3d = r * Math.sin(p.phi) * Math.sin(p.theta) + r * p.orbitTilt * Math.sin(t * 0.5);
-      const z3d = r * Math.cos(p.phi);
-
-      // Perspective
-      const perspective = S * 0.9;
-      const scale = perspective / (perspective + z3d);
-      const x2d = cx + x3d * scale;
-      const y2d = cy + y3d * scale;
-      const depth = (z3d + R) / (R * 2);
-
-      // Rainbow color — shifts over time for flowing effect
-      const colorPos = (p.colorIdx + this.time * 0.05) % 1;
-      const [cr, cg, cb] = this.getRainbowColor(colorPos);
-
-      projected.push({ x: x2d, y: y2d, z: z3d, depth, scale, p, cr, cg, cb });
-    }
-
-    projected.sort((a, b) => a.z - b.z);
-
-    // Draw particles
-    for (const { x, y, depth, scale, p, cr, cg, cb } of projected) {
-      const alpha = p.opacity * (0.2 + 0.8 * depth) * (0.85 + 0.15 * Math.sin(this.time * 1.5 + p.phase));
-      const sz = p.size * scale * (0.5 + 0.5 * depth);
-
-      // Main dot
-      ctx.beginPath();
-      ctx.arc(x, y, Math.max(sz, 0.5), 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(${cr},${cg},${cb},${alpha.toFixed(2)})`;
-      ctx.fill();
-
-      // Glow
-      if (sz > 1.5) {
-        ctx.beginPath();
-        ctx.arc(x, y, sz * 2.5, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(${cr},${cg},${cb},${(alpha * 0.1).toFixed(3)})`;
-        ctx.fill();
-      }
-      if (sz > 3.5) {
-        ctx.beginPath();
-        ctx.arc(x, y, sz * 4.5, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(${cr},${cg},${cb},${(alpha * 0.04).toFixed(3)})`;
-        ctx.fill();
+        this.holoMaterial.uniforms.uColor.value.setHex(0x44aaff);
+        this.holoMaterial.uniforms.uOpacity.value = 1.0;
+      } else if (this.state === 'listening') {
+        this.holoMaterial.uniforms.uColor.value.setHex(0x00ffcc);
+        this.holoMaterial.uniforms.uOpacity.value = 0.9;
+      } else {
+        this.holoMaterial.uniforms.uColor.value.setHex(0x00e4ff);
+        this.holoMaterial.uniforms.uOpacity.value = 0.8;
       }
     }
 
-    // Core — white/rainbow glow
-    const coreR = S * 0.025 + S * 0.01 * pulse;
-    const coreColor = this.getRainbowColor((this.time * 0.1) % 1);
-    const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreR);
-    core.addColorStop(0, `rgba(255,255,255,${0.5 * pulse})`);
-    core.addColorStop(0.5, `rgba(${coreColor[0]},${coreColor[1]},${coreColor[2]},${0.25 * pulse})`);
-    core.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = core;
-    ctx.beginPath();
-    ctx.arc(cx, cy, coreR, 0, Math.PI * 2);
-    ctx.fill();
+    // ── Wireframe opacity by state ──
+    if (this.brainWire && this.wireMaterial) {
+      if (this.state === 'speaking') {
+        this.wireMaterial.opacity = 0.18 + 0.08 * pulse;
+        this.wireMaterial.color.setHex(0x00ffaa);
+      } else if (this.state === 'thinking') {
+        this.wireMaterial.opacity = 0.15 + 0.1 * pulse;
+        this.wireMaterial.color.setHex(0x44aaff);
+      } else if (this.state === 'listening') {
+        this.wireMaterial.opacity = 0.1 + 0.05 * pulse;
+        this.wireMaterial.color.setHex(0x00ffcc);
+      } else {
+        this.wireMaterial.opacity = 0.1 + 0.04 * pulse;
+        this.wireMaterial.color.setHex(0x00e4ff);
+      }
+    }
 
+    // ── Glow pulse ──
+    this.brainGlow.material.opacity = 0.03 + 0.04 * pulse;
+    this.brainGlow.scale.setScalar(1.2 + 0.1 * pulse);
+    if (this.brainGlow2) {
+      this.brainGlow2.material.opacity = 0.015 + 0.02 * pulse;
+      this.brainGlow2.scale.setScalar(1.5 + 0.12 * pulse);
+    }
+
+    // ── Scan ring sweeps up and down ──
+    const scanY = Math.sin(this.time * 0.8) * 0.7;
+    this.scanRing.position.y = scanY;
+    this.scanRing.material.opacity = 0.1 + 0.15 * (1 - Math.abs(scanY));
+
+    // ── Lightning bolts (random arcs between brain surface points) ──
+    for (let i = 0; i < this._lightningLines.length; i++) {
+      const line = this._lightningLines[i];
+      if (Math.random() < (this.state === 'thinking' ? 0.15 : 0.03)) {
+        // Create new lightning
+        const t1 = Math.random() * Math.PI * 2, p1 = Math.random() * Math.PI;
+        const t2 = t1 + (Math.random() - 0.5) * 2, p2 = p1 + (Math.random() - 0.5) * 1;
+        const r = 1.55;
+        const start = new THREE.Vector3(Math.sin(p1)*Math.cos(t1)*r, Math.cos(p1)*0.75*r, Math.sin(p1)*Math.sin(t1)*0.85*r);
+        const end = new THREE.Vector3(Math.sin(p2)*Math.cos(t2)*r, Math.cos(p2)*0.75*r, Math.sin(p2)*Math.sin(t2)*0.85*r);
+        const mid = start.clone().add(end).multiplyScalar(0.5).add(new THREE.Vector3((Math.random()-0.5)*0.3, (Math.random()-0.5)*0.2, (Math.random()-0.5)*0.3));
+        const pts = [start, mid, end];
+        line.geometry.setFromPoints(pts);
+        line.material.opacity = 0.5 + Math.random() * 0.5;
+        line.material.color.setHex(Math.random() > 0.5 ? 0x88ddff : 0xffffff);
+        line.visible = true;
+        setTimeout(() => { line.visible = false; }, 80 + Math.random() * 120);
+      }
+    }
+
+    // ── Electric pulses on brain surface ──
+    if (this._pulsePoints) {
+      for (const pp of this._pulsePoints) {
+        const intensity = 0.5 + 0.5 * Math.sin(this.time * pp.userData.speed + pp.userData.phase);
+        pp.material.opacity = intensity * (this.state === 'thinking' ? 1 : 0.5);
+        pp.scale.setScalar(0.5 + intensity * (this.state === 'thinking' ? 1.5 : 0.5));
+      }
+    }
+
+    // ── Particles flowing upward ──
+    for (const p of this._particles) {
+      const ud = p.userData;
+      const speed = ud.speed * this.speedMul * (this.state === 'listening' ? 2 : 1);
+      p.position.y += speed * (this.state === 'speaking' ? -1 : 1);
+
+      // Drift sideways
+      p.position.x = ud.baseX + Math.sin(this.time * 0.5 + ud.phase) * ud.drift;
+      p.position.z = ud.baseZ + Math.cos(this.time * 0.3 + ud.phase) * ud.drift * 0.5;
+
+      // Wrap around
+      if (p.position.y > 2) { p.position.y = -8; }
+      if (p.position.y < -9) { p.position.y = 2; }
+
+      // Fade based on distance from brain
+      const distY = Math.abs(p.position.y);
+      p.material.opacity = Math.max(0.05, 0.6 - distY * 0.15) * (0.5 + 0.5 * Math.sin(this.time * 2 + ud.phase));
+    }
+
+    // ── Tree nodes pulse ──
+    for (let i = 0; i < this._treeNodes.length; i++) {
+      const n = this._treeNodes[i];
+      const nodePulse = 0.7 + 0.3 * Math.sin(this.time * 1.5 + i * 0.5);
+      n.material.opacity = nodePulse * (this.state === 'thinking' ? 1 : 0.6);
+
+      if (this.state === 'thinking') {
+        const cascade = 0.5 + 0.5 * Math.sin(this.time * 4 - i * 0.3);
+        n.scale.setScalar(0.5 + cascade * 0.8);
+      } else {
+        n.scale.setScalar(0.5 + nodePulse * 0.3);
+      }
+    }
+
+    // ── Glitch effect (occasional) ──
+    if (this.brainGroup && Math.random() < 0.01) {
+      this.brainGroup.position.x = (Math.random() - 0.5) * 0.05;
+      const bg = this.brainGroup;
+      setTimeout(() => { bg.position.x = 0; }, 50);
+    }
+
+    // ── Camera subtle sway ──
+    this.camera.position.x = Math.sin(this.time * 0.12) * 0.2;
+    this.camera.position.y = Math.sin(this.time * 0.08) * 0.15;
+    this.camera.lookAt(0, -1.5, 0);
+
+    this.renderer.render(this.scene, this.camera);
     requestAnimationFrame(this.animate);
   }
 }
 
-// Initialize particle orb (after layout settles)
+// Initialize Neural Tree (after layout settles)
 let particleOrb = null;
 requestAnimationFrame(() => {
-  const particleCanvas = document.getElementById('particle-orb');
-  if (particleCanvas) {
-    particleOrb = new ParticleOrb(particleCanvas);
+  const canvas = document.getElementById('particle-orb');
+  if (canvas) {
+    particleOrb = new NeuralTree(canvas);
     window.particleOrb = particleOrb;
   }
 });
@@ -1854,15 +2192,41 @@ initRealtimeBtn();
   // ── Weather Widget ──
   async function loadWeather() {
     try {
-      // Tenta detectar localizacao via IP (gratis)
-      let city = 'São Paulo';
+      // Detectar cidade: GPS (mais preciso) → múltiplos serviços IP → fallback
+      let city = 'Presidente Prudente';
+
+      // Método 1: GPS do browser (mais preciso)
       try {
-        const geoRes = await fetch('https://ipapi.co/json/', { timeout: 5000 });
-        if (geoRes.ok) {
-          const geo = await geoRes.json();
-          if (geo.city) city = geo.city;
+        const pos = await new Promise((resolve, reject) => {
+          if (!navigator.geolocation) reject('no geo');
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000, maximumAge: 300000 });
+        });
+        const lat = pos.coords.latitude, lon = pos.coords.longitude;
+        // Reverse geocode via wttr.in
+        const geoR = await fetch(`https://wttr.in/${lat},${lon}?format=j1`);
+        if (geoR.ok) {
+          const geoD = await geoR.json();
+          const area = geoD.nearest_area?.[0];
+          if (area) city = area.areaName?.[0]?.value || area.region?.[0]?.value || city;
         }
-      } catch {}
+      } catch {
+        // Método 2: IP geolocation (fallback)
+        try {
+          const geoRes = await fetch('https://ipapi.co/json/');
+          if (geoRes.ok) {
+            const geo = await geoRes.json();
+            if (geo.city) city = geo.city;
+          }
+        } catch {
+          try {
+            const geoRes2 = await fetch('https://ip-api.com/json/?fields=city');
+            if (geoRes2.ok) {
+              const geo2 = await geoRes2.json();
+              if (geo2.city) city = geo2.city;
+            }
+          } catch {}
+        }
+      }
 
       // Primeiro tenta endpoint local (se JARVIS server tiver)
       let data = null;
@@ -2029,16 +2393,21 @@ initRealtimeBtn();
   // ── System Stats (CPU/GPU temperature + usage) ──
   async function updateSystemStats() {
     try {
-      const r = await fetch('/api/system-stats', { signal: AbortSignal.timeout(3000) });
+      const r = await fetch('/api/system-stats', { signal: AbortSignal.timeout(5000) });
       if (!r.ok) return;
       const s = await r.json();
 
+      // ── CPU ──
       const cpuTempEl = document.getElementById('cpu-temp');
       const cpuUsageEl = document.getElementById('cpu-usage');
       const cpuCoresEl = document.getElementById('cpu-cores');
-      const gpuTempEl = document.getElementById('gpu-temp');
-      const gpuStatusEl = document.getElementById('gpu-status');
+      const cpuLabel = document.querySelector('#widget-cpu .widget-label');
 
+      // CPU name (ex: "AMD Ryzen 5 7600X")
+      if (cpuLabel && s.cpu?.name) {
+        const shortName = s.cpu.name.replace(/\(R\)|\(TM\)|CPU|Processor|@.*$/gi, '').trim();
+        cpuLabel.textContent = shortName.length > 25 ? shortName.substring(0, 25) : shortName;
+      }
       if (cpuTempEl) {
         if (s.cpu?.temp !== null && s.cpu?.temp !== undefined) {
           cpuTempEl.textContent = `${s.cpu.temp}°C`;
@@ -2050,21 +2419,41 @@ initRealtimeBtn();
       if (cpuUsageEl) cpuUsageEl.textContent = s.cpu?.usage !== null ? `${s.cpu.usage}%` : '--%';
       if (cpuCoresEl) cpuCoresEl.textContent = `${s.cpu?.cores || '--'} cores`;
 
+      // ── GPU (sem duplicata — só dedicada) ──
+      const gpuTempEl = document.getElementById('gpu-temp');
+      const gpuStatusEl = document.getElementById('gpu-status');
+      const gpuLabel = document.querySelector('#widget-gpu .widget-label');
+
+      if (gpuLabel && s.gpu?.name) {
+        gpuLabel.textContent = s.gpu.name;
+      }
       if (gpuTempEl) {
         if (s.gpu?.temp !== null && s.gpu?.temp !== undefined) {
           gpuTempEl.textContent = `${s.gpu.temp}°C`;
           gpuTempEl.style.color = s.gpu.temp > 80 ? '#ff4455' : s.gpu.temp > 65 ? '#ffaa00' : 'var(--cyan)';
-          if (gpuStatusEl) gpuStatusEl.textContent = s.gpu.name || 'active';
         } else {
-          gpuTempEl.textContent = s.gpu?.name ? '—' : 'N/A';
-          if (gpuStatusEl) gpuStatusEl.textContent = s.gpu?.name || 'no GPU';
+          gpuTempEl.textContent = '—';
         }
       }
-      // Update GPU label with detected name
-      const gpuLabel = document.querySelector('#widget-gpu .widget-label');
-      if (gpuLabel && s.gpu?.name) {
-        gpuLabel.textContent = s.gpu.name.length > 20 ? s.gpu.name.substring(0, 20) : s.gpu.name;
+      if (gpuStatusEl) {
+        let gpuInfo = [];
+        if (s.gpu?.vram) gpuInfo.push(s.gpu.vram + 'GB');
+        if (s.gpu?.usage !== null && s.gpu?.usage !== undefined) gpuInfo.push(s.gpu.usage + '%');
+        gpuStatusEl.textContent = gpuInfo.length ? gpuInfo.join(' · ') : (s.gpu?.name ? 'dedicada' : 'N/A');
       }
+
+      // ── RAM (com tipo DDR e total) ──
+      const ramVal = document.getElementById('ram-value');
+      const ramDetail = document.getElementById('ram-detail');
+      if (ramVal && s.ram) ramVal.textContent = `${s.ram.usage}%`;
+      if (ramDetail && s.ram) {
+        const ramType = s.ram.type || '';
+        ramDetail.textContent = `${s.ram.total}GB ${ramType}`.trim();
+      }
+
+      // ── Server status (marcar OK online) ──
+      const serverLabel = document.querySelector('#widget-health .widget-label');
+      if (serverLabel) serverLabel.textContent = 'SERVER · ONLINE';
     } catch {}
   }
 
@@ -2088,16 +2477,19 @@ initRealtimeBtn();
   const overlay = document.getElementById('preflight-overlay');
   if (!overlay) return;
 
-  // Se em 3s nao tiver /api/health-check-full, pula o preflight
-  setTimeout(async () => {
-    try {
-      const r = await fetch('/api/health-check-full', { signal: AbortSignal.timeout(2000) });
-      if (!r.ok) throw new Error('not ok');
-    } catch {
-      console.log('[JARVIS] Server offline — pulando preflight');
+  // Auto-fechar preflight depois de 5s independente do resultado
+  setTimeout(() => {
+    if (overlay.style.display !== 'none') {
+      console.log('[JARVIS] Preflight timeout — fechando modal');
       overlay.style.display = 'none';
     }
-  }, 3000);
+  }, 5000);
+
+  // Também fecha se clicar em qualquer botão do preflight
+  const okBtn = document.getElementById('preflight-ok');
+  const retryBtn = document.getElementById('preflight-retry');
+  if (okBtn) okBtn.addEventListener('click', () => { overlay.style.display = 'none'; });
+  if (retryBtn) retryBtn.addEventListener('click', () => { location.reload(); });
 })();
 
 
@@ -2414,17 +2806,38 @@ initRealtimeBtn();
   }
 
   // ── RAM metric ──
-  async function updateRAM() {
-    var el = document.getElementById('metric-ram');
-    if (!el) return;
-    try {
-      var r = await fetch('/api/system-stats');
-      if (r.ok) {
-        var d = await r.json();
-        if (d.ram) el.textContent = d.ram.usage + '%';
+  // RAM atualizado via updateSystemStats() — removida funcao duplicada
+})();
+
+
+// ═══ CLAUDE ACTIVITY TRACKER ═══
+(function() {
+  var actEl = document.getElementById("metric-activity");
+  if (!actEl) return;
+
+  window.felipeHUD = window.felipeHUD || {};
+  window.felipeHUD.setActivity = function(text, isActive) {
+    actEl.textContent = text || "idle";
+    if (isActive) actEl.classList.add("active");
+    else actEl.classList.remove("active");
+  };
+
+  // Listen for terminal output to detect Claude activity
+  var origAddTerminal = window.addTerminalLine;
+  if (typeof origAddTerminal === "function") {
+    window.addTerminalLine = function(msg, cls) {
+      origAddTerminal(msg, cls);
+      if (!msg) return;
+      var m = String(msg).toLowerCase();
+      if (m.includes("[build-start]") || m.includes("creating") || m.includes("generating")) {
+        window.felipeHUD.setActivity("criando...", true);
+      } else if (m.includes("[file]")) {
+        var fname = msg.match(/\[file\]\s*(.+?)\s*\|/);
+        window.felipeHUD.setActivity(fname ? fname[1] : "arquivo criado", true);
+      } else if (m.includes("[system] done") || m.includes("concluido") || m.includes("pronto")) {
+        window.felipeHUD.setActivity("concluido", false);
+        setTimeout(function() { window.felipeHUD.setActivity("idle", false); }, 5000);
       }
-    } catch(e) {}
+    };
   }
-  updateRAM();
-  setInterval(updateRAM, 10000);
 })();
