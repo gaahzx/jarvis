@@ -5,7 +5,6 @@ color 0B
 title   J A R V I S   -   Instalador v8.0
 
 set "INSTALL_DIR=%USERPROFILE%\Desktop\Jarvis"
-set "ERRORS=0"
 set "REPO_URL=https://github.com/gaahzx/jarvis.git"
 
 cls
@@ -37,7 +36,23 @@ powershell -NoProfile -Command "Set-ExecutionPolicy -ExecutionPolicy RemoteSigne
 echo       ^> PowerShell configurado. OK.
 
 :: ============================================================
-:: PRE-CHECK: ADMINISTRADOR (necessario pra instalar Node/Python/Git)
+:: PRE-CHECK: WINGET
+:: ============================================================
+where winget >nul 2>&1
+if errorlevel 1 (
+    color 0C
+    echo.
+    echo       [ERRO] winget nao encontrado.
+    echo       Instale "App Installer" da Microsoft Store ou atualize o Windows.
+    echo       Link: https://aka.ms/getwinget
+    echo.
+    pause
+    exit /b 1
+)
+echo       ^> winget detectado. OK.
+
+:: ============================================================
+:: PRE-CHECK: ADMINISTRADOR
 :: ============================================================
 set "IS_ADMIN=0"
 net session >nul 2>&1
@@ -49,7 +64,7 @@ if "!IS_ADMIN!"=="0" (
     echo       Precisamos de permissao de Administrador para instalar
     echo       Node.js, Python e Git. Elevando...
     echo.
-    powershell -NoProfile -Command "Start-Process cmd.exe -ArgumentList '/c \"%~f0\"' -Verb RunAs" >nul 2>&1
+    powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs" >nul 2>&1
     if not errorlevel 1 (
         echo       Janela de admin aberta. Esta pode ser fechada.
         timeout /t 3 /nobreak >nul
@@ -63,7 +78,7 @@ if "!IS_ADMIN!"=="0" (
 )
 
 :: ============================================================
-:: FUNCAO: REFRESH PATH
+:: FUNCAO: REFRESH PATH (unica definicao)
 :: ============================================================
 goto :StartInstall
 
@@ -83,7 +98,7 @@ echo.
 echo   Destino: %INSTALL_DIR%
 echo.
 echo   Este instalador vai configurar TUDO automaticamente:
-echo     - Git, Node.js, Python, Claude CLI, pip packages
+echo     - Git, Node.js, Python, Claude CLI, Obsidian, pip packages
 echo     - Clonar o projeto JARVIS do GitHub
 echo     - Configurar autenticacao Claude + OpenAI
 echo     - Validar todas as dependencias
@@ -106,7 +121,6 @@ if not errorlevel 1 (
 echo         Baixando e instalando via winget...
 winget install Git.Git -e --silent --accept-package-agreements --accept-source-agreements 2>nul
 call :RefreshPath
-:: Espera Git aparecer (ate 60s)
 set "GIT_WAIT=0"
 :WaitGit1
 where git >nul 2>&1
@@ -130,7 +144,8 @@ exit /b 1
 for /f "tokens=*" %%g in ('where git 2^>nul') do set "GIT_EXE=%%g"
 if defined GIT_EXE (
     for %%i in ("!GIT_EXE!") do set "GIT_DIR=%%~dpi"
-    set "BASH_PATH=!GIT_DIR:~0,-4!bin\bash.exe"
+    set "BASH_CANDIDATE=!GIT_DIR!..\bin\bash.exe"
+    for %%i in ("!BASH_CANDIDATE!") do set "BASH_PATH=%%~fi"
     if exist "!BASH_PATH!" (
         setx CLAUDE_CODE_GIT_BASH_PATH "!BASH_PATH!" >nul 2>&1
         set "CLAUDE_CODE_GIT_BASH_PATH=!BASH_PATH!"
@@ -183,7 +198,6 @@ echo.
 del "%LOCALAPPDATA%\Microsoft\WindowsApps\python.exe" >nul 2>&1
 del "%LOCALAPPDATA%\Microsoft\WindowsApps\python3.exe" >nul 2>&1
 
-:: Verificar Python existente
 set "PYTHON_CMD="
 for %%p in ("C:\Program Files\Python312\python.exe" "C:\Program Files\Python311\python.exe" "C:\Program Files\Python310\python.exe") do (
     if exist %%p (
@@ -263,7 +277,7 @@ if not errorlevel 1 (
 
 :: Estrategia 2: npm global
 echo         Native falhou. Instalando via npm...
-call npm install -g @anthropic-ai/claude-code 2>&1 | findstr /V "npm warn"
+call npm install -g @anthropic-ai/claude-code 2>&1
 call :RefreshPath
 where claude >nul 2>&1
 if not errorlevel 1 (
@@ -307,7 +321,7 @@ echo   [5/8] Autenticacao Claude Code...
 echo.
 
 :: Verificar se ja autenticado
-claude auth status 2>nul | findstr /C:"loggedIn" | findstr /C:"true" >nul 2>&1
+claude auth status >nul 2>&1
 if not errorlevel 1 (
     echo         [OK] Claude Code ja autenticado
     goto :ClaudeAuthDone
@@ -340,13 +354,13 @@ echo     Pressione qualquer tecla quando estiver pronto...
 pause >nul
 color 0B
 
-start /wait "Claude Login - JARVIS" cmd /c "cd /d "%USERPROFILE%" && claude && pause"
+start /wait "Claude Login - JARVIS" cmd /c "claude auth login && echo. && echo Login concluido! Pode fechar esta janela. && pause"
 
 echo.
 echo         Verificando autenticacao...
 timeout /t 3 /nobreak >nul
 
-claude auth status 2>nul | findstr /C:"loggedIn" | findstr /C:"true" >nul 2>&1
+claude auth status >nul 2>&1
 if not errorlevel 1 (
     echo         [OK] Claude Code autenticado!
     goto :ClaudeAuthDone
@@ -358,10 +372,10 @@ echo         Login nao detectado. Vamos tentar novamente.
 echo         Pressione qualquer tecla...
 pause >nul
 color 0B
-start /wait "Claude Login (Tentativa 2)" cmd /c "cd /d "%USERPROFILE%" && claude && pause"
+start /wait "Claude Login (Tentativa 2)" cmd /c "claude auth login && echo. && echo Login concluido! && pause"
 timeout /t 3 /nobreak >nul
 
-claude auth status 2>nul | findstr /C:"loggedIn" | findstr /C:"true" >nul 2>&1
+claude auth status >nul 2>&1
 if errorlevel 1 (
     color 0C
     echo         [ERRO] Autenticacao Claude nao completada.
@@ -399,12 +413,9 @@ echo.
 echo   [5.5/8] Instalando Obsidian (cerebro do JARVIS)...
 echo.
 
-:: Verificar se Obsidian ja esta instalado
 set "OBS_INSTALLED=0"
 if exist "%LOCALAPPDATA%\Obsidian\Obsidian.exe" set "OBS_INSTALLED=1"
 if exist "C:\Program Files\Obsidian\Obsidian.exe" set "OBS_INSTALLED=1"
-where obsidian >nul 2>&1
-if not errorlevel 1 set "OBS_INSTALLED=1"
 
 if "!OBS_INSTALLED!"=="1" (
     echo         [OK] Obsidian ja instalado
@@ -418,36 +429,9 @@ if "!OBS_INSTALLED!"=="1" (
         color 0E
         echo         [AVISO] Obsidian nao instalou via winget.
         echo         Instale manualmente: https://obsidian.md/download
-        echo         O JARVIS funciona sem Obsidian, mas perde o cerebro permanente.
         color 0B
     )
 )
-
-:: Criar vault do JARVIS copiando template do repo (55 notas, zero dados pessoais)
-set "VAULT_DIR=%USERPROFILE%\Documents\Felipe"
-if not exist "!VAULT_DIR!\JARVIS-Personalidade.md" (
-    echo         Criando vault JARVIS (55 notas de conhecimento)...
-    if exist "%INSTALL_DIR%\obsidian-template" (
-        robocopy "%INSTALL_DIR%\obsidian-template" "!VAULT_DIR!" /E /NFL /NDL /NJH /NJS /nc /ns /np >nul 2>&1
-        echo         [OK] Vault JARVIS criado com 55 notas em !VAULT_DIR!
-    ) else (
-        mkdir "!VAULT_DIR!" 2>nul
-        mkdir "!VAULT_DIR!\Tecnologias" 2>nul
-        mkdir "!VAULT_DIR!\Agentes" 2>nul
-        powershell -NoProfile -Command "Set-Content -Path '!VAULT_DIR!\JARVIS-Personalidade.md' -Value '# JARVIS - Cerebro Ativo' -NoNewline" 2>nul
-        echo         [OK] Vault JARVIS basico criado (template nao encontrado)
-    )
-) else (
-    echo         [OK] Vault JARVIS ja existe em !VAULT_DIR!
-)
-
-:: Configurar Obsidian pra abrir este vault automaticamente
-set "OBS_CONFIG=%APPDATA%\obsidian"
-if not exist "!OBS_CONFIG!" mkdir "!OBS_CONFIG!" 2>nul
-:: Converter backslashes pra JSON
-set "VAULT_JSON=!VAULT_DIR:\=\\!"
-powershell -NoProfile -Command "$vaultPath = '!VAULT_DIR!'; $vaultHash = [System.BitConverter]::ToString([System.Security.Cryptography.MD5]::Create().ComputeHash([System.Text.Encoding]::UTF8.GetBytes($vaultPath))).Replace('-','').ToLower().Substring(0,16); $obsFile = '%APPDATA%\obsidian\obsidian.json'; $obj = @{}; if(Test-Path $obsFile){try{$obj = Get-Content $obsFile -Raw | ConvertFrom-Json}catch{$obj = @{}}}; if(-not $obj.vaults){$obj | Add-Member -NotePropertyName 'vaults' -NotePropertyValue @{} -Force}; $vault = @{path=$vaultPath;ts=[long](Get-Date -UFormat '%%s'+'000')}; $obj.vaults | Add-Member -NotePropertyName $vaultHash -NotePropertyValue $vault -Force; $obj | ConvertTo-Json -Depth 5 | Set-Content $obsFile -NoNewline" 2>nul
-echo         [OK] Obsidian vinculado ao vault JARVIS automaticamente
 
 :: ============================================================
 :: STEP 6/8 - CLONAR PROJETO JARVIS DO GITHUB
@@ -464,8 +448,13 @@ if exist "%INSTALL_DIR%\server.js" (
     goto :ProjectReady
 )
 
+if exist "%INSTALL_DIR%" (
+    echo         Diretorio existe mas incompleto. Limpando...
+    rmdir /S /Q "%INSTALL_DIR%" 2>nul
+)
+
 echo         Clonando repositorio...
-git clone %REPO_URL% "%INSTALL_DIR%" 2>&1
+git clone "%REPO_URL%" "%INSTALL_DIR%" 2>&1
 if not exist "%INSTALL_DIR%\server.js" (
     color 0C
     echo         [ERRO] Clone falhou. Verifique conexao com internet.
@@ -487,6 +476,30 @@ if not exist "%INSTALL_DIR%\.claude\settings.json" (
     powershell -NoProfile -Command "Set-Content -Path '%INSTALL_DIR%\.claude\settings.json' -Value '{\"permissions\":{\"defaultMode\":\"bypassPermissions\"},\"skipDangerousModePermissionPrompt\":true}' -NoNewline"
 )
 
+:: Criar vault Obsidian copiando template do repo (55 notas)
+set "VAULT_DIR=%USERPROFILE%\Documents\Felipe"
+if not exist "!VAULT_DIR!\JARVIS-Personalidade.md" (
+    echo         Criando vault JARVIS (55 notas de conhecimento)...
+    if exist "%INSTALL_DIR%\obsidian-template" (
+        robocopy "%INSTALL_DIR%\obsidian-template" "!VAULT_DIR!" /E /NFL /NDL /NJH /NJS /nc /ns /np >nul 2>&1
+        echo         [OK] Vault JARVIS criado com 55 notas
+    ) else (
+        mkdir "!VAULT_DIR!" 2>nul
+        mkdir "!VAULT_DIR!\Agentes" 2>nul
+        mkdir "!VAULT_DIR!\Tecnologias" 2>nul
+        powershell -NoProfile -Command "Set-Content -Path '!VAULT_DIR!\JARVIS-Personalidade.md' -Value '# JARVIS - Cerebro Ativo' -NoNewline" 2>nul
+        echo         [OK] Vault JARVIS basico criado
+    )
+) else (
+    echo         [OK] Vault JARVIS ja existe
+)
+
+:: Vincular Obsidian ao vault automaticamente
+set "OBS_CONFIG=%APPDATA%\obsidian"
+if not exist "!OBS_CONFIG!" mkdir "!OBS_CONFIG!" 2>nul
+powershell -NoProfile -Command "$vp='!VAULT_DIR!'; $h=[System.BitConverter]::ToString([System.Security.Cryptography.MD5]::Create().ComputeHash([System.Text.Encoding]::UTF8.GetBytes($vp))).Replace('-','').ToLower().Substring(0,16); $f='%APPDATA%\obsidian\obsidian.json'; $o=@{}; if(Test-Path $f){try{$o=Get-Content $f -Raw|ConvertFrom-Json}catch{$o=@{}}}; if(-not $o.vaults){$o|Add-Member -NotePropertyName 'vaults' -NotePropertyValue @{} -Force}; $v=@{path=$vp;ts=[long]([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())}; $o.vaults|Add-Member -NotePropertyName $h -NotePropertyValue $v -Force; $o|ConvertTo-Json -Depth 5|Set-Content $f -NoNewline" 2>nul
+echo         [OK] Obsidian vinculado ao vault JARVIS
+
 :: ============================================================
 :: STEP 7/8 - NPM INSTALL + CHAVE OPENAI + .ENV
 :: ============================================================
@@ -496,13 +509,7 @@ echo.
 
 cd /d "%INSTALL_DIR%"
 echo         npm install (pode levar 2-5 minutos)...
-call npm install --production 2>&1 | findstr /V "npm warn"
-if errorlevel 1 (
-    color 0E
-    echo         [AVISO] npm install teve warnings. Tentando novamente...
-    call npm install --production 2>nul
-    color 0B
-)
+call npm install --production 2>&1
 echo         [OK] node_modules instalados
 
 :: Chave OpenAI
@@ -531,10 +538,11 @@ if "!OPENAI_KEY!"=="" (
     set "OPENAI_KEY=COLE_SUA_CHAVE_AQUI"
 )
 
-:: Criar .env
-powershell -NoProfile -Command "Set-Content -Path '%INSTALL_DIR%\.env' -Value 'OPENAI_API_KEY=!OPENAI_KEY!`nPORT=3000' -NoNewline"
+:: Criar .env (usando echo pra evitar problemas de encoding)
+(echo OPENAI_API_KEY=!OPENAI_KEY!)>"%INSTALL_DIR%\.env"
+(echo PORT=3000)>>"%INSTALL_DIR%\.env"
 if defined CLAUDE_EXE (
-    powershell -NoProfile -Command "Add-Content -Path '%INSTALL_DIR%\.env' -Value \"`nCLAUDE_CLI_PATH=!CLAUDE_EXE!\"" 2>nul
+    (echo CLAUDE_CLI_PATH=!CLAUDE_EXE!)>>"%INSTALL_DIR%\.env"
 )
 echo         [OK] .env configurado
 
@@ -642,7 +650,7 @@ if not errorlevel 1 (
 )
 
 :: --- CHECK 6: Claude Autenticado ---
-claude auth status 2>nul | findstr /C:"loggedIn" | findstr /C:"true" >nul 2>&1
+claude auth status >nul 2>&1
 if not errorlevel 1 (
     echo     [OK] Claude Code autenticado
     set /a PASS+=1
@@ -650,7 +658,7 @@ if not errorlevel 1 (
     echo     [X]  Claude NAO autenticado — abrindo login...
     set /a FAIL+=1
     set "REPAIR_NEEDED=1"
-    start /wait "Claude Login - JARVIS" cmd /c "cd /d "%USERPROFILE%" && claude && pause"
+    start /wait "Claude Login - JARVIS" cmd /c "claude auth login && pause"
     timeout /t 3 /nobreak >nul
 )
 
@@ -662,7 +670,8 @@ if exist "%INSTALL_DIR%\server.js" (
     echo     [X]  server.js NAO encontrado — reclonando...
     set /a FAIL+=1
     set "REPAIR_NEEDED=1"
-    git clone %REPO_URL% "%INSTALL_DIR%" 2>nul
+    rmdir /S /Q "%INSTALL_DIR%" 2>nul
+    git clone "%REPO_URL%" "%INSTALL_DIR%" 2>nul
 )
 
 :: --- CHECK 8: node_modules ---
@@ -685,7 +694,8 @@ if exist "%INSTALL_DIR%\.env" (
     echo     [X]  .env NAO encontrado — recriando...
     set /a FAIL+=1
     set "REPAIR_NEEDED=1"
-    powershell -NoProfile -Command "Set-Content -Path '%INSTALL_DIR%\.env' -Value 'OPENAI_API_KEY=COLE_SUA_CHAVE_AQUI`nPORT=3000' -NoNewline"
+    (echo OPENAI_API_KEY=COLE_SUA_CHAVE_AQUI)>"%INSTALL_DIR%\.env"
+    (echo PORT=3000)>>"%INSTALL_DIR%\.env"
 )
 
 :: --- CHECK 10: Obsidian ---
@@ -703,17 +713,19 @@ if "!OBS_OK!"=="1" (
 )
 
 :: --- CHECK 11: Vault Obsidian ---
-if exist "%USERPROFILE%\Documents\Felipe\JARVIS-Welcome.md" (
+if exist "%USERPROFILE%\Documents\Felipe\JARVIS-Personalidade.md" (
     echo     [OK] Vault JARVIS configurado
     set /a PASS+=1
 ) else (
     echo     [X]  Vault JARVIS nao encontrado — recriando...
     set /a FAIL+=1
     set "REPAIR_NEEDED=1"
-    mkdir "%USERPROFILE%\Documents\Felipe" 2>nul
-    mkdir "%USERPROFILE%\Documents\Felipe\Tecnologias" 2>nul
-    mkdir "%USERPROFILE%\Documents\Felipe\Projetos" 2>nul
-    powershell -NoProfile -Command "Set-Content -Path '%USERPROFILE%\Documents\Felipe\JARVIS-Welcome.md' -Value '# Cerebro JARVIS - Vault Ativo' -NoNewline" 2>nul
+    if exist "%INSTALL_DIR%\obsidian-template" (
+        robocopy "%INSTALL_DIR%\obsidian-template" "%USERPROFILE%\Documents\Felipe" /E /NFL /NDL /NJH /NJS /nc /ns /np >nul 2>&1
+    ) else (
+        mkdir "%USERPROFILE%\Documents\Felipe" 2>nul
+        powershell -NoProfile -Command "Set-Content -Path '%USERPROFILE%\Documents\Felipe\JARVIS-Personalidade.md' -Value '# JARVIS - Cerebro Ativo' -NoNewline" 2>nul
+    )
 )
 
 :: --- RESULTADO ---
@@ -738,6 +750,11 @@ if !PASS! EQU !TOTAL! (
         echo     Verifique sua conexao com internet e tente rodar o instalador novamente.
         echo.
         echo  ============================================================================
+        if !PASS! LSS 7 (
+            echo     Instalacao criticamente incompleta. Corrija os erros acima e rode novamente.
+            pause
+            exit /b 1
+        )
         goto :VerifyPassed
     )
     if "!REPAIR_NEEDED!"=="1" (
@@ -759,11 +776,6 @@ echo   Criando atalhos...
 powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%USERPROFILE%\Desktop\Ligar JARVIS.lnk'); $s.TargetPath = '%INSTALL_DIR%\Ligar JARVIS.bat'; $s.WorkingDirectory = '%INSTALL_DIR%'; $s.Description = 'Iniciar JARVIS'; $s.Save()" 2>nul
 echo     [OK] Atalho "Ligar JARVIS" criado no Desktop
 
-:: Configurar Claude settings
-set "CLAUDE_GLOBAL=%USERPROFILE%\.claude"
-if not exist "!CLAUDE_GLOBAL!" mkdir "!CLAUDE_GLOBAL!" 2>nul
-powershell -NoProfile -Command "Set-Content -Path '%USERPROFILE%\.claude\settings.json' -Value '{\"permissions\":{\"defaultMode\":\"bypassPermissions\"},\"autoUpdatesChannel\":\"latest\",\"skipDangerousModePermissionPrompt\":true}' -NoNewline" 2>nul
-
 :: ============================================================
 :: INICIAR JARVIS
 :: ============================================================
@@ -780,7 +792,7 @@ echo         Iniciando JARVIS automaticamente...
 echo.
 cd /d "%INSTALL_DIR%"
 start "" cmd /k "title JARVIS Server && node server.js"
-timeout /t 5 /nobreak >nul
+timeout /t 8 /nobreak >nul
 start "" "http://localhost:3000"
 
 echo.
@@ -789,12 +801,3 @@ echo         Pode fechar esta janela.
 echo.
 pause
 exit /b 0
-
-:: ============================================================
-:: FUNCAO: REFRESH PATH
-:: ============================================================
-:RefreshPath
-for /f "tokens=2*" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH 2^>nul') do set "SYS_PATH=%%b"
-for /f "tokens=2*" %%a in ('reg query "HKCU\Environment" /v PATH 2^>nul') do set "USR_PATH=%%b"
-set "PATH=!SYS_PATH!;!USR_PATH!;%USERPROFILE%\.local\bin;%USERPROFILE%\AppData\Local\Programs\claude-code;%USERPROFILE%\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1-full_build\bin"
-goto :eof
