@@ -64,9 +64,11 @@ if "!IS_ADMIN!"=="0" (
     echo       Precisamos de permissao de Administrador para instalar
     echo       Node.js, Python e Git. Elevando...
     echo.
+    echo       Uma nova janela de administrador sera aberta.
+    echo       SIGA A INSTALACAO NA NOVA JANELA.
+    echo.
     powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs" >nul 2>&1
     if not errorlevel 1 (
-        echo       Janela de admin aberta. Esta pode ser fechada.
         timeout /t 3 /nobreak >nul
         exit /b 0
     )
@@ -119,7 +121,7 @@ if not errorlevel 1 (
     goto :GitInstalled
 )
 echo         Baixando e instalando via winget...
-winget install Git.Git -e --silent --accept-package-agreements --accept-source-agreements 2>nul
+winget install Git.Git -e --silent --disable-interactivity --accept-package-agreements --accept-source-agreements 2>nul
 call :RefreshPath
 set "GIT_WAIT=0"
 :WaitGit1
@@ -165,7 +167,7 @@ if not errorlevel 1 (
     goto :NodeInstalled
 )
 echo         Baixando e instalando via winget...
-winget install OpenJS.NodeJS.LTS -e --silent --accept-package-agreements --accept-source-agreements 2>nul
+winget install OpenJS.NodeJS.LTS -e --silent --disable-interactivity --accept-package-agreements --accept-source-agreements 2>nul
 call :RefreshPath
 set "NODE_WAIT=0"
 :WaitNode1
@@ -217,7 +219,7 @@ if not errorlevel 1 (
 )
 
 echo         Baixando e instalando via winget...
-winget install Python.Python.3.12 -e --silent --accept-package-agreements --accept-source-agreements --override "/quiet InstallAllUsers=1 PrependPath=1" 2>nul
+winget install Python.Python.3.12 -e --silent --disable-interactivity --accept-package-agreements --accept-source-agreements --override "/quiet InstallAllUsers=1 PrependPath=1" 2>nul
 call :RefreshPath
 timeout /t 5 /nobreak >nul
 for %%p in ("C:\Program Files\Python312\python.exe" "C:\Program Files\Python311\python.exe") do (
@@ -238,8 +240,8 @@ for /f "tokens=*" %%v in ('"!PYTHON_CMD!" --version 2^>nul') do echo         [OK
 
 :: Pip packages
 echo         Instalando pacotes Python...
-"!PYTHON_CMD!" -m pip install --upgrade pip --disable-pip-version-check -q 2>nul
-"!PYTHON_CMD!" -m pip install pyautogui mss Pillow openpyxl psutil wmi pywin32 --disable-pip-version-check --no-warn-script-location -q 2>nul
+"!PYTHON_CMD!" -m pip install --upgrade pip --disable-pip-version-check -q --timeout 30 2>nul
+"!PYTHON_CMD!" -m pip install pyautogui mss Pillow openpyxl psutil wmi pywin32 --disable-pip-version-check --no-warn-script-location -q --timeout 30 2>nul
 "!PYTHON_CMD!" -c "import pyautogui, mss, psutil, openpyxl" >nul 2>&1
 if errorlevel 1 (
     color 0C
@@ -266,7 +268,7 @@ if not errorlevel 1 (
 
 :: Estrategia 1: instalador oficial nativo
 echo         Baixando instalador oficial...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try { irm https://claude.ai/install.ps1 | iex } catch { exit 1 }" 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; try { $r=Invoke-WebRequest 'https://claude.ai/install.ps1' -UseBasicParsing -TimeoutSec 30; Invoke-Expression $r.Content } catch { exit 1 }" 2>&1
 call :RefreshPath
 set "PATH=%USERPROFILE%\.local\bin;%USERPROFILE%\AppData\Local\Programs\claude-code;!PATH!"
 where claude >nul 2>&1
@@ -277,7 +279,7 @@ if not errorlevel 1 (
 
 :: Estrategia 2: npm global
 echo         Native falhou. Instalando via npm...
-call npm install -g @anthropic-ai/claude-code 2>&1
+call npm install -g @anthropic-ai/claude-code 2>nul
 call :RefreshPath
 where claude >nul 2>&1
 if not errorlevel 1 (
@@ -289,7 +291,7 @@ if not errorlevel 1 (
 
 :: Estrategia 3: download direto
 echo         Segunda tentativa via download direto...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$s=(Invoke-WebRequest 'https://claude.ai/install.ps1' -UseBasicParsing).Content; Invoke-Expression $s" 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; $s=(Invoke-WebRequest 'https://claude.ai/install.ps1' -UseBasicParsing -TimeoutSec 30).Content; Invoke-Expression $s" 2>&1
 call :RefreshPath
 set "PATH=%USERPROFILE%\.local\bin;%USERPROFILE%\AppData\Local\Programs\claude-code;!PATH!"
 where claude >nul 2>&1
@@ -342,11 +344,11 @@ echo     1. Na janela que abrir, escolha "Log in with Claude account"
 echo        ^(use as setas do teclado e pressione ENTER^)
 echo     2. Um navegador vai abrir na pagina do Claude.ai
 echo     3. Faca login ou crie uma conta
-echo        ^(Plano Max ou Pro necessario para usar JARVIS^)
+echo        ^(Plano Pro necessario para usar JARVIS^)
 echo     4. Quando aparecer "Login successful", FECHE a janela
 echo.
-echo     IMPORTANTE: Voce precisa de um plano Claude Max ou Pro ativo.
-echo     Crie em: https://claude.ai/settings/billing
+echo     IMPORTANTE: Voce precisa de um plano Claude Pro ativo.
+echo     Assine em: https://claude.ai/settings/billing
 echo.
 echo  ============================================================================
 echo.
@@ -354,37 +356,51 @@ echo     Pressione qualquer tecla quando estiver pronto...
 pause >nul
 color 0B
 
-start /wait "Claude Login - JARVIS" cmd /c "claude auth login && echo. && echo Login concluido! Pode fechar esta janela. && pause"
+:: Abre claude auth login em janela separada (NAO usa start /wait pra nao travar)
+start "Claude Login - JARVIS" cmd /c "claude auth login & echo. & echo Concluido! Esta janela fecha em 60s. & timeout /t 60 /nobreak >nul"
 
-echo.
-echo         Verificando autenticacao...
-timeout /t 3 /nobreak >nul
-
+:: Poll auth status com timeout (max 5 minutos)
+echo         Aguardando autenticacao (maximo 5 minutos)...
+set "AUTH_WAIT=0"
+:WaitAuth1
 claude auth status >nul 2>&1
 if not errorlevel 1 (
     echo         [OK] Claude Code autenticado!
     goto :ClaudeAuthDone
 )
+set /a AUTH_WAIT+=1
+if !AUTH_WAIT! GEQ 150 goto :AuthTimeout1
+timeout /t 2 /nobreak >nul
+goto :WaitAuth1
 
-:: Segunda tentativa
+:AuthTimeout1
 color 0E
 echo         Login nao detectado. Vamos tentar novamente.
 echo         Pressione qualquer tecla...
 pause >nul
 color 0B
-start /wait "Claude Login (Tentativa 2)" cmd /c "claude auth login && echo. && echo Login concluido! && pause"
-timeout /t 3 /nobreak >nul
 
+start "Claude Login (Tentativa 2)" cmd /c "claude auth login & echo. & echo Concluido! & timeout /t 60 /nobreak >nul"
+
+set "AUTH_WAIT=0"
+:WaitAuth2
 claude auth status >nul 2>&1
-if errorlevel 1 (
-    color 0C
-    echo         [ERRO] Autenticacao Claude nao completada.
-    echo         Sem autenticacao, JARVIS nao funciona.
-    echo         Crie conta em: https://claude.ai
-    pause
-    exit /b 1
+if not errorlevel 1 (
+    echo         [OK] Claude Code autenticado!
+    goto :ClaudeAuthDone
 )
-echo         [OK] Claude Code autenticado!
+set /a AUTH_WAIT+=1
+if !AUTH_WAIT! GEQ 150 goto :AuthFailed
+timeout /t 2 /nobreak >nul
+goto :WaitAuth2
+
+:AuthFailed
+color 0C
+echo         [ERRO] Autenticacao Claude nao completada.
+echo         Sem autenticacao, JARVIS nao funciona.
+echo         Crie conta em: https://claude.ai
+pause
+exit /b 1
 
 :ClaudeAuthDone
 
@@ -394,14 +410,14 @@ if not exist "!CLAUDE_GLOBAL!" mkdir "!CLAUDE_GLOBAL!" 2>nul
 powershell -NoProfile -Command "Set-Content -Path '%USERPROFILE%\.claude\settings.json' -Value '{\"permissions\":{\"defaultMode\":\"bypassPermissions\"},\"autoUpdatesChannel\":\"latest\",\"skipDangerousModePermissionPrompt\":true}' -NoNewline" 2>nul
 echo         [OK] Claude settings configurados (bypassPermissions)
 
-:: Testar execucao
+:: Testar execucao (com timeout de 30s)
 echo         Testando Claude task execution...
-claude --print --output-format text --dangerously-skip-permissions -p "say READY" 2>nul | findstr /C:"READY" >nul 2>&1
+powershell -NoProfile -Command "$p=Start-Process claude -ArgumentList '--print','--output-format','text','--dangerously-skip-permissions','-p','say READY' -PassThru -NoNewWindow -RedirectStandardOutput '%TEMP%\jarvis_claude_test.txt' 2>$null; if(-not $p.WaitForExit(30000)){$p.Kill();exit 1}; if((Get-Content '%TEMP%\jarvis_claude_test.txt' -Raw) -match 'READY'){exit 0}else{exit 1}" >nul 2>&1
 if not errorlevel 1 (
     echo         [OK] Claude task execution funcionando!
 ) else (
     color 0E
-    echo         [AVISO] Teste de execucao nao respondeu. Pode ser rede lenta.
+    echo         [AVISO] Teste nao respondeu em 30s. Pode ser rede lenta.
     echo         Sera retestado ao iniciar o JARVIS.
     color 0B
 )
@@ -421,7 +437,7 @@ if "!OBS_INSTALLED!"=="1" (
     echo         [OK] Obsidian ja instalado
 ) else (
     echo         Baixando e instalando Obsidian...
-    winget install Obsidian.Obsidian -e --silent --accept-package-agreements --accept-source-agreements 2>nul
+    winget install Obsidian.Obsidian -e --silent --disable-interactivity --accept-package-agreements --accept-source-agreements 2>nul
     timeout /t 5 /nobreak >nul
     if exist "%LOCALAPPDATA%\Obsidian\Obsidian.exe" (
         echo         [OK] Obsidian instalado
@@ -444,7 +460,7 @@ if exist "%INSTALL_DIR%\server.js" (
     echo         [OK] Projeto JARVIS ja existe em %INSTALL_DIR%
     echo         Atualizando...
     cd /d "%INSTALL_DIR%"
-    git pull 2>nul
+    git pull --ff-only 2>nul || echo         [AVISO] Pull falhou, continuando com versao local...
     goto :ProjectReady
 )
 
@@ -454,7 +470,7 @@ if exist "%INSTALL_DIR%" (
 )
 
 echo         Clonando repositorio...
-git clone "%REPO_URL%" "%INSTALL_DIR%" 2>&1
+git clone --depth 1 "%REPO_URL%" "%INSTALL_DIR%" 2>&1
 if not exist "%INSTALL_DIR%\server.js" (
     color 0C
     echo         [ERRO] Clone falhou. Verifique conexao com internet.
@@ -482,6 +498,7 @@ if not exist "!VAULT_DIR!\JARVIS-Personalidade.md" (
     echo         Criando vault JARVIS (55 notas de conhecimento)...
     if exist "%INSTALL_DIR%\obsidian-template" (
         robocopy "%INSTALL_DIR%\obsidian-template" "!VAULT_DIR!" /E /NFL /NDL /NJH /NJS /nc /ns /np >nul 2>&1
+        cmd /c "exit /b 0"
         echo         [OK] Vault JARVIS criado com 55 notas
     ) else (
         mkdir "!VAULT_DIR!" 2>nul
@@ -509,7 +526,7 @@ echo.
 
 cd /d "%INSTALL_DIR%"
 echo         npm install (pode levar 2-5 minutos)...
-call npm install --production 2>&1
+call npm install --production --no-optional --no-audit 2>&1
 echo         [OK] node_modules instalados
 
 :: Chave OpenAI
@@ -519,7 +536,7 @@ echo               C H A V E   O P E N A I   ( V O Z   D O   J A R V I S )
 echo  ============================================================================
 echo.
 echo     A OpenAI fornece a VOZ em tempo real do JARVIS.
-echo     Voce precisa de uma API Key com billing ativo.
+echo     Voce precisa de uma API Key com no minimo R$25 em creditos.
 echo.
 echo     1. Acesse: https://platform.openai.com/api-keys
 echo     2. Clique em "Create new secret key"
@@ -538,7 +555,7 @@ if "!OPENAI_KEY!"=="" (
     set "OPENAI_KEY=COLE_SUA_CHAVE_AQUI"
 )
 
-:: Criar .env (usando echo pra evitar problemas de encoding)
+:: Criar .env (batch echo = sem bugs de encoding)
 (echo OPENAI_API_KEY=!OPENAI_KEY!)>"%INSTALL_DIR%\.env"
 (echo PORT=3000)>>"%INSTALL_DIR%\.env"
 if defined CLAUDE_EXE (
@@ -547,7 +564,7 @@ if defined CLAUDE_EXE (
 echo         [OK] .env configurado
 
 :: ============================================================
-:: STEP 8/8 - VERIFICACAO FINAL COM AUTO-REPAIR
+:: STEP 8/8 - VERIFICACAO FINAL COM AUTO-REPAIR (max 2 rodadas)
 :: ============================================================
 
 set "VERIFY_ROUND=0"
@@ -577,7 +594,7 @@ if not errorlevel 1 (
     echo     [X]  Node.js NAO encontrado — reinstalando...
     set /a FAIL+=1
     set "REPAIR_NEEDED=1"
-    winget install OpenJS.NodeJS.LTS -e --silent --accept-package-agreements --accept-source-agreements 2>nul
+    winget install OpenJS.NodeJS.LTS -e --silent --disable-interactivity --accept-package-agreements --accept-source-agreements 2>nul
     call :RefreshPath
 )
 
@@ -590,7 +607,7 @@ if not errorlevel 1 (
     echo     [X]  Git NAO encontrado — reinstalando...
     set /a FAIL+=1
     set "REPAIR_NEEDED=1"
-    winget install Git.Git -e --silent --accept-package-agreements --accept-source-agreements 2>nul
+    winget install Git.Git -e --silent --disable-interactivity --accept-package-agreements --accept-source-agreements 2>nul
     call :RefreshPath
 )
 
@@ -609,7 +626,7 @@ if "!PY_CHECK!"=="1" (
     echo     [X]  Python NAO encontrado — reinstalando...
     set /a FAIL+=1
     set "REPAIR_NEEDED=1"
-    winget install Python.Python.3.12 -e --silent --accept-package-agreements --accept-source-agreements --override "/quiet InstallAllUsers=1 PrependPath=1" 2>nul
+    winget install Python.Python.3.12 -e --silent --disable-interactivity --accept-package-agreements --accept-source-agreements --override "/quiet InstallAllUsers=1 PrependPath=1" 2>nul
     call :RefreshPath
 )
 
@@ -623,7 +640,7 @@ if "!PY_CHECK!"=="1" (
         echo     [X]  Pacotes Python incompletos — reinstalando...
         set /a FAIL+=1
         set "REPAIR_NEEDED=1"
-        "!PYTHON_CMD!" -m pip install pyautogui mss Pillow openpyxl psutil wmi pywin32 --disable-pip-version-check --no-warn-script-location -q 2>nul
+        "!PYTHON_CMD!" -m pip install pyautogui mss Pillow openpyxl psutil wmi pywin32 --disable-pip-version-check --no-warn-script-location -q --timeout 30 2>nul
     )
 ) else (
     echo     [X]  Pacotes Python — Python nao disponivel
@@ -639,7 +656,7 @@ if not errorlevel 1 (
     echo     [X]  Claude CLI NAO encontrado — reinstalando...
     set /a FAIL+=1
     set "REPAIR_NEEDED=1"
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "try { irm https://claude.ai/install.ps1 | iex } catch { exit 1 }" 2>nul
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; try{$r=Invoke-WebRequest 'https://claude.ai/install.ps1' -UseBasicParsing -TimeoutSec 30; Invoke-Expression $r.Content}catch{exit 1}" 2>nul
     call :RefreshPath
     set "PATH=%USERPROFILE%\.local\bin;%USERPROFILE%\AppData\Local\Programs\claude-code;!PATH!"
     where claude >nul 2>&1
@@ -658,8 +675,16 @@ if not errorlevel 1 (
     echo     [X]  Claude NAO autenticado — abrindo login...
     set /a FAIL+=1
     set "REPAIR_NEEDED=1"
-    start /wait "Claude Login - JARVIS" cmd /c "claude auth login && pause"
-    timeout /t 3 /nobreak >nul
+    start "Claude Login" cmd /c "claude auth login & timeout /t 60 /nobreak >nul"
+    set "AW=0"
+    :WaitAuthV
+    claude auth status >nul 2>&1
+    if not errorlevel 1 goto :AuthVDone
+    set /a AW+=1
+    if !AW! GEQ 150 goto :AuthVDone
+    timeout /t 2 /nobreak >nul
+    goto :WaitAuthV
+    :AuthVDone
 )
 
 :: --- CHECK 7: server.js ---
@@ -671,7 +696,7 @@ if exist "%INSTALL_DIR%\server.js" (
     set /a FAIL+=1
     set "REPAIR_NEEDED=1"
     rmdir /S /Q "%INSTALL_DIR%" 2>nul
-    git clone "%REPO_URL%" "%INSTALL_DIR%" 2>nul
+    git clone --depth 1 "%REPO_URL%" "%INSTALL_DIR%" 2>nul
 )
 
 :: --- CHECK 8: node_modules ---
@@ -683,7 +708,7 @@ if exist "%INSTALL_DIR%\node_modules\express" (
     set /a FAIL+=1
     set "REPAIR_NEEDED=1"
     cd /d "%INSTALL_DIR%"
-    call npm install --production 2>nul
+    call npm install --production --no-optional --no-audit 2>nul
 )
 
 :: --- CHECK 9: .env ---
@@ -709,7 +734,7 @@ if "!OBS_OK!"=="1" (
     echo     [X]  Obsidian NAO encontrado — reinstalando...
     set /a FAIL+=1
     set "REPAIR_NEEDED=1"
-    winget install Obsidian.Obsidian -e --silent --accept-package-agreements --accept-source-agreements 2>nul
+    winget install Obsidian.Obsidian -e --silent --disable-interactivity --accept-package-agreements --accept-source-agreements 2>nul
 )
 
 :: --- CHECK 11: Vault Obsidian ---
@@ -722,6 +747,7 @@ if exist "%USERPROFILE%\Documents\Felipe\JARVIS-Personalidade.md" (
     set "REPAIR_NEEDED=1"
     if exist "%INSTALL_DIR%\obsidian-template" (
         robocopy "%INSTALL_DIR%\obsidian-template" "%USERPROFILE%\Documents\Felipe" /E /NFL /NDL /NJH /NJS /nc /ns /np >nul 2>&1
+        cmd /c "exit /b 0"
     ) else (
         mkdir "%USERPROFILE%\Documents\Felipe" 2>nul
         powershell -NoProfile -Command "Set-Content -Path '%USERPROFILE%\Documents\Felipe\JARVIS-Personalidade.md' -Value '# JARVIS - Cerebro Ativo' -NoNewline" 2>nul
@@ -744,9 +770,9 @@ if !PASS! EQU !TOTAL! (
     echo.
     echo     RESULTADO: !PASS!/!TOTAL! — !FAIL! item(s) falharam.
     echo.
-    if !VERIFY_ROUND! GEQ 3 (
+    if !VERIFY_ROUND! GEQ 2 (
         color 0C
-        echo     Ja tentamos 3 vezes. Alguns itens precisam de instalacao manual.
+        echo     Ja tentamos 2 vezes. Alguns itens precisam de instalacao manual.
         echo     Verifique sua conexao com internet e tente rodar o instalador novamente.
         echo.
         echo  ============================================================================
