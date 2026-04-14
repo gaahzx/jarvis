@@ -9,9 +9,19 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import OpenAI, { toFile } from 'openai';
 import puppeteer from 'puppeteer';
+import http from 'http';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Global error handlers — prevent server crashes
+process.on('uncaughtException', (err) => {
+  console.error('[JARVIS] UNCAUGHT EXCEPTION:', err.message);
+  console.error(err.stack);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[JARVIS] UNHANDLED REJECTION:', reason);
+});
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1873,7 +1883,7 @@ REGRAS:
 
         const cuBody = JSON.stringify({ task: fullMessage, screenshot: needsScreenshot });
         const cuRes = await new Promise((resolve, reject) => {
-          const http = require('http');
+          // http imported at top of file
           const req = http.request({ hostname: '127.0.0.1', port: PORT, path: '/api/computer-use/v2', method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(cuBody) }
           }, (r) => {
@@ -2067,6 +2077,12 @@ REGRAS:
     proc.stdin.end();
 
     const killTimer = setTimeout(() => { try { proc.kill(); } catch {} }, 120000);
+
+    // Kill process if client disconnects
+    req.on('close', () => {
+      try { proc.kill(); } catch {}
+      clearTimeout(killTimer);
+    });
 
     let responseBuffer = '';
     proc.stdout.on('data', (data) => {
@@ -2747,10 +2763,15 @@ app.get('/api/files/download', (req, res) => {
   }
 });
 
-// GET /api/read-file - Read file text content (Projects dir + any allowed user path)
+// GET /api/read-file - Read file text content (restricted to safe directories)
 app.get('/api/read-file', (req, res) => {
   try {
-    const filePath = path.normalize(req.query.path);
+    const filePath = path.resolve(path.normalize(req.query.path));
+    // Security: restrict to JARVIS_DIR, user home, and Documents
+    const allowedPrefixes = [JARVIS_DIR, os.homedir()].map(p => p.toLowerCase());
+    if (!allowedPrefixes.some(prefix => filePath.toLowerCase().startsWith(prefix))) {
+      return res.status(403).json({ error: 'Access denied — path outside allowed directories' });
+    }
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
 
     const textExts = new Set(['.txt', '.md', '.json', '.js', '.ts', '.py', '.html', '.css', '.csv', '.xml', '.sql', '.sh', '.bat']);
@@ -3087,6 +3108,7 @@ app.post('/api/attach', upload.single('file'), async (req, res) => {
       // Plain text files — read directly
       const content = req.file.buffer.toString('utf-8');
       attachments.set(attachmentId, content);
+      setTimeout(() => { attachments.delete(attachmentId); }, 30 * 60 * 1000); // 30min TTL
       res.json({ attachmentId, name: req.file.originalname, type: 'text', preview: content.slice(0, 500) });
 
     } else if (ext === '.pdf') {
@@ -3227,7 +3249,7 @@ function extractLHMSensors(node, results = { cpuTemps: [], gpuTemps: [], cpuLoad
 async function fetchLHMStats() {
   if (!lhmReady) return null;
   try {
-    const http = await import('http');
+    // http imported at top of file
     return new Promise((resolve) => {
       const req = http.get('http://localhost:8085/data.json', { timeout: 2000 }, (r) => {
         let data = '';
@@ -4454,7 +4476,7 @@ try {
 } catch {}
 
 // ========== START SERVER ==========
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   const chrome = findChrome();
   console.log('');
   console.log('  ==========================================');
@@ -4493,4 +4515,30 @@ app.listen(PORT, () => {
       }
     });
   }
+});
+
+// Graceful shutdown — kill warm pools and daemons
+function gracefulShutdown() {
+  console.log('\n[JARVIS] Shutting down gracefully...');
+  // Kill warm pool processes
+  ['opus', 'sonnet', 'haiku'].forEach(m => {
+    if (pools[m]) pools[m].pool.forEach(p => { try { p.kill(); } catch {} });
+  });
+  // Kill daemons
+  try { if (typeof screenStateDaemon !== 'undefined' && screenStateDaemon) screenStateDaemon.kill(); } catch {}
+  try { if (typeof clipboardDaemon !== 'undefined' && clipboardDaemon) clipboardDaemon.kill(); } catch {}
+  // Close server
+  server.close(() => { process.exit(0); });
+  setTimeout(() => { process.exit(1); }, 5000); // Force exit after 5s
+}
+process.on('SIGINT', gracefulShutdown);
+process.on('SIGTERM', gracefulShutdown);
+
+// Handle port already in use
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`[JARVIS] Port ${PORT} already in use. Close the other JARVIS instance or set PORT in .env`);
+    process.exit(1);
+  }
+  throw err;
 });
