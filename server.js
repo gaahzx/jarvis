@@ -4081,109 +4081,115 @@ app.get('/api/clipboard', (req, res) => {
   res.json(_lastClipboard || { clipboard: null, analysis: null });
 });
 
-// ── POST /api/computer-use/v2 — Ultimate Computer Use with Claude Planner ──
-app.post('/api/computer-use/v2', express.json({ limit: '5mb' }), async (req, res) => {
-  const { task, language = 'BR', screenshot: wantScreenshot = false } = req.body;
+// ── POST /api/computer-use/v2 — JARVIS Computer Use v3: Vision-First + Observe-Act Loop ──
+app.post('/api/computer-use/v2', express.json({ limit: '10mb' }), async (req, res) => {
+  const { task, language = 'BR' } = req.body;
   if (!task) return res.status(400).json({ error: 'task required' });
+  const t0 = Date.now();
 
   try {
-    // 1. Get current screen state (instant from daemon cache)
+    // ═══ STEP 1: Screen State (instant from daemon cache) ═══
     const state = _screenState.value || {};
     const stateText = state.fg
       ? `Foreground: "${state.fg.title}" (${state.fg.proc})\nOpen windows: ${(state.windows || []).map(w => w.title).filter(t => t && t !== 'Program Manager').join(', ')}\nMonitors: ${(state.monitors || []).length}\nCursor: (${state.cursor?.[0]}, ${state.cursor?.[1]})`
       : 'Screen state unavailable';
 
-    // 2. Optional: get screenshot for hybrid mode
-    let screenshotData = null;
-    if (wantScreenshot) {
+    // ═══ STEP 2: Auto UI Inspection (foreground window elements) ═══
+    let uiElements = '';
+    if (state.fg && state.fg.title) {
       try {
-        const ssScript = path.join(JARVIS_DIR, 'system', 'screenshot.py');
-        const ssResult = execSync(`"${PYTHON_CMD}" "${ssScript}" all`, {
-          encoding: 'utf-8', timeout: 10000, maxBuffer: 30 * 1024 * 1024
+        const uiaScript = path.join(JARVIS_DIR, 'system', 'ui-automation.py');
+        const inspectPlan = { actions: [{ type: 'uia_tree', window: state.fg.title, depth: 3 }] };
+        const uiaResult = spawnSync(PYTHON_CMD, ['-u', uiaScript], {
+          input: JSON.stringify(inspectPlan), encoding: 'utf-8', timeout: 5000, maxBuffer: 1024 * 1024
         });
-        const ssJson = JSON.parse(ssResult.trim());
-        screenshotData = ssJson.data;
+        if (uiaResult.stdout) {
+          const lines = uiaResult.stdout.trim().split('\n').filter(l => l.trim());
+          for (const line of lines) {
+            try {
+              const parsed = JSON.parse(line);
+              if (parsed.tree) {
+                // Flatten tree to list of clickable elements
+                const elements = [];
+                function flattenTree(node, depth = 0) {
+                  if (!node) return;
+                  if (node.name && node.control_type && depth < 3) {
+                    elements.push(`${node.control_type}: "${node.name}"`);
+                  }
+                  if (node.children) node.children.forEach(c => flattenTree(c, depth + 1));
+                }
+                flattenTree(parsed.tree);
+                if (elements.length > 0) {
+                  uiElements = `\nFOREGROUND WINDOW UI ELEMENTS (use these names for uia_click):\n${elements.slice(0, 40).join('\n')}`;
+                }
+              }
+            } catch {}
+          }
+        }
       } catch {}
     }
 
-    // 3. Build Claude Planner prompt — ULTRA detailed for precise PC control
-    const plannerPrompt = `You are JARVIS, an AI controlling a Windows 11 PC in real-time. The user is watching you work. Be PRECISE and COMPLETE.
+    // ═══ STEP 3: Vision — ALWAYS capture screenshot ═══
+    let screenshotData = null;
+    try {
+      const ssScript = path.join(JARVIS_DIR, 'system', 'screenshot.py');
+      const ssResult = spawnSync(PYTHON_CMD, [ssScript, '1'], {
+        encoding: 'utf-8', timeout: 8000, maxBuffer: 30 * 1024 * 1024
+      });
+      if (ssResult.stdout) {
+        const ssJson = JSON.parse(ssResult.stdout.trim());
+        screenshotData = ssJson.data; // base64 JPEG
+      }
+    } catch {}
+
+    console.log(`[JARVIS CU v3] State: ${stateText.split('\n')[0]} | UI elements: ${uiElements ? 'YES' : 'NO'} | Screenshot: ${screenshotData ? 'YES' : 'NO'}`);
+
+    // ═══ STEP 4: Build planner prompt WITH vision + UI elements ═══
+    const plannerPrompt = `You are JARVIS, an AI controlling a Windows 11 PC. The user is watching everything you do in real-time.
 
 CURRENT SCREEN STATE:
 ${stateText}
+${uiElements}
+${screenshotData ? '\n[A screenshot of the current screen is attached. Use it to identify exact positions of UI elements, buttons, and text fields.]' : ''}
 
-AVAILABLE ACTIONS (execute in order, as JSON array):
-- {"type":"shell","command":"..."} — run ANY shell command (start apps, run scripts, open URLs)
+AVAILABLE ACTIONS (JSON array, executed in order):
+- {"type":"shell","command":"..."} — run shell command (start apps, run scripts, open URLs)
 - {"type":"app_focus","title":"..."} — bring window to front (partial title match)
 - {"type":"app_close","title":"..."} — close window gracefully
-- {"type":"app_minimize","title":"..."} — minimize window
-- {"type":"app_maximize","title":"..."} — maximize window
-- {"type":"key","keys":"ctrl+c"} — keyboard shortcut (ctrl+a, ctrl+v, alt+tab, enter, tab, etc.)
-- {"type":"type","text":"..."} — type text (uses clipboard paste for reliability)
-- {"type":"click","x":N,"y":N} — click at screen coordinates
-- {"type":"uia_click","window":"...","name":"...","control_type":"..."} — click UI element by automation name
-- {"type":"uia_set_value","window":"...","name":"...","value":"..."} — set value in input field
-- {"type":"uia_get_text","window":"...","name":"..."} — read text from UI element
-- {"type":"scroll","direction":"down","amount":5} — scroll mouse wheel
+- {"type":"app_minimize","title":"..."} / {"type":"app_maximize","title":"..."}
+- {"type":"key","keys":"ctrl+c"} — keyboard shortcut
+- {"type":"type","text":"..."} — type text (clipboard paste, supports Unicode/Portuguese)
+- {"type":"click","x":N,"y":N} — click at screen coordinates (use ONLY if no UI element available)
+- {"type":"uia_click","window":"...","name":"...","control_type":"..."} — click by UI automation name (PREFERRED)
+- {"type":"uia_set_value","window":"...","name":"...","value":"..."} — fill input field
+- {"type":"uia_get_text","window":"...","name":"..."} — read text from element
+- {"type":"scroll","direction":"down","amount":5} — scroll
 - {"type":"wait","ms":1000} — wait milliseconds
-- {"type":"wait_for","title_contains":"...","timeout":10000} — wait for window to appear
+- {"type":"wait_for","title_contains":"...","timeout":10000} — wait for window
 
 CRITICAL RULES:
-1. ALWAYS use "shell" to open apps: {"type":"shell","command":"start excel"} or {"type":"shell","command":"start chrome https://youtube.com"}
-2. ALWAYS add {"type":"wait","ms":2000} after launching an app (it needs time to open)
-3. ALWAYS add {"type":"wait_for","title_contains":"..."} after opening an app to confirm it loaded
-4. For Excel: use shell to open, wait, then type cell data with key presses (Tab=next cell, Enter=next row)
-5. For Chrome/YouTube: use {"type":"shell","command":"start chrome https://www.youtube.com/results?search_query=ENCODED_QUERY"}
-6. Prefer "uia_click" over "click" with coordinates (more reliable)
-7. To type in cells: {"type":"type","text":"data"} then {"type":"key","keys":"tab"} for next cell
-8. Plan EVERY step — don't skip anything. The user is watching.
-
-EXAMPLES:
-Task: "Abre Excel e cria planilha de controle financeiro"
-→ {"actions":[
-  {"type":"shell","command":"start excel"},
-  {"type":"wait","ms":3000},
-  {"type":"wait_for","title_contains":"Excel","timeout":10000},
-  {"type":"key","keys":"escape"},
-  {"type":"wait","ms":500},
-  {"type":"type","text":"Data"},{"type":"key","keys":"tab"},
-  {"type":"type","text":"Descricao"},{"type":"key","keys":"tab"},
-  {"type":"type","text":"Categoria"},{"type":"key","keys":"tab"},
-  {"type":"type","text":"Valor"},{"type":"key","keys":"tab"},
-  {"type":"type","text":"Tipo"},{"type":"key","keys":"enter"},
-  {"type":"type","text":"14/04/2026"},{"type":"key","keys":"tab"},
-  {"type":"type","text":"Aluguel"},{"type":"key","keys":"tab"},
-  {"type":"type","text":"Moradia"},{"type":"key","keys":"tab"},
-  {"type":"type","text":"1500"},{"type":"key","keys":"tab"},
-  {"type":"type","text":"Despesa"},{"type":"key","keys":"enter"}
-],"expected":"Excel aberto com planilha de controle financeiro"}
-
-Task: "Abre YouTube e toca musica lofi"
-→ {"actions":[
-  {"type":"shell","command":"start chrome \\"https://www.youtube.com/results?search_query=lofi+hip+hop+radio\\""},
-  {"type":"wait","ms":3000},
-  {"type":"wait_for","title_contains":"YouTube","timeout":10000},
-  {"type":"key","keys":"tab tab tab enter"},
-  {"type":"wait","ms":1000}
-],"expected":"YouTube aberto tocando lofi"}
+1. Use "shell" to open apps: start excel, start chrome URL, start notepad
+2. ALWAYS add wait + wait_for after launching any app
+3. For Excel: open → wait → Escape (close start screen) → type headers with Tab between cells, Enter for new row
+4. For Chrome/YouTube: start chrome "https://www.youtube.com/results?search_query=QUERY"
+5. ALWAYS prefer "uia_click" with element names from the UI ELEMENTS list above
+6. Only use "click" with x,y coordinates as LAST RESORT when no UI element name is available
+7. ${screenshotData ? 'Use the attached screenshot to identify positions of buttons and elements' : 'No screenshot available — use UI element names or standard app layouts'}
+8. Plan EVERY step. Don't skip anything. Be thorough.
 
 TASK: ${task}
 
-Respond with ONLY a JSON object: {"actions":[...], "expected":"description"}
-Plan ALL steps. Be thorough. The user sees everything you do.`;
+Respond with ONLY a JSON object: {"actions":[...], "expected":"description of what the user will see when done"}`;
 
-    // 4. Get plan from Claude (uses Max plan, zero cost)
+    // ═══ STEP 5: Get plan from Claude ═══
     const planResult = await new Promise((resolve, reject) => {
       const proc = spawn(CLAUDE_CMD, [
         '--print', '--output-format', 'text',
         '--model', 'claude-sonnet-4-6',
         '--dangerously-skip-permissions'
       ], { shell: true, cwd: JARVIS_DIR, timeout: 30000 });
-
-      // Send prompt via stdin (more reliable than -p flag)
       proc.stdin.write(plannerPrompt);
       proc.stdin.end();
-
       let stdout = '', stderr = '';
       proc.stdout.on('data', d => { stdout += d; });
       proc.stderr.on('data', d => { stderr += d; });
@@ -4194,62 +4200,146 @@ Plan ALL steps. Be thorough. The user sees everything you do.`;
       proc.on('error', reject);
     });
 
-    // 5. Parse the plan
+    // Parse plan
     let plan;
     try {
-      // Extract JSON from response (Claude might wrap it in markdown)
       const jsonMatch = planResult.match(/\{[\s\S]*\}/);
       plan = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
     } catch {
       return res.json({ ok: false, error: 'Failed to parse plan', raw: planResult.substring(0, 500) });
     }
-
     if (!plan || !plan.actions || !plan.actions.length) {
       return res.json({ ok: false, error: 'Empty plan', raw: planResult.substring(0, 500) });
     }
 
-    // 6. Execute plan via ui-automation.py
+    // ═══ STEP 6: Smart Action Chaining — auto-insert waits ═══
+    const smartActions = [];
+    for (let i = 0; i < plan.actions.length; i++) {
+      const action = plan.actions[i];
+      smartActions.push(action);
+
+      // After shell commands that open apps, ensure wait exists
+      if (action.type === 'shell' && /^start\s/i.test(action.command || '')) {
+        const next = plan.actions[i + 1];
+        if (!next || (next.type !== 'wait' && next.type !== 'wait_for')) {
+          smartActions.push({ type: 'wait', ms: 2000 });
+        }
+      }
+    }
+    plan.actions = smartActions;
+
+    console.log(`[JARVIS CU v3] Plan: ${plan.actions.length} actions | Expected: ${plan.expected || 'N/A'}`);
+
+    // ═══ STEP 7: Execute plan ═══
     const uiaScript = path.join(JARVIS_DIR, 'system', 'ui-automation.py');
-    const execResult = await new Promise((resolve, reject) => {
-      const proc = spawn(PYTHON_CMD, ['-u', uiaScript], {
-        cwd: JARVIS_DIR, stdio: ['pipe', 'pipe', 'pipe'], timeout: 60000
-      });
-      proc.stdin.write(JSON.stringify(plan));
-      proc.stdin.end();
 
-      let stdout = '', stderr = '';
-      proc.stdout.on('data', d => { stdout += d; });
-      proc.stderr.on('data', d => { stderr += d; });
-      proc.on('close', (code) => {
-        // Parse all result lines
-        const results = stdout.trim().split('\n').filter(l => l.trim()).map(l => {
-          try { return JSON.parse(l); } catch { return { raw: l }; }
+    async function executePlan(actionPlan) {
+      return new Promise((resolve, reject) => {
+        const proc = spawn(PYTHON_CMD, ['-u', uiaScript], {
+          cwd: JARVIS_DIR, stdio: ['pipe', 'pipe', 'pipe'], timeout: 90000
         });
-        resolve({ code, results, stderr: stderr.trim() });
+        proc.stdin.write(JSON.stringify(actionPlan));
+        proc.stdin.end();
+        let stdout = '', stderr = '';
+        proc.stdout.on('data', d => { stdout += d; });
+        proc.stderr.on('data', d => { stderr += d; });
+        proc.on('close', (code) => {
+          const results = stdout.trim().split('\n').filter(l => l.trim()).map(l => {
+            try { return JSON.parse(l); } catch { return { raw: l }; }
+          });
+          resolve({ code, results, stderr: stderr.trim() });
+        });
+        proc.on('error', reject);
       });
-      proc.on('error', reject);
-    });
-
-    // 7. Find summary line
-    const summary = execResult.results.find(r => r.done);
-    const failed = execResult.results.filter(r => r.ok === false);
-
-    // 8. Self-healing: if actions failed, retry with context
-    if (failed.length > 0 && failed.length < (plan.actions?.length || 99)) {
-      console.log(`[JARVIS CU v2] ${failed.length} actions failed, attempting self-heal`);
-      // Could re-plan here with error context — for now, report
     }
 
+    const execResult = await executePlan(plan);
+    const failed = execResult.results.filter(r => r.ok === false);
+    const totalActions = plan.actions.length;
+
+    // ═══ STEP 8: Observe-Act Loop — replan if actions failed ═══
+    let replanAttempts = 0;
+    let finalResult = execResult;
+
+    if (failed.length > 0 && failed.length <= Math.ceil(totalActions / 2)) {
+      console.log(`[JARVIS CU v3] ${failed.length}/${totalActions} failed. Starting replan...`);
+
+      while (replanAttempts < 2 && failed.length > 0) {
+        replanAttempts++;
+
+        // Get fresh screen state after execution
+        const freshState = _screenState.value || {};
+        const freshStateText = freshState.fg
+          ? `Foreground: "${freshState.fg.title}" (${freshState.fg.proc})`
+          : 'Unknown';
+
+        const failedDetails = failed.map(f => `Action "${f.type || 'unknown'}": ${f.error || f.detail || 'failed'}`).join('\n');
+
+        const replanPrompt = `You are JARVIS. Some actions failed during PC control. Fix them.
+
+CURRENT SCREEN STATE: ${freshStateText}
+ORIGINAL TASK: ${task}
+EXPECTED RESULT: ${plan.expected || 'N/A'}
+
+FAILED ACTIONS:
+${failedDetails}
+
+Generate ONLY corrective actions as JSON: {"actions":[...], "expected":"..."}
+Focus on what FAILED. Don't repeat successful actions.`;
+
+        try {
+          const replanResult = await new Promise((resolve, reject) => {
+            const proc = spawn(CLAUDE_CMD, [
+              '--print', '--output-format', 'text',
+              '--model', 'claude-haiku-4-5-20251001',
+              '--dangerously-skip-permissions'
+            ], { shell: true, cwd: JARVIS_DIR, timeout: 15000 });
+            proc.stdin.write(replanPrompt);
+            proc.stdin.end();
+            let stdout = '';
+            proc.stdout.on('data', d => { stdout += d; });
+            proc.on('close', () => resolve(stdout.trim()));
+            proc.on('error', reject);
+          });
+
+          const replanMatch = replanResult.match(/\{[\s\S]*\}/);
+          if (replanMatch) {
+            const fixPlan = JSON.parse(replanMatch[0]);
+            if (fixPlan.actions && fixPlan.actions.length > 0) {
+              console.log(`[JARVIS CU v3] Replan ${replanAttempts}: ${fixPlan.actions.length} corrective actions`);
+              finalResult = await executePlan(fixPlan);
+              const newFailed = finalResult.results.filter(r => r.ok === false);
+              if (newFailed.length === 0) break; // Fixed!
+            }
+          }
+        } catch (replanErr) {
+          console.error(`[JARVIS CU v3] Replan ${replanAttempts} failed:`, replanErr.message);
+          break;
+        }
+      }
+    }
+
+    // ═══ STEP 9: Response ═══
+    const elapsed = Date.now() - t0;
+    const allResults = [...execResult.results, ...(finalResult !== execResult ? finalResult.results : [])];
+    const totalFailed = allResults.filter(r => r.ok === false).length;
+    const totalSuccess = allResults.filter(r => r.ok === true).length;
+
+    console.log(`[JARVIS CU v3] Done in ${elapsed}ms | ${totalSuccess} success | ${totalFailed} failed | ${replanAttempts} replans`);
+
     res.json({
-      ok: summary ? summary.success === summary.total : failed.length === 0,
-      plan: plan.actions.length + ' actions planned',
-      executed: execResult.results.length,
-      failed: failed.length,
+      ok: totalFailed === 0 || totalSuccess > totalFailed,
+      plan: totalActions + ' actions planned',
+      executed: allResults.length,
+      failed: totalFailed,
+      replans: replanAttempts,
       expected: plan.expected,
-      details: execResult.results
+      elapsed: elapsed,
+      details: allResults
     });
 
   } catch (err) {
+    console.error('[JARVIS CU v3] Error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
