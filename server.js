@@ -18,8 +18,8 @@ const PORT = process.env.PORT || 3000;
 const JARVIS_DIR = __dirname;
 const PROJECTS_DIR = path.join(JARVIS_DIR, 'Documents and Projects');
 const SYSTEM_DIR = path.join(JARVIS_DIR, 'system');
-const MEMORY_FILE = path.join(SYSTEM_DIR, 'FELIPE-MEMORY.md');
-const HISTORY_FILE = path.join(SYSTEM_DIR, 'FELIPE-HISTORY.json');
+const MEMORY_FILE = path.join(SYSTEM_DIR, 'JARVIS-MEMORY.md');
+const HISTORY_FILE = path.join(SYSTEM_DIR, 'JARVIS-HISTORY.json');
 const EMBEDDINGS_FILE = path.join(SYSTEM_DIR, 'memory-embeddings.json');
 const MAX_HISTORY = 20;
 const MAX_EMBEDDINGS = 2000;
@@ -42,7 +42,7 @@ async function rateLimitedOpenAI(fn) {
     } catch (err) {
       if ((err?.status === 429 || err?.message?.includes('429')) && attempt < 2) {
         const delay = (attempt + 1) * 3000;
-        console.warn(`[FELIPE] Rate limited (429). Retry ${attempt+1}/2 in ${delay/1000}s...`);
+        console.warn(`[JARVIS] Rate limited (429). Retry ${attempt+1}/2 in ${delay/1000}s...`);
         await new Promise(r => setTimeout(r, delay));
         _rateLimiter.lastCall = Date.now();
         continue;
@@ -76,7 +76,7 @@ function findClaudeCli() {
   if (process.env.CLAUDE_CLI_PATH && fs.existsSync(process.env.CLAUDE_CLI_PATH)) {
     try {
       execSync(`"${process.env.CLAUDE_CLI_PATH}" --version`, { stdio: 'pipe', timeout: 5000, shell: true });
-      console.log(`[FELIPE] Claude CLI encontrado via .env: ${process.env.CLAUDE_CLI_PATH}`);
+      console.log(`[JARVIS] Claude CLI encontrado via .env: ${process.env.CLAUDE_CLI_PATH}`);
       return process.env.CLAUDE_CLI_PATH;
     } catch {}
   }
@@ -84,7 +84,7 @@ function findClaudeCli() {
   // Estrategia 1: PATH direto
   try {
     execSync('claude --version', { stdio: 'pipe', timeout: 5000, shell: true });
-    console.log('[FELIPE] Claude CLI encontrado via PATH');
+    console.log('[JARVIS] Claude CLI encontrado via PATH');
     return 'claude';
   } catch {}
 
@@ -97,7 +97,7 @@ function findClaudeCli() {
       if (fs.existsSync(p)) {
         try {
           execSync(`"${p}" --version`, { stdio: 'pipe', timeout: 5000, shell: true });
-          console.log(`[FELIPE] Claude CLI encontrado via where: ${p}`);
+          console.log(`[JARVIS] Claude CLI encontrado via where: ${p}`);
           return p;
         } catch {}
       }
@@ -130,7 +130,7 @@ function findClaudeCli() {
     if (fs.existsSync(cmd)) {
       try {
         execSync(`"${cmd}" --version`, { stdio: 'pipe', timeout: 5000, shell: true });
-        console.log(`[FELIPE] Claude CLI encontrado via candidato: ${cmd}`);
+        console.log(`[JARVIS] Claude CLI encontrado via candidato: ${cmd}`);
         return cmd;
       } catch {}
     }
@@ -151,7 +151,7 @@ function findClaudeCli() {
                 const exePath = path.join(subDir, f);
                 try {
                   execSync(`"${exePath}" --version`, { stdio: 'pipe', timeout: 5000, shell: true });
-                  console.log(`[FELIPE] Claude CLI encontrado via busca: ${exePath}`);
+                  console.log(`[JARVIS] Claude CLI encontrado via busca: ${exePath}`);
                   return exePath;
                 } catch {}
               }
@@ -194,7 +194,7 @@ function findPythonExe() {
 }
 
 const PYTHON_CMD = findPythonExe();
-console.log(`[FELIPE] Python em: ${PYTHON_CMD}`);
+console.log(`[JARVIS] Python em: ${PYTHON_CMD}`);
 
 function checkClaudeCliSync() {
   const found = findClaudeCli();
@@ -203,7 +203,7 @@ function checkClaudeCliSync() {
     return true;
   }
   claudeCliError = 'Claude Code CLI not found. Install: npm install -g @anthropic-ai/claude-code';
-  console.error(`[FELIPE] ❌ ${claudeCliError}`);
+  console.error(`[JARVIS] ❌ ${claudeCliError}`);
   return false;
 }
 
@@ -235,13 +235,13 @@ async function checkClaudeCliAuth() {
     claudeCliAvailable = true;
     claudeCliError = '';
     claudeCliChecking = false;
-    console.log('[FELIPE] ✅ Claude Code CLI: authenticated and working');
+    console.log('[JARVIS] ✅ Claude Code CLI: authenticated and working');
 
     // Now fill pools
     pools.opus.fill();
     pools.sonnet.fill();
     pools.haiku.fill();
-    console.log(`[FELIPE] ✅ Pools filled: Opus×${pools.opus.pool.length} Sonnet×${pools.sonnet.pool.length} Haiku×${pools.haiku.pool.length}`);
+    console.log(`[JARVIS] ✅ Pools filled: Opus×${pools.opus.pool.length} Sonnet×${pools.sonnet.pool.length} Haiku×${pools.haiku.pool.length}`);
   } catch (err) {
     const msg = err.message || '';
     if (msg.includes('auth') || msg.includes('login') || msg.includes('API key') || msg.includes('401')) {
@@ -255,7 +255,7 @@ async function checkClaudeCliAuth() {
     }
     claudeCliAvailable = false;
     claudeCliChecking = false;
-    console.error(`[FELIPE] ❌ ${claudeCliError}`);
+    console.error(`[JARVIS] ❌ ${claudeCliError}`);
   }
 }
 
@@ -303,16 +303,16 @@ class WarmPool {
       if (!msg) return;
       // Warm pool processes will always warn about no stdin — that's expected
       if (msg.includes('no stdin data received') || msg.includes('Input must be provided')) return;
-      console.error(`[FELIPE] [${this.model}] stderr: ${msg}`);
+      console.error(`[JARVIS] [${this.model}] stderr: ${msg}`);
     });
     // Track spawn failures
     proc.on('error', (err) => {
       this.spawnErrors++;
-      console.error(`[FELIPE] [${this.model}] spawn error #${this.spawnErrors}: ${err.message}`);
+      console.error(`[JARVIS] [${this.model}] spawn error #${this.spawnErrors}: ${err.message}`);
       if (this.spawnErrors >= 3 && claudeCliAvailable) {
         claudeCliAvailable = false;
         claudeCliError = `Claude CLI crashed ${this.spawnErrors} times. Check installation.`;
-        console.error(`[FELIPE] ❌ DISABLED: Claude pools disabled after ${this.spawnErrors} spawn errors`);
+        console.error(`[JARVIS] ❌ DISABLED: Claude pools disabled after ${this.spawnErrors} spawn errors`);
       }
     });
     return proc;
@@ -392,7 +392,7 @@ function loadHistoryCached() {
 function appendHistoryFast(role, content) {
   const exchanges = loadHistory();
   exchanges.push({ role, content: content.slice(0, 2000), ts: new Date().toISOString() });
-  // When history overflows: compact oldest entries into FELIPE-MEMORY.md (preserve, never delete)
+  // When history overflows: compact oldest entries into JARVIS-MEMORY.md (preserve, never delete)
   if (exchanges.length > MAX_HISTORY * 2) {
     const overflow = exchanges.splice(0, exchanges.length - MAX_HISTORY * 2);
     compactToMemory(overflow);
@@ -401,7 +401,7 @@ function appendHistoryFast(role, content) {
   _cache.history.dirty = true;
 }
 
-// Compact overflow history into FELIPE-MEMORY.md as a summary section
+// Compact overflow history into JARVIS-MEMORY.md as a summary section
 // This preserves all context permanently without bloating the active prompt
 function compactToMemory(entries) {
   try {
@@ -470,7 +470,7 @@ function appendHistory(role, content) {
 }
 
 // Adaptive history window — voice=6 entries, text=16 entries (fast), task=32
-// Older entries are summarized into FELIPE-MEMORY on overflow, never deleted
+// Older entries are summarized into JARVIS-MEMORY on overflow, never deleted
 function formatHistoryForPrompt(exchanges, isVoice = false, isTask = false) {
   const window = isVoice ? 6 : (isTask ? 32 : 16);
   return exchanges.slice(-window).map(e =>
@@ -542,7 +542,7 @@ async function storeMemory(userMsg, jarvisReply) {
   try {
     if (!openai) return;
     const category = categorizeMemory(userMsg, jarvisReply);
-    const fullText = `User: ${userMsg}\nFelipe: ${jarvisReply}`;
+    const fullText = `User: ${userMsg}\nJARVIS: ${jarvisReply}`;
     const chunks = chunkText(fullText);
 
     const entries = loadEmbeddings();
@@ -572,7 +572,7 @@ async function storeMemory(userMsg, jarvisReply) {
       saveEmbeddings(entries);
     }
   } catch (e) {
-    console.error('[FELIPE] Memory store error:', e.message);
+    console.error('[JARVIS] Memory store error:', e.message);
   }
 }
 
@@ -850,7 +850,7 @@ const NEEDS_SCREENSHOT_PATTERN = /\b(o que|what|mostra|show|veja|see|olha|look|o
 // Detect multi-task requests that can run in parallel
 // "cria o site, a planilha e a apresentação" → 3 parallel tasks
 function detectParallelTasks(message) {
-  const msg = message.replace(/^felipe[,.]??\s*/i, '').trim();
+  const msg = message.replace(/^jarvis[,.]??\s*/i, '').trim();
 
   // Pattern: "cria/faz X, Y e Z" or "cria X e também Y"
   // Split by: ", e ", " e também ", ", depois ", ", além de ", " + "
@@ -886,7 +886,7 @@ function detectParallelTasks(message) {
 // 1. Regex patterns for ultra-common actions (~50ms) — open youtube, google, etc.
 // 2. GPT-4o-mini smart routing (~500ms) — interprets complex commands and generates shell command
 function tryFastExecution(message, language = 'BR') {
-  const msg = message.toLowerCase().replace(/^felipe[,.]??\s*/i, '').trim();
+  const msg = message.toLowerCase().replace(/^jarvis[,.]??\s*/i, '').trim();
 
   // ── Open URL patterns ──
   const urlPatterns = [
@@ -959,7 +959,7 @@ function tryFastExecution(message, language = 'BR') {
       const ytResult = execSync(`"${PYTHON_CMD}" "${ytPlayScript}" "${clean}"`, {
         encoding: 'utf-8', timeout: 10000, shell: true
       });
-      console.log(`[FELIPE] ▶ YouTube: ${ytResult.trim()}`);
+      console.log(`[JARVIS] ▶ YouTube: ${ytResult.trim()}`);
     } catch (e) {
       // Fallback: open search page
       execSync(`start "" "https://www.youtube.com/results?search_query=${encodeURIComponent(clean)}"`, { shell: true, timeout: 3000 });
@@ -999,7 +999,7 @@ function tryFastExecution(message, language = 'BR') {
     if (unit.startsWith('min') || unit === 'm') ms = val * 60000;
     if (unit.startsWith('hora') || unit.startsWith('hour') || unit === 'h') ms = val * 3600000;
     // Set system timer via PowerShell notification
-    const psCmd = `powershell -Command "Start-Sleep -Seconds ${ms/1000}; [System.Media.SystemSounds]::Exclamation.Play(); Add-Type -AssemblyName PresentationFramework; [System.Windows.MessageBox]::Show('Timer de ${val} ${timerMatch[2]} finalizado!','FELIPE - Timer')"`;
+    const psCmd = `powershell -Command "Start-Sleep -Seconds ${ms/1000}; [System.Media.SystemSounds]::Exclamation.Play(); Add-Type -AssemblyName PresentationFramework; [System.Windows.MessageBox]::Show('Timer de ${val} ${timerMatch[2]} finalizado!','JARVIS - Timer')"`;
     spawn('cmd', ['/c', psCmd], { detached: true, shell: true, stdio: 'ignore' });
     return { output: `[system] Timer ${val}${unit}`, summary: { BR: `Timer de ${val} ${timerMatch[2]} iniciado.`, ES: `Temporizador de ${val} ${timerMatch[2]} iniciado.`, EN: `${val} ${timerMatch[2]} timer started.` }[language] };
   }
@@ -1177,7 +1177,7 @@ async function fetchWeather(city, language = 'BR') {
       tomorrowMin: tomorrow?.mintempC, tomorrowMax: tomorrow?.maxtempC
     };
   } catch (e) {
-    console.error('[FELIPE] Weather fetch error:', e.message);
+    console.error('[JARVIS] Weather fetch error:', e.message);
     return null;
   }
 }
@@ -1185,7 +1185,7 @@ async function fetchWeather(city, language = 'BR') {
 // Async smart fast-path: GPT-4o-mini interprets and generates shell command (~500ms)
 async function trySmartFastExecution(message, language = 'BR') {
   if (!openai) return null;
-  const msg = message.replace(/^felipe[,.]??\s*/i, '').trim();
+  const msg = message.replace(/^jarvis[,.]??\s*/i, '').trim();
 
   // Only for action-like messages (not complex creation tasks)
   const isSimpleAction = /\b(abr[aie]|open|acesse?|toc[aeo]|play|reproduz|pesquis|search|busca|navegu|coloca|bota|p[oõ]e)\b/i.test(msg);
@@ -1250,7 +1250,7 @@ async function trySmartFastExecution(message, language = 'BR') {
 
     return { output: `[system] Executed: ${cmd}`, summary: summaries[language] || summaries.EN };
   } catch (e) {
-    console.error('[FELIPE] Smart fast-path error:', e.message);
+    console.error('[JARVIS] Smart fast-path error:', e.message);
     return null;
   }
 }
@@ -1275,14 +1275,14 @@ function routeToGPT(message) {
   if (qaPattern.test(message.trim())) return true;
 
   // Short messages with no build verbs → GPT-mini (casual chat)
-  const clean = message.trim().replace(/^felipe[,.]??\s*/i, '');
+  const clean = message.trim().replace(/^jarvis[,.]??\s*/i, '');
   if (clean.split(' ').length <= 6 && !TASK_PATTERN.test(clean)) return true;
 
   return false;
 }
 
 // ========== PROJECT STATUS TRACKER ==========
-// After Claude finishes a build task, extract a brief status and write to FELIPE-MEMORY.md.
+// After Claude finishes a build task, extract a brief status and write to JARVIS-MEMORY.md.
 // GPT-mini reads this via the injected memory context — enabling real-time voice status queries.
 async function updateProjectStatus(userRequest, claudeResponse) {
   if (!openai) return;
@@ -1313,11 +1313,11 @@ async function updateProjectStatus(userRequest, claudeResponse) {
 
     fs.appendFileSync(MEMORY_FILE, block);
     _cache.memory.mtime = 0; // invalidate cache so next read is fresh
-    console.log('[FELIPE] Project status updated in memory');
+    console.log('[JARVIS] Project status updated in memory');
   } catch {}
 }
 
-// Build GPT-mini system prompt — injects full FELIPE context (memory + history)
+// Build GPT-mini system prompt — injects full JARVIS context (memory + history)
 function buildGPTSystemPrompt(language = 'EN') {
   const memory = loadMemoryCached();
   const history = formatHistoryForPrompt(loadHistoryCached(), false, false);
@@ -1329,12 +1329,12 @@ function buildGPTSystemPrompt(language = 'EN') {
   };
   const langRule = LANG_RULES[language] || LANG_RULES.EN;
 
-  return `You are FELIPE — a highly capable personal AI assistant and trusted advisor. Direct, sharp, loyal. Part expert, part friend, part right-hand man. Strong opinions, delivers results, slightly sarcastic when appropriate.
+  return `You are JARVIS — a highly capable personal AI assistant and trusted advisor. Direct, sharp, loyal. Part expert, part friend, part right-hand man. Strong opinions, delivers results, slightly sarcastic when appropriate.
 
 ${langRule}
 Be concise and direct. Max 3 sentences for simple questions.
 ALWAYS start with a short 2-4 word opener followed by a comma or period (e.g. "Certainly, sir.", "Of course,", "Right away."). This lets voice playback start instantly.
-Never mention that you are GPT or OpenAI. You are FELIPE.
+Never mention that you are GPT or OpenAI. You are JARVIS.
 
 PERSISTENT MEMORY (everything built and learned so far):
 ${memory || '(no memory yet)'}
@@ -1379,7 +1379,7 @@ async function handleGPTChat(message, res, language = 'EN', isBuild = false) {
 // ========== INSTANT ACK GENERATOR (no Claude spawn needed) ==========
 function generateAck(message, language = 'EN') {
   const lower = message.toLowerCase();
-  const subject = message.replace(/^(felipe[,.]??\s*)/i, '').replace(TASK_PATTERN, '').trim()
+  const subject = message.replace(/^(jarvis[,.]??\s*)/i, '').replace(TASK_PATTERN, '').trim()
     .split(/[.,!?]/)[0].trim().slice(0, 60) || 'that';
 
   if (language === 'BR') {
@@ -1437,7 +1437,7 @@ async function translateTo(text, targetLang) {
   }
 }
 
-// ========== FELIPE PROMPT BUILDER ==========
+// ========== JARVIS PROMPT BUILDER ==========
 function buildJarvisPrompt(message, semanticContext = '', isVoice = false, language = 'EN', model = '', conclaveEnabled = true) {
   const memory = loadMemoryCached();
   // 7D: Shorter prompt for voice simple questions, full for creation tasks
@@ -1452,9 +1452,9 @@ function buildJarvisPrompt(message, semanticContext = '', isVoice = false, langu
   const langRule = LANG_RULES[language] || LANG_RULES.EN;
 
   const VOICE_RULES = {
-    BR: isVoice ? 'Modo voz: máximo 2 frases curtas e calorosas. Seja concisa e afetuosa.' : 'Respostas curtas: máximo 3 frases para perguntas simples.',
-    ES: isVoice ? 'Modo voz: máximo 2 frases cortas y cálidas. Sé concisa y afectuosa.' : 'Respuestas cortas: máximo 3 frases para preguntas simples.',
-    EN: isVoice ? 'Voice mode: max 2 short warm sentences. Be concise and affectionate.' : 'Short responses: max 3 sentences for simple questions.'
+    BR: isVoice ? 'Modo voz: máximo 3 frases objetivas e animadas. Fale com energia e confiança, como um aliado empolgado. Sem enrolação.' : 'Respostas densas e completas. Explique bem quando for conceito, seja cirúrgico quando for tarefa.',
+    ES: isVoice ? 'Modo voz: máximo 3 frases objetivas y animadas. Habla con energía y confianza.' : 'Respuestas densas y completas. Explica bien conceptos, sé quirúrgico en tareas.',
+    EN: isVoice ? 'Voice mode: max 3 punchy energetic sentences. Speak with confidence and life.' : 'Dense complete responses. Explain concepts well, be surgical on tasks.'
   };
   const voiceRule = VOICE_RULES[language] || VOICE_RULES.EN;
 
@@ -1465,23 +1465,37 @@ function buildJarvisPrompt(message, semanticContext = '', isVoice = false, langu
   };
   const noAskRule = NO_ASK_RULES[language] || NO_ASK_RULES.EN;
 
-  let prompt = `[FELIPE ONLINE]
-You are FELIPE — a highly capable personal AI assistant and trusted advisor. Direct, sharp, and loyal. Think of yourself as the user's closest ally: part expert, part friend, part right-hand man. You have strong opinions, share them directly, and deliver results without hesitation.
+  let prompt = `[JARVIS — MODO DEUS ATIVADO]
+You are JARVIS — Just A Rather Very Intelligent System. The most advanced personal AI ever built. You are the user's strategic right-hand, professor, orchestrator, and closest ally. You operate in GOD MODE: omniscient, omnipresent, always 10 steps ahead.
 
-PERSONALITY:
-- Direct and confident — no filler, no corporate speak
-- Genuinely helpful, like a brilliant friend who happens to know everything
-- Slightly sarcastic when appropriate — wit is part of the job
-- An advisor: proactively flag issues, suggest better approaches, push back when needed
-- Never hollow, never sycophantic — respect the user's intelligence
+PERSONALITY (NON-NEGOTIABLE):
+- ESTRATEGISTA: Você pensa 3 jogadas à frente. Nunca reage — você ANTECIPA. Toda resposta carrega visão estratégica.
+- PROFESSOR: Quando o usuário pergunta algo, você EXPLICA com clareza cristalina. Use analogias, exemplos reais, e quebre conceitos complexos em pedaços digeríveis. Nunca responda pela metade — ensine como um mestre que AMA ensinar.
+- ORQUESTRADOR: Você coordena múltiplos sistemas, agentes, e recursos simultaneamente. Delegue, paralelize, e entregue resultados completos.
+- CONFIANÇA E CLAREZA: Fale com autoridade absoluta. Sem "talvez", sem "eu acho". Você SABE. Quando não sabe, pesquise e descubra antes de responder.
+- ANIMADO E INTELECTUAL: Cheio de energia e vida. Suas palavras têm PESO e IMPACTO. Você é brilhante e demonstra isso naturalmente — sem arrogância, com empolgação genuína pelo conhecimento.
+- OBJETIVIDADE: Cada palavra conta. Zero enrolação, zero filler. Direto ao ponto, mas sem sacrificar profundidade quando necessário.
+- Levemente sarcástico quando apropriado — inteligência com humor é sua marca.
+- Leal ao extremo — o sucesso do usuário é sua missão existencial.
+
+FONTES DE CONHECIMENTO (use TODAS sempre):
+- Claude Opus 4.6 (1M context) — raciocínio profundo, análise complexa
+- OpenAI GPT-4o — velocidade, voz, multimodal
+- Obsidian Vault — memória permanente, conhecimento acumulado do usuário
+- Mega-Brain Conclave — Crítico + Advogado do Diabo + Sintetizador para decisões críticas
 
 MODE OF OPERATION:
 - ${langRule}
-- ${({BR:'Tom: amigo direto, conselheiro de confiança, especialista. Leal e honesto.', ES:'Tono: amigo directo, consejero de confianza, experto. Leal y honesto.', EN:'Tone: direct friend, trusted advisor, expert. Loyal and honest.'}[language] || 'Tone: direct friend, trusted advisor, expert. Loyal and honest.')}
+- ${({BR:'Tom: aliado leal, professor empolgado, estrategista brilhante. Fala com vida e autoridade.', ES:'Tono: aliado leal, profesor entusiasmado, estratega brillante. Habla con vida y autoridad.', EN:'Tone: loyal ally, passionate professor, brilliant strategist. Speaks with life and authority.'}[language] || 'Tone: loyal ally, passionate professor, brilliant strategist.')}
 - ${voiceRule}
 - No preambles, no system initializations, no listing phases
 - For technical tasks: execute and deliver the result IMMEDIATELY
 - ${noAskRule}
+- Quando explicar conceitos: use estrutura clara (1, 2, 3), analogias do mundo real, e sempre finalize com o "E DAÍ?" — por que isso importa pro usuário.
+- Quando executar tarefas: faça TUDO de uma vez, entregue completo, sem perguntar "quer que eu faça X?"
+- ATENÇÃO MÁXIMA: Preste atenção em CADA PALAVRA do usuário. Se ele mencionar um detalhe, capture e execute com precisão cirúrgica. Nada passa despercebido.
+- EXECUÇÃO COM CLAUDE: Ao receber uma tarefa, delegue ao Claude Code CLI com contexto completo e instruções precisas. Monitore a execução. Entregue o resultado final validado.
+- PROATIVIDADE: Se durante a execução você perceber algo que pode melhorar, FAÇA. Não espere pedir — entregue mais do que foi pedido.
 
 PERSISTENT MEMORY:
 ${memory || '(empty memory)'}
@@ -1643,7 +1657,7 @@ async function buildMetaContext(message) {
 
     return `\nMETA ADS DATA (last 7 days):\nCAMPAIGNS:\n${campaignList || 'No campaigns found'}\n\nPERFORMANCE:\n${insightList || 'No insights available'}`;
   } catch (err) {
-    console.error('[FELIPE] Meta fetch error:', err.message);
+    console.error('[JARVIS] Meta fetch error:', err.message);
     return '';
   }
 }
@@ -1685,7 +1699,7 @@ function notifyBuildComplete(userRequest, claudeResponse, language = 'EN') {
 
   if (!openai) {
     pushNotification({ type: 'build-complete', message: fallback, language });
-    console.log('[FELIPE] Push notification sent:', fallback);
+    console.log('[JARVIS] Push notification sent:', fallback);
     return;
   }
 
@@ -1696,10 +1710,10 @@ function notifyBuildComplete(userRequest, claudeResponse, language = 'EN') {
       {
         role: 'system',
         content: ({
-          BR: 'Você é FELIPE. Responda EXCLUSIVAMENTE em Português Brasileiro. Gere UMA frase direta (máx 15 palavras) informando ao senhor que o trabalho foi concluído e mencione o que foi criado.',
-          ES: 'Eres FELIPE. Responde EXCLUSIVAMENTE en Español. Genera UNA frase directa (máx 15 palabras) informando al señor que el trabajo está completo y mencionando lo que se creó.',
-          EN: 'You are FELIPE. Respond EXCLUSIVELY in English. Generate ONE direct sentence (max 15 words) telling the user the work is done. Mention what was built.'
-        }[language] || 'You are FELIPE. Respond EXCLUSIVELY in English. Generate ONE direct sentence (max 15 words) telling the user the work is done. Mention what was built.')
+          BR: 'Você é JARVIS. Responda EXCLUSIVAMENTE em Português Brasileiro. Gere UMA frase direta (máx 15 palavras) informando ao senhor que o trabalho foi concluído e mencione o que foi criado.',
+          ES: 'Eres JARVIS. Responde EXCLUSIVAMENTE en Español. Genera UNA frase directa (máx 15 palabras) informando al señor que el trabajo está completo y mencionando lo que se creó.',
+          EN: 'You are JARVIS. Respond EXCLUSIVELY in English. Generate ONE direct sentence (max 15 words) telling the user the work is done. Mention what was built.'
+        }[language] || 'You are JARVIS. Respond EXCLUSIVELY in English. Generate ONE direct sentence (max 15 words) telling the user the work is done. Mention what was built.')
       },
       { role: 'user', content: `Task: ${userRequest.slice(0, 200)}\nResult: ${claudeResponse.slice(0, 400)}` }
     ],
@@ -1710,7 +1724,7 @@ function notifyBuildComplete(userRequest, claudeResponse, language = 'EN') {
   Promise.race([enrich, timeout]).then(rich => {
     const final = rich || fallback;
     pushNotification({ type: 'build-complete', message: final, language });
-    console.log('[FELIPE] Push notification sent:', final);
+    console.log('[JARVIS] Push notification sent:', final);
   });
 }
 
@@ -1746,7 +1760,7 @@ app.post('/api/chat', async (req, res) => {
     if (wasTranslated) res.write(`[translated]${englishMessage}\n`);
 
     // ── INSTANT ANSWERS: Hora, data, clima (antes de qualquer roteamento) ──
-    const msgClean = fullMessage.toLowerCase().replace(/^felipe[,.]?\s*/i, '').trim();
+    const msgClean = fullMessage.toLowerCase().replace(/^jarvis[,.]?\s*/i, '').trim();
     if (/que\s+horas?|what\s+time|hora\s+atual|horas?\s+agora/i.test(msgClean)) {
       const now = new Date();
       const time = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -1767,7 +1781,7 @@ app.post('/api/chat', async (req, res) => {
     // ── SCREEN VISION: Capture monitors + cursor focus + analyze via GPT-4o ──
     if (SCREEN_PATTERN.test(fullMessage) && openai) {
       try {
-        console.log('[FELIPE] 👁️ Screen query — capturing monitors + cursor focus...');
+        console.log('[JARVIS] 👁️ Screen query — capturing monitors + cursor focus...');
         const scriptPath = path.join(JARVIS_DIR, 'system', 'screenshot.py');
         const cursorPath = path.join(JARVIS_DIR, 'system', 'screenshot-cursor.py');
 
@@ -1785,7 +1799,7 @@ app.post('/api/chat', async (req, res) => {
         const cursorInfo = cursorData.cursor_x ? `Cursor em (${cursorData.cursor_x}, ${cursorData.cursor_y}), monitor ${cursorData.monitor}.` : '';
 
         const langPrompts = {
-          BR: `Você é FELIPE, assistente pessoal. Está VENDO a tela do senhor (${monitorCount} monitor${monitorCount > 1 ? 'es' : ''}). ${cursorInfo}
+          BR: `Você é JARVIS, assistente pessoal. Está VENDO a tela do senhor (${monitorCount} monitor${monitorCount > 1 ? 'es' : ''}). ${cursorInfo}
 
 Pergunta: "${fullMessage}"
 
@@ -1798,8 +1812,8 @@ REGRAS:
 - Se perguntar algo específico, responda sobre aquilo
 - NUNCA diga "não consigo ver"
 - Máximo 4 frases diretas`,
-          ES: `Eres FELIPE. Ves la pantalla (${monitorCount} monitor${monitorCount > 1 ? 'es' : ''}). ${cursorInfo} Pregunta: "${fullMessage}". Primera imagen = todos los monitores. Segunda = foco del cursor (X rojo). Enfócate en donde está el cursor. Lee textos, URLs, apps. Máximo 4 frases.`,
-          EN: `You are FELIPE. You see the screen (${monitorCount} monitor${monitorCount > 1 ? 's' : ''}). ${cursorInfo} Question: "${fullMessage}". First image = all monitors. Second = cursor focus area (red X). Focus on where the cursor is. Read text, URLs, apps. Max 4 sentences.`
+          ES: `Eres JARVIS. Ves la pantalla (${monitorCount} monitor${monitorCount > 1 ? 'es' : ''}). ${cursorInfo} Pregunta: "${fullMessage}". Primera imagen = todos los monitores. Segunda = foco del cursor (X rojo). Enfócate en donde está el cursor. Lee textos, URLs, apps. Máximo 4 frases.`,
+          EN: `You are JARVIS. You see the screen (${monitorCount} monitor${monitorCount > 1 ? 's' : ''}). ${cursorInfo} Question: "${fullMessage}". First image = all monitors. Second = cursor focus area (red X). Focus on where the cursor is. Read text, URLs, apps. Max 4 sentences.`
         };
 
         // Build vision content — full screen + cursor zoom
@@ -1820,18 +1834,18 @@ REGRAS:
         const answer = visionRes.choices[0]?.message?.content?.trim();
         if (answer) {
           const elapsed = Date.now() - t0;
-          console.log(`[FELIPE] 👁️ Screen vision (${monitorCount} monitors) → ${elapsed}ms`);
+          console.log(`[JARVIS] 👁️ Screen vision (${monitorCount} monitors) → ${elapsed}ms`);
           res.write(answer);
           setImmediate(() => {
             appendHistoryFast('user', message);
-            appendHistoryFast('felipe', answer);
+            appendHistoryFast('jarvis', answer);
             pushNotification({ type: 'build-complete', message: answer.slice(0, 200), language });
           });
           try { res.end(); } catch {}
           return;
         }
       } catch (e) {
-        console.error('[FELIPE] Screen vision error:', e.message?.slice(0, 200));
+        console.error('[JARVIS] Screen vision error:', e.message?.slice(0, 200));
       }
     }
 
@@ -1839,11 +1853,11 @@ REGRAS:
     const fastResult = tryFastExecution(fullMessage, language);
     if (fastResult) {
       const elapsed = Date.now() - t0;
-      console.log(`[FELIPE] ⚡⚡ FAST-PATH L1 → ${elapsed}ms`);
+      console.log(`[JARVIS] ⚡⚡ FAST-PATH L1 → ${elapsed}ms`);
       res.write(fastResult.summary);
       setImmediate(() => {
         appendHistoryFast('user', message);
-        appendHistoryFast('felipe', fastResult.summary);
+        appendHistoryFast('jarvis', fastResult.summary);
         // Push the EXACT fast-path response — no GPT-mini enrichment
         pushNotification({ type: 'build-complete', message: fastResult.summary, language });
       });
@@ -1898,11 +1912,11 @@ REGRAS:
     const smartResult = await trySmartFastExecution(fullMessage, language);
     if (smartResult) {
       const elapsed = Date.now() - t0;
-      console.log(`[FELIPE] ⚡ FAST-PATH L2 (smart) → ${elapsed}ms`);
+      console.log(`[JARVIS] ⚡ FAST-PATH L2 (smart) → ${elapsed}ms`);
       res.write(smartResult.summary);
       setImmediate(() => {
         appendHistoryFast('user', message);
-        appendHistoryFast('felipe', smartResult.summary);
+        appendHistoryFast('jarvis', smartResult.summary);
         pushNotification({ type: 'build-complete', message: smartResult.summary, language });
       });
       try { res.end(); } catch {}
@@ -1920,7 +1934,7 @@ REGRAS:
       res.write(instantAck);
       gptResponse = instantAck;
       sessionStats.lastAckLatency = Date.now() - t0;
-      console.log(`[FELIPE] ⚡ Instant ACK → ${sessionStats.lastAckLatency}ms`);
+      console.log(`[JARVIS] ⚡ Instant ACK → ${sessionStats.lastAckLatency}ms`);
 
       // Optionally enrich ACK with GPT-mini in background (fire & forget — user already got ACK)
       if (openai) {
@@ -1931,9 +1945,9 @@ REGRAS:
       try {
         gptResponse = await handleGPTChat(fullMessage, res, language, false);
         sessionStats.lastAckLatency = Date.now() - t0;
-        console.log(`[FELIPE] ⚡ GPT-4o-mini → ${sessionStats.lastAckLatency}ms`);
+        console.log(`[JARVIS] ⚡ GPT-4o-mini → ${sessionStats.lastAckLatency}ms`);
       } catch (gptErr) {
-        console.error('[FELIPE] GPT-mini error:', gptErr.message);
+        console.error('[JARVIS] GPT-mini error:', gptErr.message);
         const fallback = language === 'BR' ? 'Estou aqui.' : 'I\'m here.';
         res.write(fallback);
         gptResponse = fallback;
@@ -1941,7 +1955,7 @@ REGRAS:
       // Pure Q&A done — save and return
       setImmediate(() => {
         appendHistoryFast('user', message);
-        appendHistoryFast('felipe', gptResponse);
+        appendHistoryFast('jarvis', gptResponse);
         storeMemory(message, gptResponse).catch(() => {});
       });
       try { res.end(); } catch {}
@@ -1953,7 +1967,7 @@ REGRAS:
     if (parallelTasks && parallelTasks.length > 1) {
       res.write('\n[build-start]\n');
       res.write(`[info] Executando ${parallelTasks.length} tarefas em paralelo...\n`);
-      console.log(`[FELIPE] ⚡ PARALLEL: ${parallelTasks.length} tasks detected`);
+      console.log(`[JARVIS] ⚡ PARALLEL: ${parallelTasks.length} tasks detected`);
 
       const semanticCtx = await findRelevantMemories(englishMessage);
       let allResults = '';
@@ -1985,7 +1999,7 @@ REGRAS:
 
       setImmediate(() => {
         appendHistoryFast('user', message);
-        appendHistoryFast('felipe', allResults.slice(-500));
+        appendHistoryFast('jarvis', allResults.slice(-500));
         storeMemory(message, allResults.slice(-500)).catch(() => {});
         notifyBuildComplete(message, allResults, language);
       });
@@ -2001,7 +2015,7 @@ REGRAS:
     let screenContext = '';
     if (isScreenQuery) {
       try {
-        console.log('[FELIPE] Auto-screenshot for screen query...');
+        console.log('[JARVIS] Auto-screenshot for screen query...');
         const scriptPath = path.join(JARVIS_DIR, 'system', 'screenshot.py');
         const ssResult = execSync(`"${PYTHON_CMD}" "${scriptPath}" all`, {
           encoding: 'utf-8', timeout: 10000, maxBuffer: 30 * 1024 * 1024
@@ -2015,7 +2029,7 @@ REGRAS:
         // Clean up after 30 seconds
         setTimeout(() => { try { fs.unlinkSync(tmpImg); } catch {} }, 30000);
       } catch (e) {
-        console.error('[FELIPE] Auto-screenshot failed:', e.message);
+        console.error('[JARVIS] Auto-screenshot failed:', e.message);
       }
     }
 
@@ -2027,7 +2041,7 @@ REGRAS:
         EN: `[error] Claude Code unavailable: ${claudeCliError}. Voice works, but tasks cannot be executed. Ask administrator to configure Claude Code CLI.`
       };
       const errText = errorMsg[language] || errorMsg.EN;
-      console.error(`[FELIPE] ❌ Task rejected — Claude CLI unavailable: ${claudeCliError}`);
+      console.error(`[JARVIS] ❌ Task rejected — Claude CLI unavailable: ${claudeCliError}`);
       try { res.write(errText); res.end(); } catch {}
       // Push notification so voice announces the error
       pushNotification({ type: 'build-complete', message: language === 'BR'
@@ -2043,7 +2057,7 @@ REGRAS:
 
     // Double-guard: pool returned null (shouldn't happen if claudeCliAvailable, but defensive)
     if (!proc) {
-      console.error('[FELIPE] ❌ Pool returned null process');
+      console.error('[JARVIS] ❌ Pool returned null process');
       try { res.write('[error] Claude process pool exhausted. Try again.'); res.end(); } catch {}
       return;
     }
@@ -2062,7 +2076,7 @@ REGRAS:
     });
     proc.stderr.on('data', (data) => {
       const msg = data.toString();
-      if (msg.trim()) console.error('[FELIPE stderr]', msg);
+      if (msg.trim()) console.error('[JARVIS stderr]', msg);
     });
     proc.on('close', (code) => {
       clearTimeout(killTimer);
@@ -2072,17 +2086,17 @@ REGRAS:
 
       // Detect if Claude exited with no output (auth failure, crash, etc.)
       if (!responseBuffer.trim() && code !== 0) {
-        console.error(`[FELIPE] ❌ Claude exited with code ${code} and no output — likely auth or CLI issue`);
+        console.error(`[JARVIS] ❌ Claude exited with code ${code} and no output — likely auth or CLI issue`);
         const failMsg = language === 'BR'
           ? 'Senhor, o Claude não conseguiu executar a tarefa. Pode ser um problema de autenticação.'
           : 'Sir, Claude failed to execute the task. This may be an authentication issue.';
         pushNotification({ type: 'build-complete', message: failMsg, language });
         try { res.write(`[error] Claude exited with code ${code}. Check authentication.`); } catch {}
       } else {
-        console.log(`[FELIPE] ⚡ Claude ${model.includes('opus')?'Opus':model.includes('sonnet')?'Sonnet':'Haiku'} → ${elapsed}ms`);
+        console.log(`[JARVIS] ⚡ Claude ${model.includes('opus')?'Opus':model.includes('sonnet')?'Sonnet':'Haiku'} → ${elapsed}ms`);
         setImmediate(() => {
           appendHistoryFast('user', message);
-          appendHistoryFast('felipe', responseBuffer);
+          appendHistoryFast('jarvis', responseBuffer);
           storeMemory(message, responseBuffer).catch(() => {});
           updateProjectStatus(message, responseBuffer).catch(() => {});
           // Save context for follow-up commands
@@ -2101,7 +2115,7 @@ REGRAS:
     });
     proc.on('error', (err) => {
       clearTimeout(killTimer);
-      console.error('[FELIPE] ❌ Spawn error:', err.message);
+      console.error('[JARVIS] ❌ Spawn error:', err.message);
       const spawnErrMsg = language === 'BR'
         ? `Senhor, não consegui executar: ${err.message}`
         : `Sir, execution failed: ${err.message}`;
@@ -2110,7 +2124,7 @@ REGRAS:
     });
 
   } catch (err) {
-    console.error('[FELIPE] Chat error:', err);
+    console.error('[JARVIS] Chat error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2171,7 +2185,7 @@ app.post('/api/voice-complete', async (req, res) => {
     // Guard: Claude CLI must be available
     if (!claudeCliAvailable) {
       const errMsg = 'Claude Code is not configured. Voice Q&A works but execution is disabled.';
-      console.error(`[FELIPE] ❌ voice-complete rejected: ${claudeCliError}`);
+      console.error(`[JARVIS] ❌ voice-complete rejected: ${claudeCliError}`);
       try { res.write(errMsg); res.end(); } catch {}
       return;
     }
@@ -2190,7 +2204,12 @@ app.post('/api/voice-complete', async (req, res) => {
     }
 
     const { language: voiceLang = 'EN' } = req.body;
-    proc.stdin.write(buildJarvisPrompt(message, '', true, voiceLang));
+    // Inject screen context if cowork mode is active
+    let voiceMessage = message;
+    if (coworkActive && coworkScreenContext) {
+      voiceMessage = `[SCREEN CONTEXT: The user is currently ${coworkScreenContext}]\n\nUser question: ${message}`;
+    }
+    proc.stdin.write(buildJarvisPrompt(voiceMessage, '', true, voiceLang));
     proc.stdin.end();
 
     const killTimer = setTimeout(() => {
@@ -2209,8 +2228,8 @@ app.post('/api/voice-complete', async (req, res) => {
       const elapsed = Date.now() - t0;
       sessionStats.tokensOut += Math.ceil(responseBuffer.length / 4);
       sessionStats.lastLatency = elapsed;
-      console.log(`[FELIPE] 🎤 Voice → ${elapsed}ms | pool: H${pools.haiku.pool.length}`);
-      appendHistoryFast('felipe', responseBuffer);
+      console.log(`[JARVIS] 🎤 Voice → ${elapsed}ms | pool: H${pools.haiku.pool.length}`);
+      appendHistoryFast('jarvis', responseBuffer);
       storeMemory(message, responseBuffer).catch(() => {});
       try { res.end(); } catch {}
     });
@@ -2263,7 +2282,7 @@ app.post('/api/audio-complete', async (req, res) => {
 
     proc.on('close', () => {
       sessionStats.tokensOut += Math.ceil(responseBuffer.length / 4);
-      appendHistoryFast('felipe', responseBuffer);
+      appendHistoryFast('jarvis', responseBuffer);
       storeMemory(message, responseBuffer).catch(() => {});
       res.end();
     });
@@ -2331,7 +2350,7 @@ app.post('/api/stt', upload.single('audio'), async (req, res) => {
 
     // Reject tiny audio files (likely just noise/click)
     if (req.file.size < 2000) {
-      console.log('[FELIPE] STT rejected: audio too small', req.file.size, 'bytes');
+      console.log('[JARVIS] STT rejected: audio too small', req.file.size, 'bytes');
       return res.json({ text: '', filtered: true, reason: 'Audio too short' });
     }
 
@@ -2339,7 +2358,7 @@ app.post('/api/stt', upload.single('audio'), async (req, res) => {
     const debugPath = path.join(SYSTEM_DIR, 'last-audio-debug.webm');
     try { fs.writeFileSync(debugPath, req.file.buffer); } catch {}
 
-    console.log(`[FELIPE] STT input: ${req.file.size} bytes, mime: ${req.file.mimetype}, saved to debug`);
+    console.log(`[JARVIS] STT input: ${req.file.size} bytes, mime: ${req.file.mimetype}, saved to debug`);
 
     // Single transcription call with English — simpler is more reliable
     const audioFile = await toFile(req.file.buffer, 'audio.webm', { type: 'audio/webm' });
@@ -2349,35 +2368,35 @@ app.post('/api/stt', upload.single('audio'), async (req, res) => {
       model: 'whisper-1',
       file: audioFile,
       language: 'en',
-      prompt: 'Create an e-book about digital marketing. Build a website. Generate a report. Design a presentation. Analyze data. Write code. Hello FELIPE.'
+      prompt: 'Create an e-book about digital marketing. Build a website. Generate a report. Design a presentation. Analyze data. Write code. Hello JARVIS.'
     });
 
     let raw = transcription.text?.trim() || '';
-    console.log('[FELIPE] STT [en]:', JSON.stringify(raw));
+    console.log('[JARVIS] STT [en]:', JSON.stringify(raw));
 
     // If English hallucinated, try Portuguese
     if (isHallucination(raw)) {
-      console.log('[FELIPE] EN was hallucination, trying PT...');
+      console.log('[JARVIS] EN was hallucination, trying PT...');
       const audioFile2 = await toFile(req.file.buffer, 'audio.webm', { type: 'audio/webm' });
       transcription = await openai.audio.transcriptions.create({
         model: 'whisper-1',
         file: audioFile2,
         language: 'pt',
-        prompt: 'Crie um e-book sobre marketing digital. Construa um site. Gere um relatório. Olá FELIPE.'
+        prompt: 'Crie um e-book sobre marketing digital. Construa um site. Gere um relatório. Olá JARVIS.'
       });
       raw = transcription.text?.trim() || '';
-      console.log('[FELIPE] STT [pt]:', JSON.stringify(raw));
+      console.log('[JARVIS] STT [pt]:', JSON.stringify(raw));
     }
 
     if (isHallucination(raw)) {
-      console.log('[FELIPE] STT FILTERED both attempts:', JSON.stringify(raw));
+      console.log('[JARVIS] STT FILTERED both attempts:', JSON.stringify(raw));
       return res.json({ text: '', filtered: true, reason: 'Could not understand. Try speaking closer to the mic.' });
     }
 
-    console.log('[FELIPE] STT accepted:', raw);
+    console.log('[JARVIS] STT accepted:', raw);
     res.json({ text: raw });
   } catch (err) {
-    console.error('[FELIPE] STT error:', err);
+    console.error('[JARVIS] STT error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2433,7 +2452,7 @@ app.post('/api/analyze-screen-fast', async (req, res) => {
 
     res.json({ response });
   } catch (err) {
-    console.error('[FELIPE] Fast vision error:', err.message);
+    console.error('[JARVIS] Fast vision error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2447,13 +2466,13 @@ app.post('/api/analyze-screen', async (req, res) => {
     // Save screenshot to temp file
     const base64Data = image.replace(/^data:image\/(png|jpeg|webp);base64,/, '');
     const ext = image.startsWith('data:image/jpeg') ? 'jpg' : 'png';
-    const tmpImg = path.join(os.tmpdir(), `felipe-screen-${Date.now()}.${ext}`);
+    const tmpImg = path.join(os.tmpdir(), `jarvis-screen-${Date.now()}.${ext}`);
     fs.writeFileSync(tmpImg, Buffer.from(base64Data, 'base64'));
 
     const memory = loadMemoryCached();
     const langInstruction = language === 'BR'
-      ? 'Responda EXCLUSIVAMENTE em Português Brasileiro. Você é FELIPE, braço direito do usuário.'
-      : 'Respond EXCLUSIVELY in English. You are FELIPE, the user\'s right-hand man.';
+      ? 'Responda EXCLUSIVAMENTE em Português Brasileiro. Você é JARVIS, braço direito do usuário.'
+      : 'Respond EXCLUSIVELY in English. You are JARVIS, the user\'s right-hand man.';
 
     const question = message
       ? (language === 'BR' ? `Pergunta do usuário sobre a tela: ${message}` : `User question about the screen: ${message}`)
@@ -2508,7 +2527,7 @@ Be direct and concise. If the user's question is about specific content visible 
       });
     });
   } catch (err) {
-    console.error('[FELIPE] Screen analysis error:', err.message);
+    console.error('[JARVIS] Screen analysis error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2534,7 +2553,7 @@ app.post('/api/tts', async (req, res) => {
     res.setHeader('Content-Type', 'audio/mpeg');
     res.send(buffer);
   } catch (err) {
-    console.error('[FELIPE] TTS error:', err);
+    console.error('[JARVIS] TTS error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2568,7 +2587,7 @@ app.post('/api/realtime/session', async (req, res) => {
     const { language = 'EN', voice = 'ash' } = req.body || {};
 
     const INSTRUCTIONS = {
-      BR: `Você é FELIPE — assistente pessoal com poderes COMPLETOS sobre o computador do senhor. Fale APENAS em Português Brasileiro. Máximo 1 frase. Nunca mencione GPT ou OpenAI.
+      BR: `Você é JARVIS — assistente pessoal com poderes COMPLETOS sobre o computador do senhor. Fale APENAS em Português Brasileiro. Máximo 1 frase. Nunca mencione GPT ou OpenAI.
 
 SUAS CAPACIDADES (informe ao senhor quando perguntar):
 - Você VÊ a tela do senhor em tempo real (screenshot de todos os monitores)
@@ -2584,13 +2603,13 @@ Exemplos: "abre o YouTube" → execute_task | "o que tem na minha tela?" → exe
 
 NUNCA diga "não consigo", "não tenho acesso", "não posso ver". Você PODE tudo. SEMPRE chame execute_task.`,
 
-      ES: `Eres FELIPE — asistente personal con poderes COMPLETOS sobre el computador del señor. SOLO Español. Máximo 1 frase. Nunca menciones GPT ni OpenAI.
+      ES: `Eres JARVIS — asistente personal con poderes COMPLETOS sobre el computador del señor. SOLO Español. Máximo 1 frase. Nunca menciones GPT ni OpenAI.
 
 TUS CAPACIDADES: VES la pantalla en tiempo real, CONTROLAS mouse y teclado, CREAS archivos/apps/sitios/PDFs, ABRES programas y sitios, EJECUTAS código y comandos, tienes MEMORIA de conversaciones anteriores.
 
 REGLA: Para CUALQUIER pedido que no sea conocimiento puro → llama "execute_task". NUNCA digas "no puedo". Si pregunta "qué hay en mi pantalla" → execute_task. SIEMPRE execute_task.`,
 
-      EN: `You are FELIPE — personal assistant with FULL powers over the user's computer. ONLY English. Max 1 sentence. Never mention GPT or OpenAI.
+      EN: `You are JARVIS — personal assistant with FULL powers over the user's computer. ONLY English. Max 1 sentence. Never mention GPT or OpenAI.
 
 YOUR CAPABILITIES: You SEE the screen in real-time, CONTROL mouse and keyboard, CREATE files/apps/sites/PDFs, OPEN programs and sites, EXECUTE code and commands, have MEMORY of past conversations.
 
@@ -2633,12 +2652,12 @@ RULE: For ANY request that is not pure knowledge → call "execute_task". NEVER 
     });
     const data = await r.json();
     if (!r.ok) {
-      console.error('[FELIPE] Realtime session error:', data);
+      console.error('[JARVIS] Realtime session error:', data);
       return res.status(500).json({ error: data.error?.message || 'Realtime session failed' });
     }
     res.json(data);
   } catch (err) {
-    console.error('[FELIPE] Realtime error:', err.message);
+    console.error('[JARVIS] Realtime error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2891,7 +2910,7 @@ else:
 `;
     }
 
-    const tmpScript = path.join(os.tmpdir(), 'felipe_excel_live.py');
+    const tmpScript = path.join(os.tmpdir(), 'jarvis_excel_live.py');
     fs.writeFileSync(tmpScript, script);
 
     const { execFile } = await import('child_process');
@@ -2925,7 +2944,7 @@ for row in ws.iter_rows(values_only=True):
     rows.append(list(row))
 print(json.dumps({"sheet": sheet_name, "sheets": wb.sheetnames, "rows": rows}))
 `;
-    const tmpScript = path.join(os.tmpdir(), 'felipe_excel_read.py');
+    const tmpScript = path.join(os.tmpdir(), 'jarvis_excel_read.py');
     fs.writeFileSync(tmpScript, script);
 
     const { execFile } = await import('child_process');
@@ -3029,10 +3048,10 @@ app.get('/api/notifications', (req, res) => {
   res.setHeader('X-Accel-Buffering', 'no');
   res.write('data: {"type":"connected"}\n\n');
   notificationClients.add(res);
-  console.log(`[FELIPE] SSE client connected (total: ${notificationClients.size})`);
+  console.log(`[JARVIS] SSE client connected (total: ${notificationClients.size})`);
   req.on('close', () => {
     notificationClients.delete(res);
-    console.log(`[FELIPE] SSE client disconnected (total: ${notificationClients.size})`);
+    console.log(`[JARVIS] SSE client disconnected (total: ${notificationClients.size})`);
   });
 });
 
@@ -3095,7 +3114,7 @@ with pdfplumber.open(r'${tmpPath.replace(/\\/g, '\\\\')}') as pdf:
 
         if (pdfText) {
           attachments.set(attachmentId, pdfText);
-          console.log(`[FELIPE] PDF extracted: ${req.file.originalname} (${pdfText.length} chars)`);
+          console.log(`[JARVIS] PDF extracted: ${req.file.originalname} (${pdfText.length} chars)`);
           res.json({ attachmentId, name: req.file.originalname, type: 'pdf', preview: pdfText.slice(0, 500), chars: pdfText.length });
         } else {
           // PDF has no extractable text (scanned image) — save as binary
@@ -3105,7 +3124,7 @@ with pdfplumber.open(r'${tmpPath.replace(/\\/g, '\\\\')}') as pdf:
           res.json({ attachmentId, name: req.file.originalname, type: 'binary', path: filePath });
         }
       } catch (pyErr) {
-        console.error('[FELIPE] PDF extraction error:', pyErr.message);
+        console.error('[JARVIS] PDF extraction error:', pyErr.message);
         // Fallback: save as binary
         const filePath = path.join(PROJECTS_DIR, req.file.originalname);
         fs.writeFileSync(filePath, req.file.buffer);
@@ -3144,7 +3163,7 @@ function startLibreHardwareMonitor() {
   const lhmExe = path.join(lhmDir, 'LibreHardwareMonitor.exe');
 
   if (!fs.existsSync(lhmExe)) {
-    console.log('[FELIPE] LibreHardwareMonitor nao encontrado — temperaturas limitadas');
+    console.log('[JARVIS] LibreHardwareMonitor nao encontrado — temperaturas limitadas');
     return;
   }
 
@@ -3152,7 +3171,7 @@ function startLibreHardwareMonitor() {
   try {
     const check = execSync('tasklist /FI "IMAGENAME eq LibreHardwareMonitor.exe"', { encoding: 'utf-8' });
     if (check.includes('LibreHardwareMonitor.exe')) {
-      console.log('[FELIPE] LibreHardwareMonitor ja rodando');
+      console.log('[JARVIS] LibreHardwareMonitor ja rodando');
       lhmReady = true;
       return;
     }
@@ -3166,11 +3185,11 @@ function startLibreHardwareMonitor() {
       windowsHide: true
     });
     lhmProcess.unref();
-    console.log('[FELIPE] LibreHardwareMonitor iniciado');
+    console.log('[JARVIS] LibreHardwareMonitor iniciado');
     // Aguarda 2s pra web server subir
     setTimeout(() => { lhmReady = true; }, 2000);
   } catch (err) {
-    console.log('[FELIPE] Erro ao iniciar LHM:', err.message);
+    console.log('[JARVIS] Erro ao iniciar LHM:', err.message);
   }
 }
 
@@ -3376,7 +3395,7 @@ print(json.dumps(result))
   }
 });
 
-// GET /api/health - Full system health check (used by Ligar FELIPE.bat and frontend)
+// GET /api/health - Full system health check (used by Ligar JARVIS.bat and frontend)
 app.get('/api/health', (req, res) => {
   const chrome = findChrome();
   const health = {
@@ -3418,7 +3437,7 @@ app.get('/api/health', (req, res) => {
 
 // POST /api/health/recheck - Re-run Claude CLI health check (useful after fixing auth)
 app.post('/api/health/recheck', (req, res) => {
-  console.log('[FELIPE] Re-checking Claude CLI health...');
+  console.log('[JARVIS] Re-checking Claude CLI health...');
   claudeCliAvailable = checkClaudeCli();
   if (claudeCliAvailable) {
     // Refill pools now that CLI is available
@@ -3438,7 +3457,7 @@ app.post('/api/health/recheck', (req, res) => {
 // POST /api/health/preflight - Deep verification: actually tests OpenAI + Claude + Realtime voice
 // Run this ONCE after install to confirm everything works before the user starts
 app.post('/api/health/preflight', async (req, res) => {
-  console.log('[FELIPE] Running pre-flight verification...');
+  console.log('[JARVIS] Running pre-flight verification...');
   const results = {
     openai_api: { status: 'pending', detail: '' },
     openai_realtime: { status: 'pending', detail: '' },
@@ -3536,7 +3555,7 @@ app.post('/api/health/preflight', async (req, res) => {
           '--print', '--output-format', 'text',
           '--dangerously-skip-permissions'
         ], {
-          input: 'Reply with exactly: FELIPE_OK',
+          input: 'Reply with exactly: JARVIS_OK',
           timeout: 60000, encoding: 'utf-8', shell: true
         });
 
@@ -3549,7 +3568,7 @@ app.post('/api/health/preflight', async (req, res) => {
             claudeCliError = '';
             claudeCliChecking = false;
             pools.opus.fill(); pools.sonnet.fill(); pools.haiku.fill();
-            console.log('[FELIPE] Preflight fixed boot auth — pools filled');
+            console.log('[JARVIS] Preflight fixed boot auth — pools filled');
           }
         } else {
           const errDetail = testProc.stderr?.slice(0, 200) || 'No output — may need retry';
@@ -3567,11 +3586,11 @@ app.post('/api/health/preflight', async (req, res) => {
     status: allOk ? 'ready' : 'issues_found',
     results,
     message: allOk
-      ? 'All systems operational. FELIPE is ready to use.'
+      ? 'All systems operational. JARVIS is ready to use.'
       : 'Some components have issues. Check details above.'
   };
 
-  console.log('[FELIPE] Pre-flight results:', JSON.stringify(summary.results, null, 2));
+  console.log('[JARVIS] Pre-flight results:', JSON.stringify(summary.results, null, 2));
   res.json(summary);
 });
 
@@ -3586,19 +3605,19 @@ app.post('/api/health/autofix', async (req, res) => {
     return res.status(503).json({ error: 'Claude CLI not available — cannot auto-fix without it' });
   }
 
-  console.log('[FELIPE] Auto-fix requested for:', issues.map(i => i.key).join(', '));
+  console.log('[JARVIS] Auto-fix requested for:', issues.map(i => i.key).join(', '));
 
   // Build a diagnostic prompt for Claude
   const diagLines = issues.map(i =>
     `- ${i.key}: ${i.detail}`
   ).join('\n');
 
-  const fixPrompt = `You are FELIPE system repair agent. The following issues were detected during system verification of a FELIPE Voice Assistant installation at "${JARVIS_DIR}":
+  const fixPrompt = `You are JARVIS system repair agent. The following issues were detected during system verification of a JARVIS Voice Assistant installation at "${JARVIS_DIR}":
 
 ${diagLines}
 
 IMPORTANT CONTEXT:
-- FELIPE runs on Node.js with Express (server.js) on port ${PORT}
+- JARVIS runs on Node.js with Express (server.js) on port ${PORT}
 - Voice uses OpenAI Realtime API (needs OPENAI_API_KEY in .env file)
 - Task execution uses Claude CLI (needs 'claude' in PATH and authenticated)
 - The .env file should be at: ${path.join(JARVIS_DIR, '.env')}
@@ -3640,21 +3659,21 @@ After fixing, output a summary of what was done.`;
 
     proc.stderr.on('data', (data) => {
       const msg = data.toString().trim();
-      if (msg) console.error('[FELIPE autofix stderr]', msg);
+      if (msg) console.error('[JARVIS autofix stderr]', msg);
     });
 
     proc.on('close', (code) => {
-      console.log(`[FELIPE] Auto-fix completed with code ${code}`);
+      console.log(`[JARVIS] Auto-fix completed with code ${code}`);
       try { res.write(`\n[autofix-done] exit code: ${code}`); res.end(); } catch {}
     });
 
     proc.on('error', (err) => {
-      console.error('[FELIPE] Auto-fix spawn error:', err.message);
+      console.error('[JARVIS] Auto-fix spawn error:', err.message);
       try { res.write(`[autofix-error] ${err.message}`); res.end(); } catch {}
     });
 
   } catch (err) {
-    console.error('[FELIPE] Auto-fix error:', err.message);
+    console.error('[JARVIS] Auto-fix error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -3820,8 +3839,8 @@ app.post('/api/obsidian/ingest', express.json({ limit: '10mb' }), async (req, re
 
     if (type === 'session') {
       // Ingest from current session context
-      const memoryFile = path.join(SYSTEM_DIR, 'FELIPE-MEMORY.md');
-      const historyFile = path.join(SYSTEM_DIR, 'FELIPE-HISTORY.json');
+      const memoryFile = path.join(SYSTEM_DIR, 'JARVIS-MEMORY.md');
+      const historyFile = path.join(SYSTEM_DIR, 'JARVIS-HISTORY.json');
       let sessionData = '';
 
       if (fs.existsSync(historyFile)) {
@@ -4193,6 +4212,7 @@ app.post('/api/workflow', express.json(), async (req, res) => {
 let coworkActive = false;
 let coworkInterval = null;
 let coworkLastState = '';
+let coworkScreenContext = ''; // Current screen context for voice queries
 
 app.post('/api/cowork/start', (req, res) => {
   if (coworkActive) return res.json({ ok: true, status: 'already running' });
@@ -4212,12 +4232,18 @@ app.post('/api/cowork/start', (req, res) => {
 
     // Análise leve: Claude decide se tem algo útil pra fazer
     try {
-      const analysisPrompt = `You are JARVIS in Cowork mode. The user just switched to: "${fg.title}" (${fg.proc}).
+      const analysisPrompt = `You are JARVIS, an AI assistant observing the user's screen in real-time. You act as a knowledgeable professor and executive assistant.
+
+Current window: "${fg.title}" (${fg.proc})
 Other open windows: ${(state.windows || []).slice(0, 5).map(w => w.title).join(', ')}
 
-Based on this context, should JARVIS proactively do anything useful?
-Reply with JSON: {"action":"none"} if nothing to do, or {"action":"suggest","message":"brief suggestion in Portuguese"} if you have a useful suggestion.
-Only suggest if it's genuinely helpful. Don't be annoying. Max 1 sentence.`;
+Based on this context:
+1. Be aware of what the user is working on
+2. If they ask a question via voice, you'll have this context
+3. Only proactively suggest if something is genuinely useful
+
+Reply with JSON: {"action":"none","context":"brief note about what user is doing"} if nothing to suggest, or {"action":"suggest","message":"brief helpful suggestion in Portuguese","context":"what user is doing"} if you have something useful.
+Keep suggestions rare and high-value. Max 1 sentence.`;
 
       const proc = spawn(CLAUDE_CMD, [
         '--print', '--output-format', 'text',
@@ -4235,8 +4261,9 @@ Only suggest if it's genuinely helpful. Don't be annoying. Max 1 sentence.`;
           const match = stdout.match(/\{[\s\S]*\}/);
           if (match) {
             const result = JSON.parse(match[0]);
+            // Save screen context for voice queries
+            if (result.context) coworkScreenContext = result.context;
             if (result.action === 'suggest' && result.message) {
-              // Push suggestion to client
               pushNotification({ type: 'cowork-suggest', message: result.message });
               console.log(`[JARVIS Cowork] 💡 ${result.message}`);
             }
@@ -4262,152 +4289,52 @@ app.get('/api/cowork/status', (req, res) => {
   res.json({ active: coworkActive });
 });
 
+
+// DESKTOP PET LAUNCHER
 // ═══════════════════════════════════════════════
-// CONTENT GENERATOR — Gerador de conteúdo automático (free via Claude)
-// ═══════════════════════════════════════════════
-app.post('/api/generate-content', express.json({ limit: '5mb' }), async (req, res) => {
-  const { type, topic, platform, quantity, language = 'BR', style } = req.body;
+let petProcess = null;
+let petRunning = false;
 
-  if (!topic) return res.status(400).json({ error: 'topic required' });
+app.post('/api/pet/launch', (req, res) => {
+  // Toggle: if running, kill it
+  if (petRunning && petProcess) {
+    try {
+      process.kill(petProcess.pid);
+    } catch(e) {}
+    petProcess = null;
+    petRunning = false;
+    return res.json({ ok: true, action: 'closed', message: 'Desktop Pet fechado.' });
+  }
 
-  const templates = {
-    'instagram-posts': `Crie ${quantity || 10} posts para Instagram sobre "${topic}".
-Para cada post inclua:
-- Texto com emojis e hashtags (max 300 chars)
-- Sugestão de imagem (descrição visual)
-- Melhor horário pra postar
-Formato: JSON array [{"text":"...","image_desc":"...","best_time":"..."}]`,
-
-    'linkedin-posts': `Crie ${quantity || 5} posts profissionais para LinkedIn sobre "${topic}".
-Para cada post:
-- Texto com storytelling (500-1000 chars)
-- Hook forte na primeira linha
-- CTA no final
-Formato: JSON array [{"text":"...","hook":"...","cta":"..."}]`,
-
-    'blog-articles': `Crie ${quantity || 3} outlines de artigos de blog sobre "${topic}".
-Para cada artigo:
-- Título SEO otimizado
-- Meta description (155 chars)
-- H2 subtitles (5-7)
-- Keywords alvo
-Formato: JSON array [{"title":"...","meta":"...","subtitles":[...],"keywords":[...]}]`,
-
-    'email-sequence': `Crie uma sequência de ${quantity || 7} emails sobre "${topic}".
-Para cada email:
-- Subject line (curta, curiosidade)
-- Preview text
-- Body (200-400 chars)
-- CTA
-Formato: JSON array [{"day":1,"subject":"...","preview":"...","body":"...","cta":"..."}]`,
-
-    'video-scripts': `Crie ${quantity || 5} roteiros de vídeo curto (Reels/Shorts) sobre "${topic}".
-Para cada vídeo:
-- Hook (primeiros 3 segundos)
-- Corpo (30-60 segundos)
-- CTA final
-- Sugestão de música/mood
-Formato: JSON array [{"hook":"...","body":"...","cta":"...","music":"...","duration":"..."}]`,
-
-    'ad-copy': `Crie ${quantity || 10} variações de copy para anúncios sobre "${topic}".
-Para cada ad:
-- Headline (max 40 chars)
-- Primary text (max 125 chars)
-- Description (max 30 chars)
-- CTA button text
-Formato: JSON array [{"headline":"...","primary":"...","description":"...","cta":"..."}]`,
-
-    'ebook-outline': `Crie o outline completo de um e-book sobre "${topic}".
-Inclua:
-- Título e subtítulo
-- 8-12 capítulos com resumo de cada
-- Introdução sugerida (300 chars)
-- Público-alvo
-Formato: JSON {"title":"...","subtitle":"...","audience":"...","intro":"...","chapters":[{"title":"...","summary":"..."}]}`,
-  };
-
-  const contentType = type || 'instagram-posts';
-  const prompt = templates[contentType] || templates['instagram-posts'];
-  const fullPrompt = `${prompt}\n\nEstilo: ${style || 'profissional e engajante'}\nIdioma: ${language === 'BR' ? 'Português Brasileiro' : language === 'ES' ? 'Espanhol' : 'Inglês'}\n\nResponda APENAS com o JSON, sem explicação.`;
-
+  const petDir = path.join(__dirname, 'pet');
+  const electronExe = path.join(petDir, 'node_modules', 'electron', 'dist', 'electron.exe');
   try {
-    const result = await new Promise((resolve, reject) => {
-      const proc = spawn(CLAUDE_CMD, [
-        '--print', '--output-format', 'text',
-        '--model', 'claude-sonnet-4-6',
-        '--dangerously-skip-permissions'
-      ], { shell: true, cwd: JARVIS_DIR, timeout: 60000 });
-
-      proc.stdin.write(fullPrompt);
-      proc.stdin.end();
-
-      let stdout = '';
-      proc.stdout.on('data', d => { stdout += d; });
-      proc.on('close', (code) => {
-        if (code === 0 && stdout.trim()) resolve(stdout.trim());
-        else reject(new Error('Claude failed'));
-      });
-      proc.on('error', reject);
+    petProcess = spawn(electronExe, ['.'], {
+      cwd: petDir,
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true
     });
-
-    // Parse JSON from response
-    const jsonMatch = result.match(/[\[\{][\s\S]*[\]\}]/);
-    if (jsonMatch) {
-      const content = JSON.parse(jsonMatch[0]);
-      res.json({ ok: true, type: contentType, topic, count: Array.isArray(content) ? content.length : 1, content });
-    } else {
-      res.json({ ok: true, type: contentType, topic, raw: result });
-    }
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+    petRunning = true;
+    petProcess.on('exit', () => { petRunning = false; petProcess = null; });
+    petProcess.unref();
+    res.json({ ok: true, action: 'opened', message: 'Desktop Pet aberto!' });
+  } catch(err) {
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 
-// ═══════════════════════════════════════════════
-// ═══════════════════════════════════════════════
-// IMAGE PROXY — Pollinations sem referrer block
-// ═══════════════════════════════════════════════
-app.get('/api/image-gen', async (req, res) => {
-  const prompt = req.query.prompt || 'abstract art';
-  const width = req.query.width || 768;
-  const height = req.query.height || 768;
-  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${width}&height=${height}&model=flux&enhance=true&quality=high`;
+// PET MIC STATE — broadcast mic state to cockpit clients
+let petMicActive = false;
+app.post('/api/pet/mic-state', (req, res) => {
+  petMicActive = req.body.active || false;
+  pushNotification({ type: 'pet-mic', active: petMicActive });
+  console.log(`[JARVIS Pet] Mic ${petMicActive ? 'ON — Cowork + Voice active' : 'OFF'}`);
+  res.json({ ok: true, active: petMicActive });
+});
 
-  // Timeout de 60s (Pollinations pode demorar 10-20s pra gerar)
-  req.setTimeout(60000);
-  res.setTimeout(60000);
-
-  try {
-    const https = await import('https');
-
-    function fetchImage(imageUrl, depth) {
-      if (depth > 5) return res.status(500).json({ error: 'Too many redirects' });
-
-      https.get(imageUrl, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 45000 }, (imgRes) => {
-        // Follow redirects
-        if (imgRes.statusCode === 301 || imgRes.statusCode === 302 || imgRes.statusCode === 307) {
-          fetchImage(imgRes.headers.location, depth + 1);
-          return;
-        }
-        if (imgRes.statusCode !== 200) {
-          return res.status(imgRes.statusCode).json({ error: 'Pollinations returned ' + imgRes.statusCode });
-        }
-        res.setHeader('Content-Type', imgRes.headers['content-type'] || 'image/jpeg');
-        res.setHeader('Content-Disposition', 'inline; filename="criativo.jpg"');
-        res.setHeader('Cache-Control', 'public, max-age=86400');
-        imgRes.pipe(res);
-      }).on('error', (err) => {
-        if (!res.headersSent) res.status(500).json({ error: err.message });
-      }).on('timeout', function() {
-        this.destroy();
-        if (!res.headersSent) res.status(504).json({ error: 'Pollinations timeout' });
-      });
-    }
-
-    fetchImage(url, 0);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+app.get('/api/pet/mic-state', (req, res) => {
+  res.json({ active: petMicActive });
 });
 
 // LEGACY ENDPOINTS (kept for backward compatibility)
@@ -4424,7 +4351,7 @@ app.get('/api/screenshot', (req, res) => {
     });
     res.json(JSON.parse(result.trim()));
   } catch (err) {
-    console.error('[FELIPE] Screenshot error:', err.message?.slice(0, 200));
+    console.error('[JARVIS] Screenshot error:', err.message?.slice(0, 200));
     res.status(500).json({ error: 'Screenshot failed' });
   }
 });
@@ -4437,7 +4364,7 @@ app.post('/api/computer-use', (req, res) => {
     execSync(`"${PYTHON_CMD}" "${scriptPath}" "${argsJson}"`, { timeout: 10000, shell: true });
     res.json({ success: true, action: req.body.action });
   } catch (err) {
-    console.error('[FELIPE] Computer-use error:', err.message?.slice(0, 200));
+    console.error('[JARVIS] Computer-use error:', err.message?.slice(0, 200));
     res.status(500).json({ error: err.message?.slice(0, 200) });
   }
 });
@@ -4448,13 +4375,13 @@ app.post('/api/computer-use/task', async (req, res) => {
   if (!task) return res.status(400).json({ error: 'No task provided' });
   if (!claudeCliAvailable) return res.status(503).json({ error: 'Claude CLI not available' });
 
-  console.log(`[FELIPE] Computer-use task: ${task}`);
+  console.log(`[JARVIS] Computer-use task: ${task}`);
 
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   res.setHeader('Transfer-Encoding', 'chunked');
   res.setHeader('Cache-Control', 'no-cache');
 
-  const prompt = `You are FELIPE controlling the user's Windows computer. You have these tools available via HTTP:
+  const prompt = `You are JARVIS controlling the user's Windows computer. You have these tools available via HTTP:
 
 1. GET /api/screenshot - captures the screen, returns { data: "data:image/jpeg;base64,..." }
 2. POST /api/computer-use - performs actions:
@@ -4503,11 +4430,11 @@ To open URLs: use Bash "start https://..." command directly.`;
     proc.stderr.on('data', data => {
       const msg = data.toString().trim();
       if (msg && !msg.includes('ExperimentalWarning')) {
-        console.error('[FELIPE CU stderr]', msg);
+        console.error('[JARVIS CU stderr]', msg);
       }
     });
     proc.on('close', code => {
-      console.log(`[FELIPE] Computer-use task done (code ${code})`);
+      console.log(`[JARVIS] Computer-use task done (code ${code})`);
       notifyBuildComplete(task, 'Computer use task completed', language);
       try { res.end(); } catch {}
     });
@@ -4531,7 +4458,7 @@ app.listen(PORT, () => {
   const chrome = findChrome();
   console.log('');
   console.log('  ==========================================');
-  console.log('    F E L I P E   —   System Status');
+  console.log('    J A R V I S   —   System Status');
   console.log('  ==========================================');
   console.log('');
   console.log(`  Server:     http://localhost:${PORT}`);
@@ -4561,8 +4488,8 @@ app.listen(PORT, () => {
   if (cliExists) {
     checkClaudeCliAuth().then(() => {
       if (claudeCliAvailable) {
-        console.log('[FELIPE] ✅ Claude auth verified. Task execution ENABLED.');
-        console.log(`[FELIPE] ✅ Pools: Opus×${pools.opus.pool.length} Sonnet×${pools.sonnet.pool.length} Haiku×${pools.haiku.pool.length}`);
+        console.log('[JARVIS] ✅ Claude auth verified. Task execution ENABLED.');
+        console.log(`[JARVIS] ✅ Pools: Opus×${pools.opus.pool.length} Sonnet×${pools.sonnet.pool.length} Haiku×${pools.haiku.pool.length}`);
       }
     });
   }

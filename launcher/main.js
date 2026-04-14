@@ -48,12 +48,12 @@ function findJarvisDir() {
   const HOME = os.homedir();
 
   // Primeiro: checar config salvo no registry/arquivo (se existe)
-  const configFile = path.join(HOME, '.felipe-launcher-config.json');
+  const configFile = path.join(HOME, '.jarvis-launcher-config.json');
   if (fs.existsSync(configFile)) {
     try {
       const cfg = JSON.parse(fs.readFileSync(configFile, 'utf8'));
       if (cfg.jarvisDir && fs.existsSync(path.join(cfg.jarvisDir, 'server.js'))) {
-        console.log('[FELIPE Launcher] Found via config:', cfg.jarvisDir);
+        console.log('[JARVIS Launcher] Found via config:', cfg.jarvisDir);
         return cfg.jarvisDir;
       }
     } catch {}
@@ -81,7 +81,7 @@ function findJarvisDir() {
 
   for (const dir of candidates) {
     if (fs.existsSync(path.join(dir, 'server.js'))) {
-      console.log('[FELIPE Launcher] Found JARVIS at:', dir);
+      console.log('[JARVIS Launcher] Found JARVIS at:', dir);
       // Salvar no config pra próxima vez
       try {
         fs.writeFileSync(configFile, JSON.stringify({ jarvisDir: dir }, null, 2));
@@ -94,13 +94,13 @@ function findJarvisDir() {
   let search = __dirname;
   for (let i = 0; i < 5; i++) {
     if (fs.existsSync(path.join(search, 'server.js'))) {
-      console.log('[FELIPE Launcher] Found JARVIS (search) at:', search);
+      console.log('[JARVIS Launcher] Found JARVIS (search) at:', search);
       return search;
     }
     search = path.dirname(search);
   }
 
-  console.error('[FELIPE Launcher] Could not find server.js! Candidates:', candidates);
+  console.error('[JARVIS Launcher] Could not find server.js! Candidates:', candidates);
   return path.resolve(__dirname, '..');
 }
 const JARVIS_DIR = findJarvisDir();

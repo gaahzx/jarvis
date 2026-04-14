@@ -253,6 +253,10 @@ html, body {
   from { opacity: 0; transform: translateY(3px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
 .terminal-line .ts {
   color: var(--text-dim); font-size: 9px;
   flex-shrink: 0; padding-top: 2px; opacity: 0.85;
@@ -677,7 +681,8 @@ html, body {
   flex-direction: column;
   gap: 24px;
   max-height: calc(100vh - 220px);
-  overflow: hidden auto;
+  overflow-x: visible;
+  overflow-y: auto;
   box-shadow:
     0 0 30px rgba(0,228,255,0.1),
     inset 0 0 40px rgba(0,228,255,0.03);
@@ -1725,24 +1730,28 @@ html, body {
 
 /* Override do cockpit-iron grid */
 .cockpit-iron {
-  grid-template-columns: 300px 1fr 300px !important;
+  grid-template-columns: 280px 1fr 280px !important;
   grid-template-rows: 1fr auto !important;
   grid-template-areas:
     "left   orb     right"
     "bottom bottom  bottom" !important;
-  gap: 12px !important;
-  padding: 52px 16px 90px !important;
+  gap: 10px !important;
+  padding: 48px 12px 70px !important;
+  height: 100vh !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
 }
 
 /* Remover título top (fica só no navbar) */
 .hud-title { display: none !important; }
 
-/* ═══ PANELS — sem brackets, sem scroll ═══ */
+/* ═══ PANELS — scroll interno pra caber em 100vh ═══ */
 .hud-panel {
-  max-height: none !important;
-  overflow: visible !important;
-  padding: 14px 12px !important;
-  gap: 14px !important;
+  max-height: calc(100vh - 200px) !important;
+  overflow-y: auto !important;
+  overflow-x: visible !important;
+  padding: 12px 10px !important;
+  gap: 12px !important;
   border: 1px solid rgba(0,228,255,0.25) !important;
   border-radius: 10px !important;
   box-shadow: 0 0 20px rgba(0,228,255,0.08) !important;
@@ -1786,20 +1795,128 @@ html, body {
   padding-bottom: 4px !important;
 }
 
-/* ═══ AIOX GRID (2 colunas de agents) ═══ */
-.entity-grid {
-  display: grid !important;
-  grid-template-columns: 1fr 1fr !important;
-  gap: 2px !important;
+/* ═══ AIOX SQUAD GRID ═══ */
+.aiox-squad-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px;
+  padding: 4px 0;
 }
-.entity-grid .entity-row {
-  padding: 4px 6px !important;
-  font-size: 9px !important;
+.aiox-agent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 2px 4px;
+  background: rgba(0,228,255,0.03);
+  border: 1px solid rgba(0,228,255,0.12);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
 }
-.entity-grid .entity-tag { display: none; }
+.aiox-agent::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.aiox-agent:hover {
+  background: rgba(0,228,255,0.08);
+  border-color: rgba(0,228,255,0.4);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0,228,255,0.15);
+}
+.aiox-agent:hover::before { opacity: 1; }
+.aiox-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  position: absolute;
+  top: 4px; right: 4px;
+}
+.aiox-dot.online {
+  background: #0f0;
+  box-shadow: 0 0 4px #0f0;
+  animation: agent-pulse 2s ease-in-out infinite;
+}
+.aiox-dot.busy {
+  background: var(--gold);
+  box-shadow: 0 0 4px var(--gold);
+  animation: agent-pulse 0.8s ease-in-out infinite;
+}
+.aiox-dot.offline {
+  background: #555;
+}
+@keyframes agent-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.aiox-icon {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(0,228,255,0.06);
+  border: 1px solid rgba(0,228,255,0.2);
+  padding: 5px;
+  margin-bottom: 2px;
+  transition: all 0.3s;
+}
+.aiox-icon svg {
+  width: 100%;
+  height: 100%;
+}
+.aiox-agent:hover .aiox-icon {
+  transform: scale(1.1);
+}
+/* Agent-specific colors */
+.ai-master { color: #ffd700; border-color: rgba(255,215,0,0.3); background: rgba(255,215,0,0.08); }
+.ai-architect { color: #a78bfa; border-color: rgba(167,139,250,0.3); background: rgba(167,139,250,0.08); }
+.ai-dev { color: #00e4ff; border-color: rgba(0,228,255,0.3); background: rgba(0,228,255,0.08); }
+.ai-data { color: #34d399; border-color: rgba(52,211,153,0.3); background: rgba(52,211,153,0.08); }
+.ai-devops { color: #f97316; border-color: rgba(249,115,22,0.3); background: rgba(249,115,22,0.08); }
+.ai-ux { color: #f472b6; border-color: rgba(244,114,182,0.3); background: rgba(244,114,182,0.08); }
+.ai-pm { color: #60a5fa; border-color: rgba(96,165,250,0.3); background: rgba(96,165,250,0.08); }
+.ai-po { color: #fb7185; border-color: rgba(251,113,133,0.3); background: rgba(251,113,133,0.08); }
+.ai-analyst { color: #a3e635; border-color: rgba(163,230,53,0.3); background: rgba(163,230,53,0.08); }
+.ai-qa { color: #2dd4bf; border-color: rgba(45,212,191,0.3); background: rgba(45,212,191,0.08); }
+.ai-sm { color: #c084fc; border-color: rgba(192,132,252,0.3); background: rgba(192,132,252,0.08); }
+.ai-squad { color: #fbbf24; border-color: rgba(251,191,36,0.3); background: rgba(251,191,36,0.08); }
+.aiox-agent:hover .ai-master { box-shadow: 0 0 10px rgba(255,215,0,0.3); }
+.aiox-agent:hover .ai-architect { box-shadow: 0 0 10px rgba(167,139,250,0.3); }
+.aiox-agent:hover .ai-dev { box-shadow: 0 0 10px rgba(0,228,255,0.3); }
+.aiox-agent:hover .ai-data { box-shadow: 0 0 10px rgba(52,211,153,0.3); }
+.aiox-agent:hover .ai-devops { box-shadow: 0 0 10px rgba(249,115,22,0.3); }
+.aiox-agent:hover .ai-ux { box-shadow: 0 0 10px rgba(244,114,182,0.3); }
+.aiox-agent:hover .ai-pm { box-shadow: 0 0 10px rgba(96,165,250,0.3); }
+.aiox-agent:hover .ai-po { box-shadow: 0 0 10px rgba(251,113,133,0.3); }
+.aiox-agent:hover .ai-analyst { box-shadow: 0 0 10px rgba(163,230,53,0.3); }
+.aiox-agent:hover .ai-qa { box-shadow: 0 0 10px rgba(45,212,191,0.3); }
+.aiox-agent:hover .ai-sm { box-shadow: 0 0 10px rgba(192,132,252,0.3); }
+.aiox-agent:hover .ai-squad { box-shadow: 0 0 10px rgba(251,191,36,0.3); }
+.aiox-name {
+  font-family: Orbitron, sans-serif;
+  font-size: 7px;
+  color: var(--cyan);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.aiox-role {
+  font-size: 6px;
+  color: var(--text-dim);
+  opacity: 0.6;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
 
 /* Entity rows compactos no painel lateral */
-.hud-right .entity-list:not(.entity-grid) .entity-row {
+.hud-right .entity-list:not(.aiox-squad-grid) .entity-row {
   padding: 4px 6px !important;
   font-size: 9px !important;
 }
@@ -3429,6 +3546,8 @@ body {
   flex-direction: row !important;
   align-items: center !important;
   gap: 10px !important;
+  overflow: visible !important;
+  padding: 10px 10px 10px 14px !important;
 }
 .gauge-ring {
   position: relative;
@@ -3688,19 +3807,38 @@ body {
 .conclave-gauges {
   display: flex;
   justify-content: center;
-  gap: 12px;
-  margin: 4px 0;
+  gap: 16px;
+  margin: 8px 0;
 }
 .conclave-gauge {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
+  gap: 5px;
+  padding: 8px 12px;
+  background: rgba(0,228,255,0.03);
+  border: 1px solid rgba(0,228,255,0.1);
+  border-radius: 8px;
+  transition: all 0.3s;
+  cursor: pointer;
+  min-width: 70px;
 }
+.conclave-gauge:hover {
+  background: rgba(0,228,255,0.08);
+  border-color: rgba(0,228,255,0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,228,255,0.15);
+}
+.conclave-gauge:nth-child(1) { border-color: rgba(255,107,107,0.25); }
+.conclave-gauge:nth-child(1):hover { border-color: rgba(255,107,107,0.5); box-shadow: 0 4px 12px rgba(255,107,107,0.15); }
+.conclave-gauge:nth-child(2) { border-color: rgba(255,215,0,0.25); }
+.conclave-gauge:nth-child(2):hover { border-color: rgba(255,215,0,0.5); box-shadow: 0 4px 12px rgba(255,215,0,0.15); }
+.conclave-gauge:nth-child(3) { border-color: rgba(204,136,255,0.25); }
+.conclave-gauge:nth-child(3):hover { border-color: rgba(204,136,255,0.5); box-shadow: 0 4px 12px rgba(204,136,255,0.15); }
 .cg-ring {
   position: relative;
-  width: 38px;
-  height: 38px;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
   background: conic-gradient(
     rgba(0,228,255,0.6) 0deg,
@@ -3708,25 +3846,34 @@ body {
     rgba(0,228,255,0.08) calc(var(--value, 0) * 3.6deg),
     rgba(0,228,255,0.08) 360deg
   );
-  box-shadow: 0 0 8px rgba(0,228,255,0.1);
+  box-shadow: 0 0 12px rgba(0,228,255,0.15);
   transition: background 0.6s ease;
+}
+.conclave-gauge:nth-child(1) .cg-ring {
+  background: conic-gradient(rgba(255,107,107,0.7) 0deg, rgba(255,107,107,0.7) calc(var(--value,0)*3.6deg), rgba(255,107,107,0.08) calc(var(--value,0)*3.6deg), rgba(255,107,107,0.08) 360deg);
+}
+.conclave-gauge:nth-child(2) .cg-ring {
+  background: conic-gradient(rgba(255,215,0,0.7) 0deg, rgba(255,215,0,0.7) calc(var(--value,0)*3.6deg), rgba(255,215,0,0.08) calc(var(--value,0)*3.6deg), rgba(255,215,0,0.08) 360deg);
+}
+.conclave-gauge:nth-child(3) .cg-ring {
+  background: conic-gradient(rgba(204,136,255,0.7) 0deg, rgba(204,136,255,0.7) calc(var(--value,0)*3.6deg), rgba(204,136,255,0.08) calc(var(--value,0)*3.6deg), rgba(204,136,255,0.08) 360deg);
 }
 .cg-inner {
   position: absolute;
-  inset: 4px;
+  inset: 5px;
   background: var(--sf-bg-deep);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: 18px;
 }
 .cg-label {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 6px;
-  letter-spacing: 1px;
+  font-family: Orbitron, sans-serif;
+  font-size: 7px;
+  letter-spacing: 0.8px;
   text-transform: uppercase;
-  color: var(--sf-text-dim);
+  color: var(--text-dim);
 }
 
 /* ── 9. KNOWLEDGE GRAPH MINI (Obsidian card) ── */
@@ -4057,3 +4204,528 @@ body {
 /* Terminal tab hidden */
 #tab-terminal { display: none !important; }
 .hud-qbtn[data-quick-tab="terminal"] { display: none !important; }
+
+
+/* ═══════════════════════════════════════════════════════════
+   HUD ADVANCED SCI-FI POLISH v10.0
+   Scanline overlays, grid patterns, glowing borders,
+   corner brackets, blinking indicators, layered depth,
+   pulsing status dots, animated progress, hex patterns
+═══════════════════════════════════════════════════════════ */
+
+/* ══════════════════════════════
+   1. METRIC CARDS — Scanline overlay + grid pattern + glowing borders
+══════════════════════════════ */
+.metric-item {
+  position: relative !important;
+  overflow: hidden !important;
+  border: 1px solid rgba(0,228,255,0.22) !important;
+  box-shadow:
+    0 0 8px rgba(0,228,255,0.08),
+    inset 0 0 20px rgba(0,228,255,0.03) !important;
+  transition: all 0.3s ease !important;
+}
+/* Subtle grid pattern inside metric cards */
+.metric-item::before {
+  content: "" !important;
+  position: absolute !important;
+  inset: 0 !important;
+  background-image:
+    linear-gradient(0deg, rgba(0,228,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,228,255,0.03) 1px, transparent 1px) !important;
+  background-size: 8px 8px !important;
+  opacity: 0.6 !important;
+  pointer-events: none !important;
+  z-index: 0 !important;
+}
+/* Horizontal scanline sweep inside metric cards */
+.metric-item::after {
+  content: "" !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: 100% !important;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(0,228,255,0.06) 48%,
+    rgba(0,228,255,0.12) 50%,
+    rgba(0,228,255,0.06) 52%,
+    transparent 100%
+  ) !important;
+  background-size: 100% 200% !important;
+  animation: metric-scanline 3.5s ease-in-out infinite !important;
+  pointer-events: none !important;
+  z-index: 1 !important;
+}
+@keyframes metric-scanline {
+  0%   { background-position: 0% 0%; }
+  100% { background-position: 0% 200%; }
+}
+/* Metric card hover — intensify glow */
+.metric-item:hover {
+  border-color: rgba(0,228,255,0.45) !important;
+  box-shadow:
+    0 0 16px rgba(0,228,255,0.2),
+    0 0 40px rgba(0,228,255,0.06),
+    inset 0 0 30px rgba(0,228,255,0.05) !important;
+}
+/* Metric values sit above overlays */
+.metric-value {
+  position: relative !important;
+  z-index: 2 !important;
+}
+.metric-label {
+  position: relative !important;
+  z-index: 2 !important;
+}
+
+/* ══════════════════════════════
+   2. PANEL HEADERS — Tech feel, corner brackets, blinking indicators
+══════════════════════════════ */
+.hud-section-title {
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  padding: 6px 14px 10px !important;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(0,228,255,0.04) 20%,
+    rgba(0,228,255,0.06) 50%,
+    rgba(0,228,255,0.04) 80%,
+    transparent 100%) !important;
+  border: 1px solid rgba(0,228,255,0.12) !important;
+  border-bottom: none !important;
+  clip-path: polygon(
+    0 0, 6px 0, 8px 4px, calc(100% - 8px) 4px, calc(100% - 6px) 0, 100% 0,
+    100% 100%, 0 100%
+  ) !important;
+  letter-spacing: 3px !important;
+}
+/* Left bracket indicator */
+.hud-section-title::before {
+  content: "[" !important;
+  display: inline-block !important;
+  position: static !important;
+  width: auto !important;
+  height: auto !important;
+  background: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  margin-right: 4px !important;
+  font-family: var(--font-mono) !important;
+  font-size: 10px !important;
+  color: rgba(0,228,255,0.5) !important;
+  animation: bracket-blink 2.5s steps(2, start) infinite !important;
+  vertical-align: baseline !important;
+}
+/* Right bracket indicator */
+.hud-section-title::after {
+  content: "]" !important;
+  display: inline-block !important;
+  position: static !important;
+  width: auto !important;
+  height: auto !important;
+  background: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  transform: none !important;
+  margin-left: 4px !important;
+  font-family: var(--font-mono) !important;
+  font-size: 10px !important;
+  color: rgba(0,228,255,0.5) !important;
+  animation: bracket-blink 2.5s steps(2, start) infinite !important;
+  animation-delay: -1.2s !important;
+}
+@keyframes bracket-blink {
+  0%, 60% { opacity: 1; }
+  61%, 80% { opacity: 0.2; }
+  81%, 100% { opacity: 1; }
+}
+
+/* Bottom border line for section titles — gradient accent */
+.hud-section-title + * {
+  position: relative !important;
+}
+
+/* ══════════════════════════════
+   3. BOTTOM HUD CARDS — Layered borders, micro-animations, depth
+══════════════════════════════ */
+/* Outer glow frame */
+.hud-bottom-card {
+  border: 1px solid rgba(0,228,255,0.2) !important;
+  box-shadow:
+    0 0 12px rgba(0,228,255,0.06),
+    0 0 40px rgba(0,228,255,0.03),
+    inset 0 0 30px rgba(0,228,255,0.02),
+    inset 0 1px 0 rgba(0,228,255,0.15) !important;
+  transition: all 0.35s ease !important;
+}
+/* Double-border effect via outline */
+.hud-bottom-card {
+  outline: 1px solid rgba(0,228,255,0.06) !important;
+  outline-offset: 3px !important;
+}
+/* Inner hex grid pattern */
+.hud-bottom-card::after {
+  content: "" !important;
+  position: absolute !important;
+  inset: 0 !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M12 2l10 6v8l-10 6L2 16V8z' fill='none' stroke='%2300e4ff' stroke-opacity='0.025' stroke-width='0.5'/%3E%3C/svg%3E") !important;
+  pointer-events: none !important;
+  z-index: 0 !important;
+  opacity: 0.8 !important;
+}
+/* Hover: double-border intensify */
+.hud-bottom-card:hover {
+  border-color: rgba(0,228,255,0.4) !important;
+  outline-color: rgba(0,228,255,0.12) !important;
+  box-shadow:
+    0 0 20px rgba(0,228,255,0.12),
+    0 0 50px rgba(0,228,255,0.04),
+    inset 0 0 40px rgba(0,228,255,0.04),
+    inset 0 1px 0 rgba(0,228,255,0.25) !important;
+}
+/* Corner brackets on bottom cards */
+.hud-bottom-card {
+  position: relative !important;
+}
+/* Top-left corner bracket */
+.hud-bottom-card .hud-section-title ~ *:first-of-type::before,
+.hud-bottom-card > :first-child::before {
+  /* We handle corners via the card itself */
+}
+
+/* Gold accent variant for brain card */
+.hud-bottom-brain {
+  outline: 1px solid rgba(255,215,0,0.08) !important;
+  outline-offset: 3px !important;
+}
+.hud-bottom-brain::after {
+  content: "" !important;
+  position: absolute !important;
+  inset: 0 !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M12 2l10 6v8l-10 6L2 16V8z' fill='none' stroke='%23ffd700' stroke-opacity='0.025' stroke-width='0.5'/%3E%3C/svg%3E") !important;
+  pointer-events: none !important;
+  z-index: 0 !important;
+}
+.hud-bottom-brain:hover {
+  outline-color: rgba(255,215,0,0.15) !important;
+}
+
+/* ══════════════════════════════
+   4. STATUS INDICATORS — Pulsing dots, animated bars
+══════════════════════════════ */
+/* Enhanced pulse dots with double-ring effect */
+.pulse-dot {
+  position: relative !important;
+  width: 7px !important;
+  height: 7px !important;
+  background: var(--cyan) !important;
+  box-shadow:
+    0 0 6px var(--cyan),
+    0 0 12px rgba(0,228,255,0.3) !important;
+  animation: enhanced-pulse 2s ease-in-out infinite !important;
+}
+.pulse-dot::after {
+  content: "" !important;
+  position: absolute !important;
+  inset: -4px !important;
+  border-radius: 50% !important;
+  border: 1px solid rgba(0,228,255,0.3) !important;
+  animation: pulse-ring-expand 2s ease-out infinite !important;
+}
+@keyframes enhanced-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 6px var(--cyan), 0 0 12px rgba(0,228,255,0.3); }
+  50% { opacity: 0.6; transform: scale(0.85); box-shadow: 0 0 4px var(--cyan), 0 0 8px rgba(0,228,255,0.2); }
+}
+@keyframes pulse-ring-expand {
+  0% { transform: scale(0.8); opacity: 0.6; }
+  70% { transform: scale(1.6); opacity: 0; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+/* Server dots — triple-ring pulse */
+.server-dot {
+  position: relative !important;
+}
+.server-dot::after {
+  content: "" !important;
+  position: absolute !important;
+  inset: -3px !important;
+  border-radius: 50% !important;
+  border: 1px solid currentColor !important;
+  opacity: 0.3 !important;
+  animation: server-ring-ping 2.5s ease-out infinite !important;
+}
+@keyframes server-ring-ping {
+  0% { transform: scale(1); opacity: 0.3; }
+  60% { transform: scale(2); opacity: 0; }
+  100% { transform: scale(2); opacity: 0; }
+}
+
+/* Health bar fill — animated shimmer */
+.bar-fill {
+  position: relative !important;
+}
+.bar-fill::after {
+  content: "" !important;
+  position: absolute !important;
+  inset: 0 !important;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255,255,255,0.15) 50%,
+    transparent 100%
+  ) !important;
+  animation: bar-shimmer 2s ease-in-out infinite !important;
+}
+@keyframes bar-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+/* Agent pills — enhanced active state */
+.agent-pill.active {
+  animation: agent-pulse-enhanced 1.5s ease-in-out infinite !important;
+  box-shadow: 0 0 6px rgba(0,228,255,0.4) !important;
+}
+.agent-pill.active::before {
+  animation: agent-dot-throb 1s ease-in-out infinite !important;
+}
+@keyframes agent-pulse-enhanced {
+  0%, 100% { box-shadow: 0 0 4px rgba(0,228,255,0.3), 0 0 8px rgba(0,228,255,0.1); }
+  50% { box-shadow: 0 0 10px rgba(0,228,255,0.6), 0 0 20px rgba(0,228,255,0.15); }
+}
+@keyframes agent-dot-throb {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.5); }
+}
+
+/* ══════════════════════════════
+   5. OVERALL POLISH — Grid/hex backgrounds, improved glows
+══════════════════════════════ */
+/* Side panels — subtle hex grid background */
+.hud-left,
+.hud-right {
+  position: relative !important;
+}
+.hud-left > *,
+.hud-right > * {
+  position: relative !important;
+  z-index: 2 !important;
+}
+
+/* Enhanced panel border glow with breathing animation */
+.hud-left,
+.hud-right {
+  animation: panel-border-breathe 5s ease-in-out infinite !important;
+}
+.hud-right {
+  animation-delay: -2.5s !important;
+}
+@keyframes panel-border-breathe {
+  0%, 100% {
+    box-shadow:
+      0 0 20px rgba(0,228,255,0.05),
+      inset 0 1px 0 rgba(0,228,255,0.12) !important;
+    border-color: rgba(0,228,255,0.18) !important;
+  }
+  50% {
+    box-shadow:
+      0 0 35px rgba(0,228,255,0.1),
+      0 0 60px rgba(0,228,255,0.03),
+      inset 0 1px 0 rgba(0,228,255,0.2) !important;
+    border-color: rgba(0,228,255,0.28) !important;
+  }
+}
+
+/* Widget cards — inner glow on hover */
+.hud-widget:hover {
+  box-shadow:
+    0 0 12px rgba(0,228,255,0.15),
+    inset 0 0 20px rgba(0,228,255,0.04) !important;
+}
+
+/* Widget icons — subtle spin animation on hover */
+.hud-widget:hover .widget-icon {
+  filter: drop-shadow(0 0 6px rgba(0,228,255,0.5)) !important;
+  transition: filter 0.3s ease !important;
+}
+
+/* Scanline overlay on side panels */
+.hud-panel {
+  overflow: hidden !important;
+}
+.hud-panel > .hud-section {
+  position: relative !important;
+  z-index: 2 !important;
+}
+
+/* Quick buttons — data-flow line on hover */
+.hud-qbtn {
+  position: relative !important;
+  overflow: hidden !important;
+}
+.hud-qbtn::before {
+  content: "" !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: -100% !important;
+  width: 100% !important;
+  height: 100% !important;
+  background: linear-gradient(90deg,
+    transparent,
+    rgba(0,228,255,0.08),
+    transparent
+  ) !important;
+  transition: left 0.4s ease !important;
+  z-index: 0 !important;
+}
+.hud-qbtn:hover::before {
+  left: 100% !important;
+}
+
+/* Entity rows — left accent line animation */
+.entity-row {
+  transition: all 0.25s ease, border-left-width 0.15s ease !important;
+}
+.entity-row:hover {
+  border-left-width: 4px !important;
+}
+
+/* Obsidian brain card — gold breathing border */
+.hud-bottom-brain {
+  animation: brain-border-glow 4s ease-in-out infinite !important;
+}
+@keyframes brain-border-glow {
+  0%, 100% {
+    border-color: rgba(255,215,0,0.2);
+    box-shadow:
+      0 0 15px rgba(255,215,0,0.05),
+      inset 0 0 20px rgba(255,215,0,0.02);
+  }
+  50% {
+    border-color: rgba(255,215,0,0.4);
+    box-shadow:
+      0 0 25px rgba(255,215,0,0.1),
+      0 0 50px rgba(255,215,0,0.03),
+      inset 0 0 30px rgba(255,215,0,0.04);
+  }
+}
+
+/* Bottom HUD container — subtle top-edge glow */
+.hud-bottom::before {
+  content: "" !important;
+  position: absolute !important;
+  top: -1px !important;
+  left: 5% !important;
+  right: 5% !important;
+  height: 1px !important;
+  background: linear-gradient(90deg,
+    transparent,
+    rgba(0,228,255,0.3) 30%,
+    rgba(0,228,255,0.5) 50%,
+    rgba(0,228,255,0.3) 70%,
+    transparent
+  ) !important;
+  z-index: 5 !important;
+  pointer-events: none !important;
+}
+.hud-bottom {
+  position: relative !important;
+}
+
+/* Gauge rings — outer tick marks glow */
+.gauge-ring {
+  position: relative !important;
+}
+.gauge-ring::after {
+  content: "" !important;
+  position: absolute !important;
+  inset: -1px !important;
+  border-radius: 50% !important;
+  border: 1px solid rgba(0,228,255,0.1) !important;
+  animation: gauge-outer-pulse 3s ease-in-out infinite !important;
+}
+@keyframes gauge-outer-pulse {
+  0%, 100% { border-color: rgba(0,228,255,0.1); }
+  50% { border-color: rgba(0,228,255,0.3); }
+}
+
+/* Corner accent dots on bottom cards */
+.hud-bottom-card > :first-child {
+  position: relative !important;
+  z-index: 2 !important;
+}
+
+/* Navbar — enhanced center glow line */
+.navbar::before {
+  content: "" !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 20% !important;
+  right: 20% !important;
+  height: 1px !important;
+  background: linear-gradient(90deg,
+    transparent,
+    rgba(0,228,255,0.2) 30%,
+    rgba(0,228,255,0.4) 50%,
+    rgba(0,228,255,0.2) 70%,
+    transparent
+  ) !important;
+  z-index: 1 !important;
+}
+
+/* ══════════════════════════════
+   6. PERFORMANCE NOTES v10
+   - All new animations use transform/opacity (GPU composited)
+   - Scanline uses background-position (no reflow)
+   - Outlines don't trigger layout
+   - will-change omitted on low-priority elements
+══════════════════════════════ */
+
+/* ═══════════════════════════════════════════════
+   FINAL FIX: 3D Brain clipping — overflow chain
+   Ensures NO ancestor clips the Three.js canvas
+═══════════════════════════════════════════════ */
+.tab-panel,
+.tab-panel.active {
+  overflow: visible !important;
+}
+.cockpit-iron {
+  overflow: visible !important;
+}
+.cockpit-iron .orb-section {
+  overflow: visible !important;
+  clip-path: none !important;
+  -webkit-clip-path: none !important;
+  z-index: 1;
+}
+.cockpit-iron .avatar-container {
+  position: absolute !important;
+  top: -30px !important;
+  left: -30px !important;
+  right: -30px !important;
+  bottom: -30px !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: none !important;
+  max-height: none !important;
+  overflow: visible !important;
+  clip-path: none !important;
+  -webkit-clip-path: none !important;
+}
+.cockpit-iron .avatar-container canvas {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  overflow: visible !important;
+  clip-path: none !important;
+  -webkit-clip-path: none !important;
+}

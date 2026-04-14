@@ -1,65 +1,25 @@
-# Dados pessoais e secrets
+node_modules/
 .env
-.env.local
-.env.production
-
-# Memória e histórico do aluno
-system/FELIPE-MEMORY.md
-system/FELIPE-HISTORY.json
+.env.*
+*.log
 system/JARVIS-MEMORY.md
 system/JARVIS-HISTORY.json
+system/FELIPE-MEMORY.md
+system/FELIPE-HISTORY.json
 system/memory-embeddings.json
-system/last-audio-debug.*
-
-# Arquivos criados pelo aluno
+system/last-audio*
+system/workflows/
 Documents and Projects/
-Documents and Projects - Backup/
-
-# Node / Puppeteer
-# node_modules/ INCLUIDO pra sincronizar deps via auto-update
-.cache/
+pet/
+sensors/
 launcher/node_modules/
 launcher/dist/
-launcher/updater.js
-
-# Build artifacts
-FELIPE-Launcher.exe
+launcher/build/
+.cache/
 *.exe
-
-# Claude local settings
-.claude/settings.local.json
-
-# Features exclusivas do Gabriel (NÃO vai pro setup/alunos)
-pet/
-system/workflows/
-system/_file_index.json
-system/_screen_state.json
+*.xlsx
+*.pdb
 jarvis-autostart.vbs
 jarvis-service.bat
-AUTO-UPDATE-SETUP.md
-FIX-CLIENTE.txt
-brain-test.html
-
-# Obsidian vault (pessoal)
-Felipe/
-
-# Arquivos temporários
-temp_*.jpg
-temp_*.png
-*.log
-*.tmp
-.DS_Store
-Thumbs.db
-
-# IDE
-.vscode/
-.idea/
-*.swp
-
-# Obsidian vault (pessoal)
-Felipe/
-.obsidian/
-
-# Inno Setup build
-*.iss.bak
-JARVIS-Installer.exe
+obsidian-template/
+.claude/settings.local.json

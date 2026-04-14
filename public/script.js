@@ -32,8 +32,8 @@ class NeuralTree {
 
   resize() {
     if (!this.renderer || !this.camera) return;
-    const rect = this.container.getBoundingClientRect();
-    const w = rect.width || 400, h = rect.height || 400;
+    const w = this.container.clientWidth || this.container.getBoundingClientRect().width || 400;
+    const h = this.container.clientHeight || this.container.getBoundingClientRect().height || 400;
     this.renderer.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
@@ -47,7 +47,8 @@ class NeuralTree {
     this.scene = new THREE.Scene();
 
     // Camera — positioned to see brain from side (like the reference image)
-    this.camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 100);
+    // FOV 50 + near 0.01 prevents frustum clipping on the brain model
+    this.camera = new THREE.PerspectiveCamera(50, w / h, 0.01, 200);
     this.camera.position.set(0, 0, 7);
     this.camera.lookAt(0, -1.5, 0);
 
@@ -57,7 +58,11 @@ class NeuralTree {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setClearColor(0x000000, 0);
     this.renderer.domElement.style.position = 'absolute';
-    this.renderer.domElement.style.inset = '0';
+    this.renderer.domElement.style.top = '0';
+    this.renderer.domElement.style.left = '0';
+    this.renderer.domElement.style.width = '100%';
+    this.renderer.domElement.style.height = '100%';
+    this.renderer.domElement.style.overflow = 'visible';
     this.renderer.domElement.style.zIndex = '2';
     this.renderer.domElement.style.pointerEvents = 'none';
     this.container.appendChild(this.renderer.domElement);
@@ -1737,19 +1742,19 @@ function startWakeWord() {
   wakeWordRecognition = new SpeechRec();
   wakeWordRecognition.continuous = true;
   wakeWordRecognition.interimResults = true;
-  wakeWordRecognition.lang = 'en-US';
+  wakeWordRecognition.lang = currentLang === 'BR' ? 'pt-BR' : currentLang === 'ES' ? 'es-ES' : 'en-US';
 
   wakeWordRecognition.onresult = (event) => {
     for (let i = event.resultIndex; i < event.results.length; i++) {
       const transcript = event.results[i][0].transcript.toLowerCase();
-      if (transcript.includes('jarvis')) {
-        // Wake word → activate Realtime voice (continuous mode)
+      // Detect "jarvis" in any pronunciation (jarvis, járvis, jarvís)
+      if (transcript.includes('jarvis') || transcript.includes('járvis') || transcript.includes('jarves')) {
         if (!realtimeActive && !realtimeConnecting) {
-          addTerminalLine(
-            currentLang === 'BR' ? '[info] Palavra-chave detectada — ativando voz contínua.' : '[info] Wake word detected — activating continuous voice.',
-            'info-line'
-          );
+          addTerminalLine('[info] 🎤 JARVIS ativado por voz — modo escuta + cowork ON', 'info-line');
+          // Activate voice
           startRealtime();
+          // Activate cowork mode (screen awareness)
+          fetch('/api/cowork/start', { method: 'POST' }).catch(() => {});
         }
         break;
       }
@@ -1772,12 +1777,28 @@ function stopWakeWord() {
 }
 
 // ========== TAB NAVIGATION ==========
+// Floating "Back to Cockpit" button
+var backToCockpitBtn = document.createElement('button');
+backToCockpitBtn.id = 'back-to-cockpit';
+backToCockpitBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"><polyline points="15 18 9 12 15 6"/></svg>COCKPIT';
+backToCockpitBtn.style.cssText = 'display:none;position:fixed;top:12px;left:12px;z-index:9999;padding:8px 16px;background:rgba(0,20,40,0.9);border:1px solid var(--cyan);border-radius:6px;color:var(--cyan);font-family:Orbitron,sans-serif;font-size:10px;letter-spacing:1px;cursor:pointer;transition:all 0.3s;backdrop-filter:blur(10px);box-shadow:0 0 15px rgba(0,228,255,0.2);';
+backToCockpitBtn.onmouseenter = function() { this.style.background = 'rgba(0,228,255,0.15)'; this.style.boxShadow = '0 0 20px rgba(0,228,255,0.4)'; };
+backToCockpitBtn.onmouseleave = function() { this.style.background = 'rgba(0,20,40,0.9)'; this.style.boxShadow = '0 0 15px rgba(0,228,255,0.2)'; };
+backToCockpitBtn.onclick = function() {
+  var cockpitTab = document.querySelector('.tab-btn[data-tab="principal"]');
+  if (cockpitTab) cockpitTab.click();
+};
+document.body.appendChild(backToCockpitBtn);
+
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+
+    // Show/hide back button
+    backToCockpitBtn.style.display = btn.dataset.tab === 'principal' ? 'none' : 'block';
 
     if (btn.dataset.tab === 'file') loadFiles();
   });
@@ -1961,6 +1982,19 @@ if (ttsVoiceSelect) {
     addTerminalLine(`[info] TTS voice set to: ${ttsVoice}`, 'info-line');
   });
 }
+
+// ========== AUTO-START WAKE WORD ==========
+// JARVIS always listens for his name
+setTimeout(() => {
+  if (canWebSpeech && !wakeWordEnabled) {
+    wakeWordEnabled = true;
+    startWakeWord();
+    console.log('[JARVIS] Wake word "JARVIS" auto-activated');
+    // Sync checkbox if exists
+    const wakeChk = document.getElementById('config-wakeword');
+    if (wakeChk) wakeChk.checked = true;
+  }
+}, 2000);
 
 // ========== EVENT LISTENERS ==========
 sendBtn.addEventListener('click', () => sendMessage(chatInput.value));
@@ -2397,7 +2431,7 @@ initRealtimeBtn();
   }
 
   // Expose for external calls
-  window.felipeHUD = {
+  window.jarvisHUD = {
     addAgent, removeAgent, updateModel,
     detectAgent: (text) => {
       const agents = ['architect', 'dev', 'qa', 'pm', 'po', 'analyst', 'ux', 'devops', 'conclave'];
@@ -2412,13 +2446,13 @@ initRealtimeBtn();
 
   // ── Metrics (tasks/uptime/voice) ──
   let startTime = Date.now();
-  let taskCount = parseInt(localStorage.getItem('felipe-tasks-today') || '0');
-  const lastTaskDate = localStorage.getItem('felipe-last-task-date');
+  let taskCount = parseInt(localStorage.getItem('jarvis-tasks-today') || '0');
+  const lastTaskDate = localStorage.getItem('jarvis-last-task-date');
   const today = new Date().toDateString();
   if (lastTaskDate !== today) {
     taskCount = 0;
-    localStorage.setItem('felipe-tasks-today', '0');
-    localStorage.setItem('felipe-last-task-date', today);
+    localStorage.setItem('jarvis-tasks-today', '0');
+    localStorage.setItem('jarvis-last-task-date', today);
   }
 
   function updateMetrics() {
@@ -2442,9 +2476,9 @@ initRealtimeBtn();
     }
   }
 
-  window.felipeHUD.incrementTasks = () => {
+  window.jarvisHUD.incrementTasks = () => {
     taskCount++;
-    localStorage.setItem('felipe-tasks-today', String(taskCount));
+    localStorage.setItem('jarvis-tasks-today', String(taskCount));
     updateMetrics();
   };
 
@@ -2629,10 +2663,10 @@ initRealtimeBtn();
     { p: /conclave.advogado|advogado/i, e: 'conclave-advogado' },
     { p: /conclave.sintetizador|sintetizador/i, e: 'conclave-sintetizador' },
   ];
-  window.felipeHUD = window.felipeHUD || {};
-  window.felipeHUD.setEntityActive = setEntityActive;
-  window.felipeHUD.pulseEntity = pulseEntity;
-  window.felipeHUD.analyzeText = function(text) {
+  window.jarvisHUD = window.jarvisHUD || {};
+  window.jarvisHUD.setEntityActive = setEntityActive;
+  window.jarvisHUD.pulseEntity = pulseEntity;
+  window.jarvisHUD.analyzeText = function(text) {
     if (!text) return;
     rules.forEach(function(r) { if (r.p.test(text)) pulseEntity(r.e, 20000); });
   };
@@ -2673,6 +2707,28 @@ initRealtimeBtn();
       if (tabBtn) tabBtn.click();
     });
   });
+
+  // ── Desktop Pet Launcher (toggle) ──
+  var petBtn = document.getElementById('btn-launch-pet');
+  var petActive = false;
+  if (petBtn) {
+    petBtn.addEventListener('click', async function() {
+      petBtn.style.opacity = '0.5';
+      try {
+        var r = await fetch('/api/pet/launch', { method: 'POST' });
+        var data = await r.json();
+        if (data.ok) {
+          petActive = data.action === 'opened';
+          petBtn.querySelector('span').textContent = petActive ? '✅ ON' : 'Pet';
+          petBtn.style.borderColor = petActive ? 'rgba(0,255,100,0.5)' : 'rgba(255,215,0,0.3)';
+        }
+      } catch(e) {
+        petBtn.querySelector('span').textContent = '❌ Erro';
+        setTimeout(function() { petBtn.querySelector('span').textContent = 'Pet'; }, 2000);
+      }
+      petBtn.style.opacity = '1';
+    });
+  }
 
   // ── Ingest Modal ──
   var ingestModal = document.getElementById('ingest-modal');
@@ -2922,8 +2978,8 @@ initRealtimeBtn();
   var actEl = document.getElementById("metric-activity");
   if (!actEl) return;
 
-  window.felipeHUD = window.felipeHUD || {};
-  window.felipeHUD.setActivity = function(text, isActive) {
+  window.jarvisHUD = window.jarvisHUD || {};
+  window.jarvisHUD.setActivity = function(text, isActive) {
     actEl.textContent = text || "idle";
     if (isActive) actEl.classList.add("active");
     else actEl.classList.remove("active");
@@ -2937,13 +2993,13 @@ initRealtimeBtn();
       if (!msg) return;
       var m = String(msg).toLowerCase();
       if (m.includes("[build-start]") || m.includes("creating") || m.includes("generating")) {
-        window.felipeHUD.setActivity("criando...", true);
+        window.jarvisHUD.setActivity("criando...", true);
       } else if (m.includes("[file]")) {
         var fname = msg.match(/\[file\]\s*(.+?)\s*\|/);
-        window.felipeHUD.setActivity(fname ? fname[1] : "arquivo criado", true);
+        window.jarvisHUD.setActivity(fname ? fname[1] : "arquivo criado", true);
       } else if (m.includes("[system] done") || m.includes("concluido") || m.includes("pronto")) {
-        window.felipeHUD.setActivity("concluido", false);
-        setTimeout(function() { window.felipeHUD.setActivity("idle", false); }, 5000);
+        window.jarvisHUD.setActivity("concluido", false);
+        setTimeout(function() { window.jarvisHUD.setActivity("idle", false); }, 5000);
       }
     };
   }
@@ -2972,633 +3028,3 @@ initRealtimeBtn();
 })();
 
 
-// === CONTENT GENERATOR MODAL ===
-(function() {
-  var statusEl = document.getElementById("content-status");
-  var resultEl = document.getElementById("content-result");
-  var cardsEl = document.getElementById("content-cards");
-
-  function getInputs() {
-    return {
-      type: document.getElementById("content-type").value,
-      topic: document.getElementById("content-topic").value,
-      qty: document.getElementById("content-qty").value,
-      style: document.getElementById("content-style").value
-    };
-  }
-
-  function renderCards(items, withImages) {
-    if (!cardsEl) return;
-    cardsEl.innerHTML = "";
-    if (!Array.isArray(items)) items = [items];
-
-    items.forEach(function(item, idx) {
-      var card = document.createElement("div");
-      card.style.cssText = "display:flex;gap:12px;padding:12px;background:rgba(0,228,255,0.04);border:1px solid rgba(0,228,255,0.2);border-radius:8px;";
-
-      // Image (Pollinations)
-      if (withImages && item.image_desc) {
-        var imgWrap = document.createElement("div");
-        imgWrap.style.cssText = "flex-shrink:0;width:120px;height:120px;border-radius:6px;overflow:hidden;background:rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;";
-        var img = document.createElement("img");
-        var prompt = encodeURIComponent(item.image_desc || item.text || "marketing ad");
-        img.src = "/api/image-gen?prompt=" + prompt + "&width=512&height=512";
-        img.style.cssText = "width:100%;height:100%;object-fit:cover;";
-        img.alt = "Creative " + (idx + 1);
-        img.loading = "lazy";
-        imgWrap.appendChild(img);
-        card.appendChild(imgWrap);
-      }
-
-      // Text content
-      var textDiv = document.createElement("div");
-      textDiv.style.cssText = "flex:1;min-width:0;";
-
-      var title = document.createElement("div");
-      title.style.cssText = "font-family:Orbitron,sans-serif;font-size:9px;color:var(--cyan);letter-spacing:1px;margin-bottom:4px;";
-      title.textContent = "POST " + (idx + 1);
-      textDiv.appendChild(title);
-
-      var text = document.createElement("div");
-      text.style.cssText = "font-size:11px;color:var(--text-dim);line-height:1.5;margin-bottom:8px;white-space:pre-wrap;max-height:80px;overflow-y:auto;";
-      text.textContent = item.text || item.hook || item.subject || item.title || JSON.stringify(item).substring(0, 200);
-      textDiv.appendChild(text);
-
-      // Extra info
-      if (item.hashtags || item.best_time || item.cta) {
-        var extra = document.createElement("div");
-        extra.style.cssText = "font-size:9px;color:var(--text-dim);opacity:0.6;";
-        var parts = [];
-        if (item.best_time) parts.push(item.best_time);
-        if (item.cta) parts.push("CTA: " + item.cta);
-        extra.textContent = parts.join(" | ");
-        textDiv.appendChild(extra);
-      }
-
-      // Action buttons
-      var actions = document.createElement("div");
-      actions.style.cssText = "display:flex;gap:6px;margin-top:6px;";
-
-      var copyBtn = document.createElement("button");
-      copyBtn.style.cssText = "padding:3px 8px;background:rgba(0,228,255,0.1);border:1px solid rgba(0,228,255,0.3);border-radius:4px;color:var(--cyan);font-size:9px;cursor:pointer;";
-      copyBtn.textContent = "Copiar";
-      copyBtn.onclick = function() {
-        navigator.clipboard.writeText(item.text || JSON.stringify(item));
-        copyBtn.textContent = "Copiado!";
-        setTimeout(function() { copyBtn.textContent = "Copiar"; }, 1500);
-      };
-      actions.appendChild(copyBtn);
-
-      if (withImages && item.image_desc) {
-        var dlBtn = document.createElement("button");
-        dlBtn.style.cssText = "padding:3px 8px;background:rgba(255,215,0,0.1);border:1px solid rgba(255,215,0,0.3);border-radius:4px;color:var(--gold);font-size:9px;cursor:pointer;";
-        dlBtn.textContent = "Download IMG";
-        dlBtn.onclick = function() {
-          window.open("/api/image-gen?prompt=" + encodeURIComponent(item.image_desc) + "&width=1080&height=1080", "_blank");
-        };
-        actions.appendChild(dlBtn);
-      }
-
-      textDiv.appendChild(actions);
-      card.appendChild(textDiv);
-      cardsEl.appendChild(card);
-    });
-
-    resultEl.style.display = "block";
-  }
-
-  // Generate text only
-  var genBtn = document.getElementById("content-generate");
-  if (genBtn) {
-    genBtn.addEventListener("click", async function() {
-      var inp = getInputs();
-      if (!inp.topic) { statusEl.textContent = "Digite um tema!"; return; }
-      statusEl.textContent = "Gerando conteudo... (15-30s)";
-      genBtn.disabled = true;
-      try {
-        var r = await fetch("/api/generate-content", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: inp.type, topic: inp.topic, quantity: parseInt(inp.qty), style: inp.style })
-        });
-        var data = await r.json();
-        if (data.ok) {
-          statusEl.textContent = "Gerado! " + (data.count || "") + " itens";
-          renderCards(data.content, false);
-        } else {
-          statusEl.textContent = "Erro: " + (data.error || "falha");
-        }
-      } catch(e) { statusEl.textContent = "Erro: " + e.message; }
-      genBtn.disabled = false;
-    });
-  }
-
-  // Generate with images (Pollinations)
-  var genImgBtn = document.getElementById("content-generate-images");
-  if (genImgBtn) {
-    genImgBtn.addEventListener("click", async function() {
-      var inp = getInputs();
-      if (!inp.topic) { statusEl.textContent = "Digite um tema!"; return; }
-      statusEl.textContent = "Gerando conteudo + criativos... (20-40s)";
-      genImgBtn.disabled = true;
-      try {
-        var r = await fetch("/api/generate-content", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: inp.type, topic: inp.topic, quantity: parseInt(inp.qty), style: inp.style })
-        });
-        var data = await r.json();
-        if (data.ok) {
-          statusEl.textContent = "Gerado! " + (data.count || "") + " itens com criativos";
-          renderCards(data.content, true);
-        } else {
-          statusEl.textContent = "Erro: " + (data.error || "falha");
-        }
-      } catch(e) { statusEl.textContent = "Erro: " + e.message; }
-      genImgBtn.disabled = false;
-    });
-  }
-})();
-
-// ========== VIDEO EDITOR MODULE ==========
-(function() {
-  const videoModal = document.getElementById('video-modal');
-  if (!videoModal) return;
-
-  const player = document.getElementById('ve-player');
-  const dropzone = document.getElementById('ve-dropzone');
-  const fileInput = document.getElementById('ve-file-input');
-  const timeline = document.getElementById('ve-timeline');
-  const playhead = document.getElementById('ve-tl-playhead');
-  const timeStart = document.getElementById('ve-time-start');
-  const timeEnd = document.getElementById('ve-time-end');
-  const markersList = document.getElementById('ve-markers-list');
-  const suggestions = document.getElementById('ve-suggestions');
-  const subtitlesWrap = document.getElementById('ve-subtitles-wrap');
-  const subtitlesList = document.getElementById('ve-subtitles-list');
-  const fxMenu = document.getElementById('ve-fx-menu');
-  const previewWrap = document.getElementById('ve-preview-wrap');
-
-  let markers = []; // {time, type:'cut'|'keep'|'effect', label?}
-  let subtitles = []; // {start, end, text}
-  let videoLoaded = false;
-  let draggingMarker = null;
-
-  // --- Open / Close ---
-  const btnOpen = document.getElementById('btn-video-editor');
-  const btnClose = document.getElementById('video-close');
-  const btnMax = document.getElementById('video-maximize');
-
-  if (btnOpen) btnOpen.addEventListener('click', () => { videoModal.style.display = 'flex'; });
-  if (btnClose) btnClose.addEventListener('click', () => { videoModal.style.display = 'none'; });
-  if (btnMax) {
-    let maximized = false;
-    btnMax.addEventListener('click', () => {
-      const card = videoModal.querySelector('.modal-card');
-      maximized = !maximized;
-      if (maximized) {
-        card.style.width = '100vw';
-        card.style.height = '100vh';
-        card.style.maxWidth = '100vw';
-        card.style.maxHeight = '100vh';
-        card.style.borderRadius = '0';
-      } else {
-        card.style.width = '';
-        card.style.height = '';
-        card.style.maxWidth = '';
-        card.style.maxHeight = '';
-        card.style.borderRadius = '';
-      }
-    });
-  }
-
-  // Close on overlay click
-  videoModal.addEventListener('click', (e) => {
-    if (e.target === videoModal) videoModal.style.display = 'none';
-  });
-
-  // --- Format time helper ---
-  function fmtTime(s) {
-    if (!s || isNaN(s)) return '0:00';
-    const m = Math.floor(s / 60);
-    const sec = Math.floor(s % 60);
-    return m + ':' + String(sec).padStart(2, '0');
-  }
-
-  // --- Video Upload ---
-  function loadVideo(file) {
-    const url = URL.createObjectURL(file);
-    player.src = url;
-    player.style.display = 'block';
-    dropzone.classList.add('has-video');
-    videoLoaded = true;
-    markers = [];
-    subtitles = [];
-    renderMarkers();
-    renderSubtitles();
-    suggestions.textContent = 'Video loaded: ' + file.name + '\nReady for editing. Click Auto-Edit for AI analysis.';
-
-    player.addEventListener('loadedmetadata', () => {
-      timeEnd.textContent = fmtTime(player.duration);
-    }, { once: true });
-  }
-
-  dropzone.addEventListener('click', () => fileInput.click());
-  fileInput.addEventListener('change', (e) => {
-    if (e.target.files[0]) loadVideo(e.target.files[0]);
-  });
-
-  // Drag and drop
-  dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('drag-over'); });
-  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
-  dropzone.addEventListener('drop', (e) => {
-    e.preventDefault();
-    dropzone.classList.remove('drag-over');
-    const file = e.dataTransfer.files[0];
-    if (file && file.type.startsWith('video/')) loadVideo(file);
-  });
-
-  // Upload button
-  const uploadBtn = document.getElementById('ve-upload-btn');
-  if (uploadBtn) uploadBtn.addEventListener('click', () => fileInput.click());
-
-  // --- Playhead sync ---
-  player.addEventListener('timeupdate', () => {
-    if (!player.duration) return;
-    const pct = (player.currentTime / player.duration) * 100;
-    playhead.style.left = pct + '%';
-    timeStart.textContent = fmtTime(player.currentTime);
-  });
-
-  // --- Timeline click to add marker ---
-  timeline.addEventListener('click', (e) => {
-    if (!videoLoaded || !player.duration) return;
-    if (draggingMarker) return;
-    const rect = timeline.getBoundingClientRect();
-    const pct = (e.clientX - rect.left) / rect.width;
-    const time = pct * player.duration;
-
-    // Determine type: alternate between cut and keep
-    const lastType = markers.length > 0 ? markers[markers.length - 1].type : 'keep';
-    const newType = lastType === 'cut' ? 'keep' : 'cut';
-    markers.push({ time, type: newType });
-    markers.sort((a, b) => a.time - b.time);
-    renderMarkers();
-    renderSegments();
-  });
-
-  // --- Timeline right-click to remove nearest marker ---
-  timeline.addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-    if (!videoLoaded || markers.length === 0 || !player.duration) return;
-    const rect = timeline.getBoundingClientRect();
-    const pct = (e.clientX - rect.left) / rect.width;
-    const clickTime = pct * player.duration;
-    // Find nearest marker
-    let nearest = 0;
-    let minDist = Infinity;
-    markers.forEach((m, i) => {
-      const dist = Math.abs(m.time - clickTime);
-      if (dist < minDist) { minDist = dist; nearest = i; }
-    });
-    // Remove if within 5% of duration
-    if (minDist < player.duration * 0.05) {
-      markers.splice(nearest, 1);
-      renderMarkers();
-      renderSegments();
-    }
-  });
-
-  // --- Timeline seek on click (with Shift held) ---
-  timeline.addEventListener('mousedown', (e) => {
-    if (!videoLoaded || !player.duration) return;
-    // Check if clicking a marker
-    const target = e.target.closest('.ve-tl-marker');
-    if (target) {
-      e.preventDefault();
-      const idx = parseInt(target.dataset.idx);
-      draggingMarker = { idx, startX: e.clientX };
-      return;
-    }
-    // Shift+click to seek
-    if (e.shiftKey) {
-      const rect = timeline.getBoundingClientRect();
-      const pct = (e.clientX - rect.left) / rect.width;
-      player.currentTime = pct * player.duration;
-    }
-  });
-
-  // --- Drag markers ---
-  document.addEventListener('mousemove', (e) => {
-    if (!draggingMarker || !player.duration) return;
-    const rect = timeline.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    markers[draggingMarker.idx].time = pct * player.duration;
-    renderMarkers();
-    renderSegments();
-  });
-
-  document.addEventListener('mouseup', () => {
-    if (draggingMarker) {
-      markers.sort((a, b) => a.time - b.time);
-      renderMarkers();
-      renderSegments();
-      draggingMarker = null;
-    }
-  });
-
-  // --- Render markers on timeline + list ---
-  function renderMarkers() {
-    // Remove old markers from timeline
-    timeline.querySelectorAll('.ve-tl-marker').forEach(el => el.remove());
-
-    // Add markers to timeline
-    markers.forEach((m, i) => {
-      const el = document.createElement('div');
-      el.className = 've-tl-marker ' + m.type;
-      el.style.left = (m.time / (player.duration || 1)) * 100 + '%';
-      el.dataset.idx = i;
-      el.title = m.type.toUpperCase() + ' @ ' + fmtTime(m.time) + (m.label ? ' — ' + m.label : '');
-      timeline.appendChild(el);
-    });
-
-    // Render marker tags list
-    if (markers.length === 0) {
-      markersList.innerHTML = '<span style="font-size:10px;color:rgba(255,255,255,0.25)">Click timeline to add markers. Right-click to remove.</span>';
-    } else {
-      markersList.innerHTML = '';
-      markers.forEach((m, i) => {
-        const tag = document.createElement('div');
-        tag.className = 've-marker-tag ' + m.type;
-        tag.innerHTML = '<span>' + fmtTime(m.time) + '</span><span>' + m.type.toUpperCase() + (m.label ? ' — ' + m.label : '') + '</span><span class="ve-rm" data-idx="' + i + '">×</span>';
-        markersList.appendChild(tag);
-      });
-      // Remove handler
-      markersList.querySelectorAll('.ve-rm').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          const idx = parseInt(e.target.dataset.idx);
-          markers.splice(idx, 1);
-          renderMarkers();
-          renderSegments();
-        });
-      });
-    }
-  }
-
-  // --- Render colored segments between markers ---
-  function renderSegments() {
-    timeline.querySelectorAll('.ve-tl-segment').forEach(el => el.remove());
-    if (markers.length === 0 || !player.duration) return;
-
-    const sorted = [...markers].sort((a, b) => a.time - b.time);
-    const points = [0, ...sorted.map(m => m.time), player.duration];
-
-    for (let i = 0; i < points.length - 1; i++) {
-      const startPct = (points[i] / player.duration) * 100;
-      const endPct = (points[i + 1] / player.duration) * 100;
-      // Find marker at start of this segment to get type
-      const marker = sorted.find(m => Math.abs(m.time - points[i]) < 0.01);
-      const type = marker ? marker.type : (i === 0 ? 'keep' : 'keep');
-
-      const seg = document.createElement('div');
-      seg.className = 've-tl-segment ' + type;
-      seg.style.left = startPct + '%';
-      seg.style.width = (endPct - startPct) + '%';
-      timeline.appendChild(seg);
-    }
-  }
-
-  // --- Auto-Edit button ---
-  const autoEditBtn = document.getElementById('ve-auto-edit');
-  if (autoEditBtn) {
-    autoEditBtn.addEventListener('click', async () => {
-      if (!videoLoaded) {
-        suggestions.textContent = 'Please upload a video first.';
-        return;
-      }
-      const instructions = document.getElementById('ve-instructions').value;
-      suggestions.textContent = 'JARVIS is analyzing the video... please wait...';
-      autoEditBtn.disabled = true;
-
-      try {
-        const prompt = 'You are JARVIS video editor AI. The user has a video that is ' + fmtTime(player.duration) + ' long. ' +
-          (instructions ? 'User instructions: ' + instructions + '. ' : '') +
-          'Suggest specific cut points (timestamps), effects, and subtitles. Format as JSON with arrays: cuts:[{start,end,reason}], effects:[{time,type,reason}], subtitles:[{start,end,text}]. Be precise with timestamps.';
-
-        const r = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: prompt })
-        });
-        const data = await r.json();
-        const reply = data.reply || data.response || JSON.stringify(data);
-        suggestions.textContent = reply;
-
-        // Try to parse JSON from reply
-        try {
-          const jsonMatch = reply.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0]);
-            if (parsed.cuts) {
-              parsed.cuts.forEach(c => {
-                markers.push({ time: parseFloat(c.start) || 0, type: 'cut', label: c.reason || '' });
-                if (c.end) markers.push({ time: parseFloat(c.end), type: 'keep', label: 'resume' });
-              });
-            }
-            if (parsed.effects) {
-              parsed.effects.forEach(fx => {
-                markers.push({ time: parseFloat(fx.time) || 0, type: 'effect', label: fx.type + (fx.reason ? ' — ' + fx.reason : '') });
-              });
-            }
-            if (parsed.subtitles) {
-              parsed.subtitles.forEach(s => {
-                subtitles.push({ start: parseFloat(s.start) || 0, end: parseFloat(s.end) || 0, text: s.text || '' });
-              });
-              renderSubtitles();
-            }
-            markers.sort((a, b) => a.time - b.time);
-            renderMarkers();
-            renderSegments();
-          }
-        } catch(parseErr) { /* Non-JSON response, just show text */ }
-      } catch(e) {
-        suggestions.textContent = 'Error: ' + e.message;
-      }
-      autoEditBtn.disabled = false;
-    });
-  }
-
-  // --- Add Subtitle button ---
-  const addSubBtn = document.getElementById('ve-add-subtitle');
-  if (addSubBtn) {
-    addSubBtn.addEventListener('click', () => {
-      if (!videoLoaded) return;
-      const t = player.currentTime || 0;
-      subtitles.push({ start: t, end: Math.min(t + 3, player.duration || t + 3), text: 'Subtitle text here' });
-      renderSubtitles();
-    });
-  }
-
-  function renderSubtitles() {
-    if (subtitles.length === 0) {
-      subtitlesWrap.style.display = 'none';
-      return;
-    }
-    subtitlesWrap.style.display = 'block';
-    subtitlesList.innerHTML = '';
-    subtitles.forEach((s, i) => {
-      const row = document.createElement('div');
-      row.className = 've-sub-row';
-      row.innerHTML = '<input class="ve-sub-time" value="' + fmtTime(s.start) + '" data-field="start" data-idx="' + i + '" readonly>' +
-        '<span style="opacity:0.3">→</span>' +
-        '<input class="ve-sub-time" value="' + fmtTime(s.end) + '" data-field="end" data-idx="' + i + '" readonly>' +
-        '<input class="ve-sub-text" value="' + (s.text || '').replace(/"/g, '&quot;') + '" data-idx="' + i + '">' +
-        '<span class="ve-rm" data-idx="' + i + '">×</span>';
-      subtitlesList.appendChild(row);
-    });
-    // Edit text handler
-    subtitlesList.querySelectorAll('.ve-sub-text').forEach(inp => {
-      inp.addEventListener('change', (e) => {
-        subtitles[parseInt(e.target.dataset.idx)].text = e.target.value;
-      });
-    });
-    // Remove handler
-    subtitlesList.querySelectorAll('.ve-rm').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        subtitles.splice(parseInt(e.target.dataset.idx), 1);
-        renderSubtitles();
-      });
-    });
-  }
-
-  // --- Effects dropdown ---
-  const fxBtn = document.getElementById('ve-fx-btn');
-  if (fxBtn) {
-    fxBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      fxMenu.classList.toggle('open');
-    });
-  }
-  document.addEventListener('click', () => fxMenu.classList.remove('open'));
-
-  fxMenu.querySelectorAll('.ve-fx-item').forEach(item => {
-    item.addEventListener('click', () => {
-      if (!videoLoaded) return;
-      const fx = item.dataset.fx;
-      const t = player.currentTime || 0;
-      markers.push({ time: t, type: 'effect', label: fx });
-      markers.sort((a, b) => a.time - b.time);
-      renderMarkers();
-      renderSegments();
-      fxMenu.classList.remove('open');
-      suggestions.textContent = 'Effect "' + fx + '" added at ' + fmtTime(t);
-    });
-  });
-
-  // --- Merge Videos button ---
-  const mergeBtn = document.getElementById('ve-merge-btn');
-  if (mergeBtn) {
-    mergeBtn.addEventListener('click', () => {
-      const inp = document.createElement('input');
-      inp.type = 'file';
-      inp.accept = 'video/*';
-      inp.multiple = true;
-      inp.addEventListener('change', () => {
-        if (inp.files.length > 0) {
-          suggestions.textContent = 'Selected ' + inp.files.length + ' video(s) for merging.\nMerge will be processed on export via JARVIS server.';
-        }
-      });
-      inp.click();
-    });
-  }
-
-  // --- Export button ---
-  const exportBtn = document.getElementById('ve-export-btn');
-  if (exportBtn) {
-    exportBtn.addEventListener('click', async () => {
-      if (!videoLoaded) {
-        suggestions.textContent = 'Please upload a video first.';
-        return;
-      }
-      suggestions.textContent = 'Preparing export...\nMarkers: ' + markers.length + ' | Subtitles: ' + subtitles.length;
-      exportBtn.disabled = true;
-
-      try {
-        const payload = {
-          markers: markers.map(m => ({ time: m.time, type: m.type, label: m.label || '' })),
-          subtitles: subtitles,
-          instructions: document.getElementById('ve-instructions').value,
-          duration: player.duration
-        };
-        const r = await fetch('/api/video/export', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        const data = await r.json();
-        if (data.ok) {
-          suggestions.textContent = 'Export complete!\n' + (data.message || 'File ready for download.');
-        } else {
-          suggestions.textContent = 'Export response: ' + (data.error || JSON.stringify(data));
-        }
-      } catch(e) {
-        suggestions.textContent = 'Export endpoint not available yet.\nEdit data saved:\n' + JSON.stringify({ markers, subtitles }, null, 2);
-      }
-      exportBtn.disabled = false;
-    });
-  }
-
-})();
-
-
-// === CREATOR HUB — Unified button opens picker ===
-(function() {
-  var btn = document.getElementById("btn-creator-hub");
-  if (!btn) return;
-
-  btn.addEventListener("click", function() {
-    var existing = document.getElementById("creator-picker");
-    if (existing) { existing.remove(); return; }
-
-    var overlay = document.createElement("div");
-    overlay.id = "creator-picker";
-    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9500;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);";
-
-    var container = document.createElement("div");
-    container.style.cssText = "display:flex;gap:20px;";
-
-    // Content button
-    var btnContent = document.createElement("button");
-    btnContent.style.cssText = "padding:28px 36px;background:linear-gradient(135deg,rgba(0,228,255,0.12),rgba(0,228,255,0.04));border:2px solid rgba(0,228,255,0.5);border-radius:16px;color:#00e4ff;font-family:Orbitron,sans-serif;font-size:13px;letter-spacing:2px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:14px;min-width:170px;transition:all 0.3s;text-transform:uppercase;";
-    btnContent.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="36" height="36"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>Conteudo';
-    btnContent.onmouseover = function() { this.style.boxShadow = "0 0 30px rgba(0,228,255,0.4)"; this.style.transform = "translateY(-3px)"; };
-    btnContent.onmouseout = function() { this.style.boxShadow = "none"; this.style.transform = "none"; };
-    btnContent.onclick = function() {
-      overlay.remove();
-      var m = document.getElementById("content-modal");
-      if (m) m.style.display = "flex";
-    };
-
-    // Video button
-    var btnVideo = document.createElement("button");
-    btnVideo.style.cssText = "padding:28px 36px;background:linear-gradient(135deg,rgba(255,215,0,0.12),rgba(255,215,0,0.04));border:2px solid rgba(255,215,0,0.5);border-radius:16px;color:#ffd700;font-family:Orbitron,sans-serif;font-size:13px;letter-spacing:2px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:14px;min-width:170px;transition:all 0.3s;text-transform:uppercase;";
-    btnVideo.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="36" height="36"><rect x="2" y="4" width="20" height="16" rx="2"/><polygon points="10,9 10,15 15,12"/></svg>Video';
-    btnVideo.onmouseover = function() { this.style.boxShadow = "0 0 30px rgba(255,215,0,0.4)"; this.style.transform = "translateY(-3px)"; };
-    btnVideo.onmouseout = function() { this.style.boxShadow = "none"; this.style.transform = "none"; };
-    btnVideo.onclick = function() {
-      overlay.remove();
-      var m = document.getElementById("video-modal");
-      if (m) m.style.display = "flex";
-    };
-
-    container.appendChild(btnContent);
-    container.appendChild(btnVideo);
-    overlay.appendChild(container);
-
-    overlay.addEventListener("click", function(e) {
-      if (e.target === overlay) overlay.remove();
-    });
-
-    document.body.appendChild(overlay);
-  });
-})();
