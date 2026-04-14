@@ -21,5 +21,4 @@ launcher/build/
 *.pdb
 jarvis-autostart.vbs
 jarvis-service.bat
-obsidian-template/
 .claude/settings.local.json
