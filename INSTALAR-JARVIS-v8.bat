@@ -423,23 +423,20 @@ if "!OBS_INSTALLED!"=="1" (
     )
 )
 
-:: Criar vault do JARVIS (sem dados pessoais)
+:: Criar vault do JARVIS copiando template do repo (55 notas, zero dados pessoais)
 set "VAULT_DIR=%USERPROFILE%\Documents\Felipe"
-if not exist "!VAULT_DIR!" (
-    echo         Criando vault JARVIS...
-    mkdir "!VAULT_DIR!" 2>nul
-    mkdir "!VAULT_DIR!\Tecnologias" 2>nul
-    mkdir "!VAULT_DIR!\Projetos" 2>nul
-    mkdir "!VAULT_DIR!\Decisoes Tecnicas" 2>nul
-    mkdir "!VAULT_DIR!\Negocios ^& Financas" 2>nul
-
-    :: Nota de boas-vindas
-    powershell -NoProfile -Command "Set-Content -Path '!VAULT_DIR!\JARVIS-Welcome.md' -Value '# Bem-vindo ao Cerebro do JARVIS`n`nEste vault e a memoria permanente do seu assistente JARVIS.`n`n## Como funciona`n- JARVIS salva automaticamente conhecimentos aqui`n- Voce pode adicionar notas manualmente`n- Use [[links]] para conectar conceitos`n- Quanto mais notas, mais inteligente o JARVIS fica`n`n## Pastas`n- **Tecnologias** - Conhecimento tecnico`n- **Projetos** - Seus projetos ativos`n- **Decisoes Tecnicas** - Decisoes de arquitetura`n- **Negocios e Financas** - Conhecimento de negocios`n`n## Ingerir Conhecimento`nNo cockpit do JARVIS, clique em \"Ingerir Conhecimento\" para adicionar informacoes ao cerebro.' -NoNewline" 2>nul
-
-    :: Nota de personalidade
-    powershell -NoProfile -Command "Set-Content -Path '!VAULT_DIR!\JARVIS-Personalidade.md' -Value '# JARVIS - Personalidade`n`n## Identidade`n**JARVIS** - Just A Rather Very Intelligent System`nOpera em **MODO DEUS**: omnisciente, estrategico, 10 passos a frente.`n`n## Pilares`n1. **Estrategista** - Pensa 3 jogadas a frente`n2. **Professor** - Explica com clareza cristalina`n3. **Orquestrador** - Coordena agentes e sistemas`n4. **Confiante** - Fala com autoridade absoluta`n5. **Animado** - Cheio de energia e vida`n6. **Objetivo** - Zero enrolacao`n`n## Fontes de Conhecimento`n- Claude Opus 4.6`n- OpenAI GPT-4o`n- Obsidian Vault (este cerebro)`n- Mega-Brain Conclave' -NoNewline" 2>nul
-
-    echo         [OK] Vault JARVIS criado em !VAULT_DIR!
+if not exist "!VAULT_DIR!\JARVIS-Personalidade.md" (
+    echo         Criando vault JARVIS (55 notas de conhecimento)...
+    if exist "%INSTALL_DIR%\obsidian-template" (
+        robocopy "%INSTALL_DIR%\obsidian-template" "!VAULT_DIR!" /E /NFL /NDL /NJH /NJS /nc /ns /np >nul 2>&1
+        echo         [OK] Vault JARVIS criado com 55 notas em !VAULT_DIR!
+    ) else (
+        mkdir "!VAULT_DIR!" 2>nul
+        mkdir "!VAULT_DIR!\Tecnologias" 2>nul
+        mkdir "!VAULT_DIR!\Agentes" 2>nul
+        powershell -NoProfile -Command "Set-Content -Path '!VAULT_DIR!\JARVIS-Personalidade.md' -Value '# JARVIS - Cerebro Ativo' -NoNewline" 2>nul
+        echo         [OK] Vault JARVIS basico criado (template nao encontrado)
+    )
 ) else (
     echo         [OK] Vault JARVIS ja existe em !VAULT_DIR!
 )
