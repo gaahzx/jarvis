@@ -438,7 +438,38 @@ class NeuralTree {
     }
   }
 
+  pause() {
+    this._paused = true;
+  }
+
+  resume() {
+    if (this._paused) {
+      this._paused = false;
+      this.animate();
+    }
+  }
+
+  dispose() {
+    this._disposed = true;
+    if (this.renderer) {
+      this.renderer.dispose();
+      this.renderer.domElement?.remove();
+    }
+    if (this.scene) {
+      this.scene.traverse(child => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+          else child.material.dispose();
+        }
+      });
+    }
+  }
+
   animate() {
+    if (this._disposed) return;
+    if (this._paused) return;
+
     this.time += 0.016;
     this.speedMul += (this.targetSpeed - this.speedMul) * 0.03;
     const t = this.time * this.speedMul;
@@ -583,6 +614,16 @@ requestAnimationFrame(() => {
   if (canvas) {
     particleOrb = new NeuralTree(canvas);
     window.particleOrb = particleOrb;
+  }
+});
+
+// Pause 3D animation when tab is not visible (saves GPU)
+document.addEventListener('visibilitychange', () => {
+  if (!particleOrb) return;
+  if (document.hidden) {
+    particleOrb.pause();
+  } else {
+    particleOrb.resume();
   }
 });
 
@@ -1937,7 +1978,8 @@ async function updateStats() {
 
 // ========== CLOCK ==========
 function updateClock() {
-  document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-US', { hour12: false });
+  const el = document.getElementById('clock');
+  if (el) el.textContent = new Date().toLocaleTimeString('en-US', { hour12: false });
 }
 
 // ========== CONFIG ==========
@@ -1963,9 +2005,16 @@ document.getElementById('config-voice')?.addEventListener('change', (e) => {
 
 document.getElementById('config-wakeword')?.addEventListener('change', (e) => {
   wakeWordEnabled = e.target.checked;
+  localStorage.setItem('jarvis-wakeword-disabled', wakeWordEnabled ? 'false' : 'true');
   if (wakeWordEnabled) {
-    startWakeWord();
-    addTerminalLine('[system] Wake word "Jarvis" activated', 'system-line');
+    try {
+      startWakeWord();
+      addTerminalLine('[system] Wake word "Jarvis" activated', 'system-line');
+    } catch (err) {
+      wakeWordEnabled = false;
+      e.target.checked = false;
+      addTerminalLine(`[error] Wake word failed: ${err.message || err}`, 'error-line');
+    }
   } else {
     stopWakeWord();
     addTerminalLine('[system] Wake word deactivated', 'system-line');
@@ -1984,15 +2033,21 @@ if (ttsVoiceSelect) {
 }
 
 // ========== AUTO-START WAKE WORD ==========
-// JARVIS always listens for his name
+// JARVIS listens for his name — only if user hasn't explicitly disabled it
 setTimeout(() => {
-  if (canWebSpeech && !wakeWordEnabled) {
-    wakeWordEnabled = true;
-    startWakeWord();
-    console.log('[JARVIS] Wake word "JARVIS" auto-activated');
-    // Sync checkbox if exists
-    const wakeChk = document.getElementById('config-wakeword');
-    if (wakeChk) wakeChk.checked = true;
+  const userDisabled = localStorage.getItem('jarvis-wakeword-disabled') === 'true';
+  if (canWebSpeech && !wakeWordEnabled && !userDisabled) {
+    try {
+      wakeWordEnabled = true;
+      startWakeWord();
+      console.log('[JARVIS] Wake word "JARVIS" auto-activated');
+      // Sync checkbox if exists
+      const wakeChk = document.getElementById('config-wakeword');
+      if (wakeChk) wakeChk.checked = true;
+    } catch (err) {
+      console.warn('[JARVIS] Wake word auto-start failed (mic denied?):', err.message || err);
+      wakeWordEnabled = false;
+    }
   }
 }, 2000);
 
@@ -2325,14 +2380,20 @@ initRealtimeBtn();
       }
 
       if (data) {
-        document.getElementById('weather-city').textContent = data.city.toUpperCase();
-        document.getElementById('weather-temp').textContent = `${data.temp}°C`;
-        document.getElementById('weather-desc').textContent = data.desc;
+        const wCity = document.getElementById('weather-city');
+        const wTemp = document.getElementById('weather-temp');
+        const wDesc = document.getElementById('weather-desc');
+        if (wCity) wCity.textContent = data.city.toUpperCase();
+        if (wTemp) wTemp.textContent = `${data.temp}°C`;
+        if (wDesc) wDesc.textContent = data.desc;
       }
     } catch (err) {
-      document.getElementById('weather-city').textContent = 'OFFLINE';
-      document.getElementById('weather-temp').textContent = '--°C';
-      document.getElementById('weather-desc').textContent = 'sem conexao';
+      const wCity = document.getElementById('weather-city');
+      const wTemp = document.getElementById('weather-temp');
+      const wDesc = document.getElementById('weather-desc');
+      if (wCity) wCity.textContent = 'OFFLINE';
+      if (wTemp) wTemp.textContent = '--°C';
+      if (wDesc) wDesc.textContent = 'sem conexao';
     }
   }
 
@@ -2346,25 +2407,25 @@ initRealtimeBtn();
     const sClaude = document.getElementById('bar-claude-status');
 
     try {
-      const r = await fetch('/api/health', { timeout: 3000 });
+      const r = await fetch('/api/health', { signal: AbortSignal.timeout(3000) });
       if (r.ok) {
         const data = await r.json();
-        barApi.className = 'bar-fill ok';
+        if (barApi) barApi.className = 'bar-fill ok';
         if (sApi) { sApi.textContent = 'OK'; sApi.style.color = 'var(--green, #00ff88)'; }
 
         if (data.capabilities?.voice_realtime) {
-          barVoice.className = 'bar-fill ok';
+          if (barVoice) barVoice.className = 'bar-fill ok';
           if (sVoice) { sVoice.textContent = 'OK'; sVoice.style.color = 'var(--green, #00ff88)'; }
         } else {
-          barVoice.className = 'bar-fill err';
+          if (barVoice) barVoice.className = 'bar-fill err';
           if (sVoice) { sVoice.textContent = 'OFF'; sVoice.style.color = '#ff4455'; }
         }
 
         if (data.capabilities?.task_execution) {
-          barClaude.className = 'bar-fill ok';
+          if (barClaude) barClaude.className = 'bar-fill ok';
           if (sClaude) { sClaude.textContent = 'OK'; sClaude.style.color = 'var(--green, #00ff88)'; }
         } else {
-          barClaude.className = 'bar-fill err';
+          if (barClaude) barClaude.className = 'bar-fill err';
           if (sClaude) { sClaude.textContent = 'OFF'; sClaude.style.color = '#ff4455'; }
         }
         return;

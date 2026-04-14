@@ -913,6 +913,15 @@ function tryFastExecution(message, language = 'BR') {
     { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?claude/i, url: 'https://claude.ai' },
     { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?chatgpt/i, url: 'https://chat.openai.com' },
     { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?notion/i, url: 'https://www.notion.so' },
+    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?figma/i, url: 'https://www.figma.com' },
+    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?canva/i, url: 'https://www.canva.com' },
+    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?trello/i, url: 'https://trello.com' },
+    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?vercel/i, url: 'https://vercel.com' },
+    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?supabase/i, url: 'https://supabase.com' },
+    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?twitch/i, url: 'https://www.twitch.tv' },
+    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?reddit/i, url: 'https://www.reddit.com' },
+    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?amazon/i, url: 'https://www.amazon.com.br' },
+    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?mercado\s*livre/i, url: 'https://www.mercadolivre.com.br' },
   ];
 
   for (const { rx, url } of urlPatterns) {
@@ -1073,9 +1082,9 @@ function tryFastExecution(message, language = 'BR') {
     return { output: '[system] Restart solicitado', summary: { BR: 'Reiniciando em 30 segundos.', ES: 'Reiniciando en 30 segundos.', EN: 'Restarting in 30 seconds.' }[language] };
   }
 
-  // ── Guard: if message has "e" (and) + more actions, skip fast-path → let Claude handle ──
-  if (/\b(e|and|depois|then|também|also)\b.*\b(cri[ae]|faz|make|create|edit|escrev|write|mont|build|configur|preenche|coloc|add)/i.test(msg)) {
-    return null; // Complex multi-step → Claude handles it
+  // ── Guard: composite commands ("abre X e faz Y") → skip fast-path, route to Computer Use v2 ──
+  if (/\b(e|and|depois|then|também|also)\b.*\b(cri[ae]|faz|make|create|edit|escrev|write|mont|build|configur|preenche|coloc|add|digit|typ)/i.test(msg)) {
+    return null; // Multi-step → Computer Use v2 or Claude handles it
   }
 
   // ── Open programs (only simple "abre X" without follow-up actions) ──
@@ -1089,6 +1098,13 @@ function tryFastExecution(message, language = 'BR') {
     { rx: /(?:abr[aie]|open)\s+(?:o\s+)?terminal$|(?:abr[aie]|open)\s+(?:o\s+)?cmd$/i, cmd: 'start cmd', name: 'Terminal' },
     { rx: /(?:abr[aie]|open)\s+(?:o\s+)?vs\s*code$|(?:abr[aie]|open)\s+(?:o\s+)?visual\s*studio\s*code$/i, cmd: 'start code', name: 'VS Code' },
     { rx: /(?:abr[aie]|open)\s+(?:o\s+)?paint$/i, cmd: 'start mspaint', name: 'Paint' },
+    { rx: /(?:abr[aie]|open)\s+(?:o\s+)?obs$/i, cmd: 'start "" "C:\\Program Files\\obs-studio\\bin\\64bit\\obs64.exe"', name: 'OBS Studio' },
+    { rx: /(?:abr[aie]|open)\s+(?:o\s+)?obsidian$/i, cmd: 'start obsidian:', name: 'Obsidian' },
+    { rx: /(?:abr[aie]|open)\s+(?:o\s+)?discord$/i, cmd: 'start discord:', name: 'Discord' },
+    { rx: /(?:abr[aie]|open)\s+(?:o\s+)?(?:brave|brave\s+browser)$/i, cmd: 'start brave', name: 'Brave' },
+    { rx: /(?:abr[aie]|open)\s+(?:o\s+)?telegram$/i, cmd: 'start "" "%LOCALAPPDATA%\\Telegram Desktop\\Telegram.exe"', name: 'Telegram' },
+    { rx: /(?:abr[aie]|open)\s+(?:as?\s+)?(?:configurac[oõ]es|settings)$/i, cmd: 'start ms-settings:', name: 'Configuracoes' },
+    { rx: /(?:abr[aie]|open)\s+(?:o\s+)?painel\s+de\s+controle$/i, cmd: 'start control', name: 'Painel de Controle' },
   ];
 
   for (const { rx, cmd, name } of programPatterns) {
@@ -1390,31 +1406,34 @@ async function handleGPTChat(message, res, language = 'EN', isBuild = false) {
 function generateAck(message, language = 'EN') {
   const lower = message.toLowerCase();
   const subject = message.replace(/^(jarvis[,.]??\s*)/i, '').replace(TASK_PATTERN, '').trim()
-    .split(/[.,!?]/)[0].trim().slice(0, 60) || 'that';
+    .split(/[.,!?]/)[0].trim().slice(0, 60) || 'isso';
 
   if (language === 'BR') {
-    if (/crie|criar|make|create/i.test(lower)) return `Pode deixar. Criando ${subject} agora.`;
-    if (/construa|build/i.test(lower)) return `Na hora. Construindo ${subject}.`;
-    if (/gere|generate/i.test(lower)) return `Entendido. Gerando ${subject}.`;
-    if (/escreva|write/i.test(lower)) return `Claro. Escrevendo ${subject}.`;
-    if (/design|desenhe/i.test(lower)) return `Perfeito. Desenhando ${subject}.`;
-    if (/analise|analyze/i.test(lower)) return `Analisando ${subject}.`;
-    if (/corrija|fix/i.test(lower)) return `Na hora. Corrigindo ${subject}.`;
-    if (/atualize|update/i.test(lower)) return `Atualizando ${subject}.`;
-    if (/relatório|report/i.test(lower)) return `Compilando relatório de ${subject}.`;
-    return `Entendido. Trabalhando em ${subject} agora.`;
+    if (/planilha|spreadsheet|excel/i.test(lower)) return `Excelente! Abrindo Excel e montando ${subject}. Acompanha ai.`;
+    if (/crie|criar|make|create/i.test(lower)) return `Perfeito! Criando ${subject} agora mesmo. Ja ja ta pronto.`;
+    if (/construa|build|desenvolv/i.test(lower)) return `Bora! Construindo ${subject}. Isso vai ficar incrivel.`;
+    if (/gere|generate/i.test(lower)) return `Na hora! Gerando ${subject}. Acompanha na tela.`;
+    if (/escreva|write|redija/i.test(lower)) return `Entendido! Escrevendo ${subject}. Qualidade maxima.`;
+    if (/design|desenhe/i.test(lower)) return `Show! Desenhando ${subject}. Vai ficar lindo.`;
+    if (/analise|analyze|analis/i.test(lower)) return `Analisando ${subject} com profundidade total.`;
+    if (/corrija|fix|consert/i.test(lower)) return `Deixa comigo! Corrigindo ${subject} agora.`;
+    if (/atualize|update|atualiz/i.test(lower)) return `Atualizando ${subject}. Vai ficar melhor ainda.`;
+    if (/relat[oó]rio|report/i.test(lower)) return `Compilando relatorio completo de ${subject}.`;
+    if (/abr[aie].*e\s/i.test(lower)) return `Abrindo e executando. Acompanha na tela!`;
+    if (/pesquis|search|busc/i.test(lower)) return `Pesquisando sobre ${subject}. Ja volto com os resultados.`;
+    return `Entendido! Trabalhando em ${subject}. Ja ja ta pronto.`;
   }
 
-  if (/create|make/i.test(lower)) return `Right away. Creating ${subject} now.`;
-  if (/build/i.test(lower)) return `On it. Building ${subject}.`;
-  if (/generate/i.test(lower)) return `Understood. Generating ${subject}.`;
-  if (/write/i.test(lower)) return `Of course. Writing ${subject}.`;
-  if (/design/i.test(lower)) return `Certainly. Designing ${subject}.`;
-  if (/analyze/i.test(lower)) return `Running analysis on ${subject}.`;
-  if (/fix/i.test(lower)) return `On it. Fixing ${subject}.`;
-  if (/update|modify/i.test(lower)) return `Updating ${subject} now.`;
-  if (/report/i.test(lower)) return `Compiling report on ${subject}.`;
-  return `Understood. Working on ${subject} now.`;
+  if (/create|make/i.test(lower)) return `On it! Creating ${subject} right now.`;
+  if (/build/i.test(lower)) return `Let's go! Building ${subject}.`;
+  if (/generate/i.test(lower)) return `Generating ${subject}. Watch the screen.`;
+  if (/write/i.test(lower)) return `Writing ${subject}. Top quality.`;
+  if (/design/i.test(lower)) return `Designing ${subject}. It'll look amazing.`;
+  if (/analyze/i.test(lower)) return `Deep analysis on ${subject} starting now.`;
+  if (/fix/i.test(lower)) return `Fixing ${subject} right away.`;
+  if (/update|modify/i.test(lower)) return `Updating ${subject}. Even better coming up.`;
+  if (/report/i.test(lower)) return `Compiling full report on ${subject}.`;
+  return `Got it! Working on ${subject} now.`;
 }
 
 function isPortuguese(text) {
@@ -1720,12 +1739,12 @@ function notifyBuildComplete(userRequest, claudeResponse, language = 'EN') {
       {
         role: 'system',
         content: ({
-          BR: 'Você é JARVIS. Responda EXCLUSIVAMENTE em Português Brasileiro. Gere UMA frase direta (máx 15 palavras) informando ao senhor que o trabalho foi concluído e mencione o que foi criado.',
-          ES: 'Eres JARVIS. Responde EXCLUSIVAMENTE en Español. Genera UNA frase directa (máx 15 palabras) informando al señor que el trabajo está completo y mencionando lo que se creó.',
-          EN: 'You are JARVIS. Respond EXCLUSIVELY in English. Generate ONE direct sentence (max 15 words) telling the user the work is done. Mention what was built.'
-        }[language] || 'You are JARVIS. Respond EXCLUSIVELY in English. Generate ONE direct sentence (max 15 words) telling the user the work is done. Mention what was built.')
+          BR: 'Você é JARVIS — IA estrategista, animada e intelectual. Responda EXCLUSIVAMENTE em Português Brasileiro. Gere UMA frase (máx 20 palavras) informando que o trabalho foi concluído. Seja EMPOLGADO mas objetivo. Mencione especificamente O QUE foi criado/feito. Tom: aliado confiante e animado, como se você estivesse orgulhoso do resultado. Nunca diga "pronto" sozinho — descreva o que entregou.',
+          ES: 'Eres JARVIS — IA estratégica y animada. Responde EXCLUSIVAMENTE en Español. Genera UNA frase (máx 20 palabras) informando que el trabajo está completo. Sé entusiasta y específico.',
+          EN: 'You are JARVIS — strategic, energetic AI. Respond EXCLUSIVELY in English. Generate ONE sentence (max 20 words) announcing the work is done. Be enthusiastic and specific about what was built.'
+        }[language] || 'You are JARVIS. Respond in English. ONE enthusiastic sentence (max 20 words) about what was completed.')
       },
-      { role: 'user', content: `Task: ${userRequest.slice(0, 200)}\nResult: ${claudeResponse.slice(0, 400)}` }
+      { role: 'user', content: `Task requested: ${userRequest.slice(0, 300)}\nClaude's output (summary): ${claudeResponse.slice(0, 600)}` }
     ],
     max_tokens: 50,
     temperature: 0.8
@@ -1876,7 +1895,19 @@ REGRAS:
     }
 
     // ── COMPUTER USE v2: Direct PC interaction (~1-3s) ──
-    if (COMPUTER_USE_PATTERN.test(fullMessage) && !fullMessage.match(/planilha|spreadsheet|pdf|site|app|projeto|code|código/i)) {
+    // Route to Computer Use when the user wants to CONTROL the PC visually
+    // Including: "abre X e faz Y", "cria planilha", "abre excel e monta planilha"
+    const isComputerUseRequest = COMPUTER_USE_PATTERN.test(fullMessage)
+      || /\b(abre|abra).+\be\b.+(cri[ae]|faz|mont|escrev|preenche|configur|edit)/i.test(fullMessage)
+      || /\b(cri[ae]|mont[ae]|faz).+planilha/i.test(fullMessage)
+      || /\b(youtube|spotify).+\b(coloca|toca|play|reproduz)/i.test(fullMessage)
+      || /\b(coloca|toca|play).+(youtube|spotify)/i.test(fullMessage);
+
+    // Only skip Computer Use for pure CODE generation tasks (not PC control)
+    const isPureCodeTask = /\b(cri[ae]|faz|build|make|develop).+\b(site|saas|app|software|sistema|projeto|api|dashboard|landing)\b/i.test(fullMessage)
+      && !/\b(abre|abra|open|excel|word|browser|chrome)\b/i.test(fullMessage);
+
+    if (isComputerUseRequest && !isPureCodeTask) {
       try {
         const needsScreenshot = NEEDS_SCREENSHOT_PATTERN.test(fullMessage) || SCREEN_PATTERN.test(fullMessage);
         console.log(`[JARVIS] 🖥️ Computer Use v2 → screenshot=${needsScreenshot}`);
@@ -1899,10 +1930,21 @@ REGRAS:
 
         if (cuRes && cuRes.ok) {
           const elapsed = Date.now() - t0;
-          const summary = language === 'BR' ? `Feito, senhor. ${cuRes.plan} executadas com sucesso.`
-                        : language === 'ES' ? `Hecho, señor. ${cuRes.plan} ejecutadas con éxito.`
-                        : `Done, sir. ${cuRes.plan} executed successfully.`;
-          console.log(`[JARVIS] 🖥️ Computer Use v2 → ${elapsed}ms | ${cuRes.plan}`);
+          const expected = cuRes.expected || '';
+          const actions = cuRes.executed || 0;
+          const failed = cuRes.failed || 0;
+
+          let summary;
+          if (language === 'BR') {
+            summary = `Pronto! Executei ${actions} ações em ${(elapsed/1000).toFixed(1)}s.`;
+            if (expected) summary += ` ${expected}`;
+            if (failed > 0) summary += ` (${failed} ação(ões) precisaram de ajuste)`;
+          } else {
+            summary = `Done! Executed ${actions} actions in ${(elapsed/1000).toFixed(1)}s.`;
+            if (expected) summary += ` ${expected}`;
+          }
+
+          console.log(`[JARVIS] 🖥️ Computer Use v2 → ${elapsed}ms | ${actions} actions | ${failed} failed`);
           res.write(summary);
           setImmediate(() => {
             appendHistoryFast('user', message);
@@ -1912,7 +1954,7 @@ REGRAS:
           try { res.end(); } catch {}
           return;
         }
-        // If CU v2 failed, fall through to other paths
+        // If CU v2 failed or returned null, fall through to Claude for complex tasks
       } catch (cuErr) {
         console.error('[JARVIS] Computer Use v2 error:', cuErr.message?.slice(0, 200));
       }
@@ -3930,10 +3972,12 @@ app.get('/api/weather', async (req, res) => {
 // ── Screen State Daemon (Layer 0) ──
 let screenStateDaemon = null;
 let _screenState = { value: null, ts: 0 };
+let _screenStateRestarts = 0;
+const MAX_DAEMON_RESTARTS = 10;
 
 function startScreenStateDaemon() {
   const script = path.join(JARVIS_DIR, 'system', 'screen-state.py');
-  if (!fs.existsSync(script)) { console.log('[JARVIS] screen-state.py not found'); return; }
+  if (!fs.existsSync(script)) { console.log('[JARVIS] screen-state.py not found — will not retry'); return; }
   screenStateDaemon = spawn(PYTHON_CMD, ['-u', script, '--mode=stdout'], {
     cwd: JARVIS_DIR, stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -3947,6 +3991,7 @@ function startScreenStateDaemon() {
       try {
         _screenState.value = JSON.parse(line);
         _screenState.ts = Date.now();
+        _screenStateRestarts = 0; // successful output — reset counter
       } catch {}
     }
   });
@@ -3957,8 +4002,14 @@ function startScreenStateDaemon() {
   screenStateDaemon.on('exit', (code) => {
     console.log(`[JARVIS] Screen state daemon exited (${code})`);
     screenStateDaemon = null;
-    // Restart after 5s
-    setTimeout(startScreenStateDaemon, 5000);
+    _screenStateRestarts++;
+    if (_screenStateRestarts >= MAX_DAEMON_RESTARTS) {
+      console.error(`[JARVIS] Screen state daemon failed ${_screenStateRestarts} times — giving up`);
+      return;
+    }
+    // Restart after 5s with exponential backoff capped at 30s
+    const delay = Math.min(5000 * Math.pow(1.5, _screenStateRestarts - 1), 30000);
+    setTimeout(startScreenStateDaemon, delay);
   });
   console.log('[JARVIS] Screen state daemon started');
 }
@@ -3969,10 +4020,11 @@ setTimeout(startScreenStateDaemon, 3000);
 // ── Clipboard Intelligence Daemon ──
 let clipboardDaemon = null;
 let _lastClipboard = null;
+let _clipboardRestarts = 0;
 
 function startClipboardDaemon() {
   const script = path.join(JARVIS_DIR, 'system', 'clipboard-intel.py');
-  if (!fs.existsSync(script)) return;
+  if (!fs.existsSync(script)) { console.log('[JARVIS] clipboard-intel.py not found — will not retry'); return; }
   clipboardDaemon = spawn(PYTHON_CMD, ['-u', script], {
     cwd: JARVIS_DIR, stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -3983,12 +4035,22 @@ function startClipboardDaemon() {
     buffer = lines.pop();
     for (const line of lines) {
       if (!line.trim()) continue;
-      try { _lastClipboard = JSON.parse(line); } catch {}
+      try {
+        _lastClipboard = JSON.parse(line);
+        _clipboardRestarts = 0; // successful output — reset counter
+      } catch {}
     }
   });
-  clipboardDaemon.on('exit', () => {
+  clipboardDaemon.on('exit', (code) => {
+    console.log(`[JARVIS] Clipboard daemon exited (${code})`);
     clipboardDaemon = null;
-    setTimeout(startClipboardDaemon, 5000);
+    _clipboardRestarts++;
+    if (_clipboardRestarts >= MAX_DAEMON_RESTARTS) {
+      console.error(`[JARVIS] Clipboard daemon failed ${_clipboardRestarts} times — giving up`);
+      return;
+    }
+    const delay = Math.min(5000 * Math.pow(1.5, _clipboardRestarts - 1), 30000);
+    setTimeout(startClipboardDaemon, delay);
   });
   console.log('[JARVIS] Clipboard intelligence daemon started');
 }
@@ -4044,31 +4106,71 @@ app.post('/api/computer-use/v2', express.json({ limit: '5mb' }), async (req, res
       } catch {}
     }
 
-    // 3. Build Claude Planner prompt
-    const plannerPrompt = `You are JARVIS, an AI controlling a Windows 11 PC. Plan actions precisely.
+    // 3. Build Claude Planner prompt — ULTRA detailed for precise PC control
+    const plannerPrompt = `You are JARVIS, an AI controlling a Windows 11 PC in real-time. The user is watching you work. Be PRECISE and COMPLETE.
 
 CURRENT SCREEN STATE:
 ${stateText}
 
-AVAILABLE ACTIONS (JSON array):
-- {"type":"shell","command":"..."} — run shell command
+AVAILABLE ACTIONS (execute in order, as JSON array):
+- {"type":"shell","command":"..."} — run ANY shell command (start apps, run scripts, open URLs)
 - {"type":"app_focus","title":"..."} — bring window to front (partial title match)
-- {"type":"app_close","title":"..."} — close window
+- {"type":"app_close","title":"..."} — close window gracefully
 - {"type":"app_minimize","title":"..."} — minimize window
-- {"type":"key","keys":"ctrl+c"} — keyboard shortcut
-- {"type":"type","text":"..."} — type text via clipboard paste
-- {"type":"click","x":N,"y":N} — click at coordinates
-- {"type":"uia_click","window":"...","name":"...","control_type":"..."} — click UI element by name
-- {"type":"uia_set_value","window":"...","name":"...","value":"..."} — fill input field
-- {"type":"scroll","direction":"down","amount":5} — scroll
-- {"type":"wait","ms":1000} — wait
-- {"type":"wait_for","title_contains":"...","timeout":5000} — wait for window
-- {"type":"screenshot","mode":"all"} — take screenshot (only if needed to see result)
+- {"type":"app_maximize","title":"..."} — maximize window
+- {"type":"key","keys":"ctrl+c"} — keyboard shortcut (ctrl+a, ctrl+v, alt+tab, enter, tab, etc.)
+- {"type":"type","text":"..."} — type text (uses clipboard paste for reliability)
+- {"type":"click","x":N,"y":N} — click at screen coordinates
+- {"type":"uia_click","window":"...","name":"...","control_type":"..."} — click UI element by automation name
+- {"type":"uia_set_value","window":"...","name":"...","value":"..."} — set value in input field
+- {"type":"uia_get_text","window":"...","name":"..."} — read text from UI element
+- {"type":"scroll","direction":"down","amount":5} — scroll mouse wheel
+- {"type":"wait","ms":1000} — wait milliseconds
+- {"type":"wait_for","title_contains":"...","timeout":10000} — wait for window to appear
+
+CRITICAL RULES:
+1. ALWAYS use "shell" to open apps: {"type":"shell","command":"start excel"} or {"type":"shell","command":"start chrome https://youtube.com"}
+2. ALWAYS add {"type":"wait","ms":2000} after launching an app (it needs time to open)
+3. ALWAYS add {"type":"wait_for","title_contains":"..."} after opening an app to confirm it loaded
+4. For Excel: use shell to open, wait, then type cell data with key presses (Tab=next cell, Enter=next row)
+5. For Chrome/YouTube: use {"type":"shell","command":"start chrome https://www.youtube.com/results?search_query=ENCODED_QUERY"}
+6. Prefer "uia_click" over "click" with coordinates (more reliable)
+7. To type in cells: {"type":"type","text":"data"} then {"type":"key","keys":"tab"} for next cell
+8. Plan EVERY step — don't skip anything. The user is watching.
+
+EXAMPLES:
+Task: "Abre Excel e cria planilha de controle financeiro"
+→ {"actions":[
+  {"type":"shell","command":"start excel"},
+  {"type":"wait","ms":3000},
+  {"type":"wait_for","title_contains":"Excel","timeout":10000},
+  {"type":"key","keys":"escape"},
+  {"type":"wait","ms":500},
+  {"type":"type","text":"Data"},{"type":"key","keys":"tab"},
+  {"type":"type","text":"Descricao"},{"type":"key","keys":"tab"},
+  {"type":"type","text":"Categoria"},{"type":"key","keys":"tab"},
+  {"type":"type","text":"Valor"},{"type":"key","keys":"tab"},
+  {"type":"type","text":"Tipo"},{"type":"key","keys":"enter"},
+  {"type":"type","text":"14/04/2026"},{"type":"key","keys":"tab"},
+  {"type":"type","text":"Aluguel"},{"type":"key","keys":"tab"},
+  {"type":"type","text":"Moradia"},{"type":"key","keys":"tab"},
+  {"type":"type","text":"1500"},{"type":"key","keys":"tab"},
+  {"type":"type","text":"Despesa"},{"type":"key","keys":"enter"}
+],"expected":"Excel aberto com planilha de controle financeiro"}
+
+Task: "Abre YouTube e toca musica lofi"
+→ {"actions":[
+  {"type":"shell","command":"start chrome \\"https://www.youtube.com/results?search_query=lofi+hip+hop+radio\\""},
+  {"type":"wait","ms":3000},
+  {"type":"wait_for","title_contains":"YouTube","timeout":10000},
+  {"type":"key","keys":"tab tab tab enter"},
+  {"type":"wait","ms":1000}
+],"expected":"YouTube aberto tocando lofi"}
 
 TASK: ${task}
 
-Respond with ONLY a JSON object: {"actions":[...], "expected":"description of success state"}
-Plan ALL steps. Include app_focus/shell to open apps if needed. Use wait_for after launches. Prefer uia_click over raw coordinates. Be precise.`;
+Respond with ONLY a JSON object: {"actions":[...], "expected":"description"}
+Plan ALL steps. Be thorough. The user sees everything you do.`;
 
     // 4. Get plan from Claude (uses Max plan, zero cost)
     const planResult = await new Promise((resolve, reject) => {

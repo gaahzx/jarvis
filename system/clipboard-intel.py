@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 #!/usr/bin/env python3
 """
 JARVIS Clipboard Intelligence Daemon
@@ -227,6 +228,12 @@ def main():
                     analysis = analyze(text)
                     output = build_output(text, analysis)
                     emit(output)
+        except UnicodeDecodeError as e:
+            emit({
+                "ts": int(time.time()),
+                "event": "encoding_error",
+                "message": f"Clipboard encoding issue: {e}",
+            })
         except Exception as e:
             emit({
                 "ts": int(time.time()),

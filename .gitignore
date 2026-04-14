@@ -22,3 +22,6 @@ launcher/build/
 jarvis-autostart.vbs
 jarvis-service.bat
 .claude/settings.local.json
+__pycache__/
+*.pyc
+gen-pdf-guide.cjs

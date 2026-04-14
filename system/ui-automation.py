@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """JARVIS Computer Use — Intelligent Action Executor.
 
 Accepts a JSON batch of actions via stdin and executes them sequentially
@@ -226,17 +227,20 @@ def _clipboard_set_utf16(text: str):
     k32 = ctypes.windll.kernel32
     CF_UNICODETEXT = 13
 
-    u32.OpenClipboard(0)
-    u32.EmptyClipboard()
+    if not u32.OpenClipboard(0):
+        raise OSError("Failed to open clipboard")
+    try:
+        u32.EmptyClipboard()
 
-    # Encode as UTF-16-LE (Windows native)
-    encoded = text.encode("utf-16-le") + b"\x00\x00"
-    h = k32.GlobalAlloc(0x0042, len(encoded))  # GMEM_MOVEABLE | GMEM_ZEROINIT
-    ptr = k32.GlobalLock(h)
-    ctypes.memmove(ptr, encoded, len(encoded))
-    k32.GlobalUnlock(h)
-    u32.SetClipboardData(CF_UNICODETEXT, h)
-    u32.CloseClipboard()
+        # Encode as UTF-16-LE (Windows native)
+        encoded = text.encode("utf-16-le") + b"\x00\x00"
+        h = k32.GlobalAlloc(0x0042, len(encoded))  # GMEM_MOVEABLE | GMEM_ZEROINIT
+        ptr = k32.GlobalLock(h)
+        ctypes.memmove(ptr, encoded, len(encoded))
+        k32.GlobalUnlock(h)
+        u32.SetClipboardData(CF_UNICODETEXT, h)
+    finally:
+        u32.CloseClipboard()
 
 
 def action_type(act: dict) -> dict:

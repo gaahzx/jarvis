@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 #!/usr/bin/env python3
 """
 screen-state.py — Windows desktop state monitor daemon.
@@ -265,6 +266,9 @@ def main():
 
         except KeyboardInterrupt:
             break
+        except UnicodeDecodeError:
+            # Skip frames with encoding issues in window titles
+            pass
         except Exception:
             # Silently skip transient errors (window handles going stale, etc.)
             pass

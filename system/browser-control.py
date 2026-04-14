@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 #!/usr/bin/env python3
 """
 browser-control.py — Chrome DevTools Protocol controller for JARVIS
@@ -263,6 +264,7 @@ def cmd_get_dom(data):
     selector = data.get("selector", "body")
     depth = data.get("depth", 3)
 
+    safe_sel = json.dumps(selector)  # JSON.stringify equivalent — escapes all special chars
     js = f"""
     (function() {{
         function walk(el, d, max) {{
@@ -285,8 +287,9 @@ def cmd_get_dom(data):
             }}
             return line + children;
         }}
-        let root = document.querySelector('{selector}');
-        if (!root) return 'ERROR: selector not found: {selector}';
+        let sel = {safe_sel};
+        let root = document.querySelector(sel);
+        if (!root) return 'ERROR: selector not found: ' + sel;
         return walk(root, 0, {depth});
     }})()
     """
@@ -307,10 +310,10 @@ def cmd_click(data):
     if not selector:
         return err("click", "missing 'selector'")
 
-    safe_sel = selector.replace("'", "\\'")
+    safe_sel = json.dumps(selector)
     js = f"""
     (function() {{
-        let el = document.querySelector('{safe_sel}');
+        let el = document.querySelector({safe_sel});
         if (!el) return JSON.stringify({{error: 'element not found'}});
         let rect = el.getBoundingClientRect();
         return JSON.stringify({{
@@ -354,17 +357,18 @@ def cmd_fill(data):
         return err("fill", "missing 'selector'")
 
     safe_val = json.dumps(value)
-    safe_sel = selector.replace("'", "\\'")
+    safe_sel = json.dumps(selector)
 
     js = f"""
     (function() {{
-        let el = document.querySelector('{safe_sel}');
-        if (!el) return JSON.stringify({{error: 'element not found: {safe_sel}'}});
+        let sel = {safe_sel};
+        let el = document.querySelector(sel);
+        if (!el) return JSON.stringify({{error: 'element not found: ' + sel}});
         el.focus();
         el.value = {safe_val};
         el.dispatchEvent(new Event('input', {{bubbles: true}}));
         el.dispatchEvent(new Event('change', {{bubbles: true}}));
-        return JSON.stringify({{ok: true, tag: el.tagName, selector: '{safe_sel}'}});
+        return JSON.stringify({{ok: true, tag: el.tagName, selector: sel}});
     }})()
     """
     try:
@@ -386,11 +390,12 @@ def cmd_get_text(data):
     if not selector:
         return err("get_text", "missing 'selector'")
 
-    safe_sel = selector.replace("'", "\\'")
+    safe_sel = json.dumps(selector)
     js = f"""
     (function() {{
-        let el = document.querySelector('{safe_sel}');
-        if (!el) return JSON.stringify({{error: 'element not found: {safe_sel}'}});
+        let sel = {safe_sel};
+        let el = document.querySelector(sel);
+        if (!el) return JSON.stringify({{error: 'element not found: ' + sel}});
         return JSON.stringify({{text: el.textContent}});
     }})()
     """
@@ -435,8 +440,8 @@ def cmd_wait_for(data):
     if not selector:
         return err("wait_for", "missing 'selector'")
 
-    safe_sel = selector.replace("'", "\\'")
-    js = f"!!document.querySelector('{safe_sel}')"
+    safe_sel = json.dumps(selector)
+    js = f"!!document.querySelector({safe_sel})"
     deadline = time.time() + (timeout_ms / 1000)
 
     try:

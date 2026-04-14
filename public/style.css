@@ -1073,62 +1073,7 @@ html, body {
    HUD v3 FIXES — scroll, entity list, agents
 ═══════════════════════════════════════════════ */
 
-/* Fix scroll no HUD: brackets FIXOS nas bordas, nao scrollam com o conteudo */
-.hud-panel {
-  position: relative;
-  overflow: visible;              /* brackets ficam fora */
-  padding: 0;                      /* padding agora vai no inner */
-  max-height: calc(100vh - 180px);
-}
-
-/* Container interno que scrolla */
-.hud-panel > .hud-section,
-.hud-panel > .hud-panel-bracket {
-  /* brackets ficam absoluteposition fora da area scrollavel */
-}
-
-/* Reestrutura: inner scroll wrapper */
-.hud-panel {
-  display: flex;
-  flex-direction: column;
-}
-.hud-panel .hud-panel-bracket {
-  position: absolute;
-  left: -1px;
-  right: -1px;
-  height: 16px;
-  pointer-events: none;
-  z-index: 10;
-}
-.hud-panel .hud-panel-bracket:not(.hud-bracket-bottom) {
-  top: -1px;
-  border: 2px solid var(--cyan);
-  border-bottom: none;
-  border-top-left-radius: 12px;
-  border-top-right-radius: 12px;
-  box-shadow: 0 -2px 12px rgba(0,228,255,0.4);
-}
-.hud-panel .hud-panel-bracket.hud-bracket-bottom {
-  bottom: -1px;
-  top: auto;
-  border: 2px solid var(--cyan);
-  border-top: none;
-  border-bottom-left-radius: 12px;
-  border-bottom-right-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0,228,255,0.4);
-}
-
-/* Adiciona wrapper scrollavel com padding interno */
-.hud-panel::before {
-  content: "";
-  flex-shrink: 0;
-  height: 20px;  /* espacamento pro bracket top */
-}
-.hud-panel::after {
-  content: "";
-  flex-shrink: 0;
-  height: 20px;  /* espacamento pro bracket bottom */
-}
+/* v3 hud-panel base definitions removed — superseded by v4+/v5 blocks below */
 
 /* Sections scrollaveis */
 .hud-panel .hud-section {
@@ -1138,19 +1083,6 @@ html, body {
 .hud-panel .hud-section + .hud-section {
   margin-top: 20px;
 }
-
-/* Scrollbar customizada no proprio panel */
-.hud-panel {
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-.hud-panel::-webkit-scrollbar { width: 5px; }
-.hud-panel::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); border-radius: 3px; margin: 20px 0; }
-.hud-panel::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, var(--cyan), var(--gold));
-  border-radius: 3px;
-}
-.hud-panel::-webkit-scrollbar-thumb:hover { background: var(--cyan); }
 
 /* ═══ ENTITY LIST (agentes / modelos / conclave) ═══ */
 .entity-list {
@@ -1240,35 +1172,7 @@ html, body {
   color: var(--cyan);
 }
 
-/* ═══ FIX: HUD panel overflow + brackets ═══ */
-.hud-panel {
-  max-height: none !important;
-  overflow-y: auto !important;
-  overflow-x: hidden !important;
-  padding: 24px 0 24px !important;
-}
-.hud-panel .hud-panel-bracket {
-  position: sticky !important;
-  left: 0; right: 0;
-}
-.hud-panel .hud-panel-bracket:not(.hud-bracket-bottom) {
-  top: 0;
-  z-index: 10;
-}
-.hud-panel .hud-bracket-bottom {
-  bottom: 0;
-  z-index: 10;
-}
-/* Esconde brackets quando scrolla muito conteudo — usa borda real do panel */
-.hud-panel {
-  border: 1px solid rgba(0,228,255,0.35);
-  border-radius: 12px;
-  box-shadow: 0 0 30px rgba(0,228,255,0.1);
-}
-/* Esconde brackets redundantes */
-.hud-panel > .hud-panel-bracket {
-  display: none !important;
-}
+/* v4 hud-panel overflow fix removed — superseded by v5+ blocks below */
 
 /* ═══════════════════════════════════════════════
    HUD v4 — Ingest Button + Modals + Brain Viewer
