@@ -1636,61 +1636,6 @@ Deliver ONLY the synthesized result. No deliberation visible to the user. No "I 
   return prompt;
 }
 
-// ========== META ADS INTEGRATION ==========
-const META_TOKEN = process.env.META_ACCESS_TOKEN;
-const META_AD_ACCOUNT = process.env.META_AD_ACCOUNT_ID;
-const META_GRAPH = 'https://graph.facebook.com/v19.0';
-
-async function metaFetch(url) {
-  const res = await fetch(url);
-  const data = await res.json();
-  if (data.error) throw new Error(`Meta API: ${data.error.message}`);
-  return data;
-}
-
-async function fetchMetaCampaigns() {
-  if (!META_TOKEN || !META_AD_ACCOUNT) throw new Error('Meta credentials not configured');
-  const fields = 'id,name,status,objective,daily_budget,lifetime_budget';
-  return metaFetch(`${META_GRAPH}/${META_AD_ACCOUNT}/campaigns?fields=${fields}&limit=20&access_token=${META_TOKEN}`);
-}
-
-async function fetchMetaInsights(campaignId = null, datePreset = 'last_7d') {
-  if (!META_TOKEN || !META_AD_ACCOUNT) throw new Error('Meta credentials not configured');
-  const fields = 'campaign_name,impressions,clicks,spend,cpc,cpm,ctr,reach,actions';
-  const level = campaignId ? 'campaign' : 'campaign';
-  const target = campaignId ? campaignId : META_AD_ACCOUNT;
-  const endpoint = campaignId
-    ? `${META_GRAPH}/${campaignId}/insights?fields=${fields}&date_preset=${datePreset}&access_token=${META_TOKEN}`
-    : `${META_GRAPH}/${META_AD_ACCOUNT}/insights?fields=${fields}&level=${level}&date_preset=${datePreset}&limit=20&access_token=${META_TOKEN}`;
-  return metaFetch(endpoint);
-}
-
-function isMetaQuery(message) {
-  return /campanha|campaign|anúncio|anuncio|ads?|meta|facebook|instagram|gasto|spend|impression|click|resultado|resultado|roas|cpc|cpm|performance|tráfego|trafego/i.test(message);
-}
-
-async function buildMetaContext(message) {
-  try {
-    const campaigns = await fetchMetaCampaigns();
-    const insights = await fetchMetaInsights(null, 'last_7d');
-
-    const campaignList = (campaigns.data || []).map(c => {
-      const budget = c.daily_budget ? `R$${(parseInt(c.daily_budget)/100).toFixed(2)}/day` : c.lifetime_budget ? `R$${(parseInt(c.lifetime_budget)/100).toFixed(2)} lifetime` : 'no budget set';
-      return `- ${c.name} [${c.status}] | ${c.objective} | ${budget}`;
-    }).join('\n');
-
-    const insightList = (insights.data || []).map(i => {
-      const purchases = (i.actions || []).find(a => a.action_type === 'purchase');
-      return `- ${i.campaign_name}: spend R$${parseFloat(i.spend||0).toFixed(2)} | impressions ${i.impressions||0} | clicks ${i.clicks||0} | CTR ${parseFloat(i.ctr||0).toFixed(2)}% | CPC R$${parseFloat(i.cpc||0).toFixed(2)}${purchases ? ` | purchases ${purchases.value}` : ''}`;
-    }).join('\n');
-
-    return `\nMETA ADS DATA (last 7 days):\nCAMPAIGNS:\n${campaignList || 'No campaigns found'}\n\nPERFORMANCE:\n${insightList || 'No insights available'}`;
-  } catch (err) {
-    console.error('[JARVIS] Meta fetch error:', err.message);
-    return '';
-  }
-}
-
 // ========== PUSH NOTIFICATION CHANNEL (SSE) ==========
 // Frontend subscribes once on load. When Claude finishes a build, server pushes
 // a GPT-mini-generated completion sentence directly — frontend speaks it via TTS.
@@ -2103,7 +2048,7 @@ REGRAS:
     }
 
     const semanticContext = await findRelevantMemories(englishMessage);
-    const metaContext = isMetaQuery(englishMessage) ? await buildMetaContext(englishMessage) : '';
+    const metaContext = '';
     const model = selectModelByComplexity(englishMessage);
     const proc = getPool(model).acquire();
 
@@ -3090,19 +3035,6 @@ app.post('/api/config', (req, res) => {
   }
 });
 
-// GET /api/meta/campaigns - List Meta Ads campaigns with insights
-app.get('/api/meta/campaigns', async (req, res) => {
-  try {
-    const [campaigns, insights] = await Promise.all([
-      fetchMetaCampaigns(),
-      fetchMetaInsights(null, req.query.date_preset || 'last_7d')
-    ]);
-    res.json({ campaigns: campaigns.data || [], insights: insights.data || [] });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // GET /api/notifications - SSE push channel for build completion pings
 app.get('/api/notifications', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -3493,7 +3425,7 @@ app.get('/api/health', (req, res) => {
       pdf_generation: true,
       screen_analysis: claudeCliAvailable,
       excel_live: fs.existsSync(PYTHON_CMD),
-      meta_ads: !!(process.env.META_ACCESS_TOKEN && process.env.META_AD_ACCOUNT_ID)
+      meta_ads: false
     }
   };
   res.json(health);
