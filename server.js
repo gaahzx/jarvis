@@ -297,6 +297,22 @@ class WarmPool {
     this.spawnErrors = 0;
     // Only fill if Claude CLI is available
     if (claudeCliAvailable) this.fill();
+    // Periodic cleanup: kill processes older than 90s to free PIDs
+    this._cleanupInterval = setInterval(() => {
+      const now = Date.now();
+      const before = this.pool.length;
+      this.pool = this.pool.filter(proc => {
+        if (now - proc._warmSince > 90000) {
+          try { proc.kill(); } catch {}
+          return false;
+        }
+        return true;
+      });
+      if (before > this.pool.length) {
+        console.log(`[JARVIS] [${this.model}] Cleaned ${before - this.pool.length} stale pool process(es)`);
+        if (claudeCliAvailable) this.fill();
+      }
+    }, 30000); // Check every 30s
   }
 
   _spawn() {
@@ -374,6 +390,50 @@ function getPool(model) {
   return pools.haiku;
 }
 
+// Acquire with automatic fallback: opus→sonnet→haiku→cold spawn
+function acquireWithFallback(model) {
+  const tierOrder = model.includes('opus')
+    ? [pools.opus, pools.sonnet, pools.haiku]
+    : model.includes('sonnet')
+      ? [pools.sonnet, pools.haiku]
+      : [pools.haiku];
+
+  for (const pool of tierOrder) {
+    const proc = pool.acquire();
+    if (proc) {
+      if (pool !== tierOrder[0]) {
+        console.log(`[JARVIS] Pool fallback: ${model} → ${pool.model}`);
+      }
+      return proc;
+    }
+  }
+  // Last resort: cold spawn haiku
+  console.warn('[JARVIS] All pools exhausted — cold spawning haiku');
+  return pools.haiku._spawn();
+}
+
+// ========== POOL AUTO-RECOVERY — Re-enable CLI after transient failures ==========
+// Every 60s, if CLI was disabled by spawn errors, try a test spawn to re-enable
+setInterval(() => {
+  if (claudeCliAvailable) return; // already healthy
+  try {
+    const testProc = require('child_process').spawnSync(CLAUDE_CMD, ['--version'], {
+      shell: true, timeout: 10000, encoding: 'utf-8'
+    });
+    if (testProc.status === 0 && testProc.stdout && testProc.stdout.trim().length > 0) {
+      console.log('[JARVIS] ✅ Pool auto-recovery: Claude CLI is back — re-enabling pools');
+      claudeCliAvailable = true;
+      claudeCliError = '';
+      pools.opus.spawnErrors = 0;
+      pools.sonnet.spawnErrors = 0;
+      pools.haiku.spawnErrors = 0;
+      pools.opus.fill();
+      pools.sonnet.fill();
+      pools.haiku.fill();
+    }
+  } catch {}
+}, 60000);
+
 // ========== IN-MEMORY CACHE — Avoid disk reads on every request ==========
 const _cache = {
   memory: { value: '', mtime: 0 },
@@ -399,16 +459,35 @@ function loadHistoryCached() {
   return _cache.history.value;
 }
 
-function appendHistoryFast(role, content) {
-  const exchanges = loadHistory();
-  exchanges.push({ role, content: content.slice(0, 2000), ts: new Date().toISOString() });
-  // When history overflows: compact oldest entries into JARVIS-MEMORY.md (preserve, never delete)
-  if (exchanges.length > MAX_HISTORY * 2) {
-    const overflow = exchanges.splice(0, exchanges.length - MAX_HISTORY * 2);
-    compactToMemory(overflow);
+// Write lock to prevent concurrent read-modify-write race conditions on history file
+let _historyWriteLock = false;
+const _historyWriteQueue = [];
+
+function _flushHistoryQueue() {
+  if (_historyWriteLock || _historyWriteQueue.length === 0) return;
+  _historyWriteLock = true;
+  try {
+    const exchanges = loadHistory();
+    // Drain all queued entries in one batch write
+    while (_historyWriteQueue.length > 0) {
+      exchanges.push(_historyWriteQueue.shift());
+    }
+    if (exchanges.length > MAX_HISTORY * 2) {
+      const overflow = exchanges.splice(0, exchanges.length - MAX_HISTORY * 2);
+      compactToMemory(overflow);
+    }
+    saveHistory(exchanges);
+    _cache.history.dirty = true;
+  } finally {
+    _historyWriteLock = false;
   }
-  saveHistory(exchanges);
-  _cache.history.dirty = true;
+  // If more entries arrived while we were writing, flush again
+  if (_historyWriteQueue.length > 0) setImmediate(_flushHistoryQueue);
+}
+
+function appendHistoryFast(role, content) {
+  _historyWriteQueue.push({ role, content: content.slice(0, 2000), ts: new Date().toISOString() });
+  if (!_historyWriteLock) _flushHistoryQueue();
 }
 
 // Compact overflow history into JARVIS-MEMORY.md as a summary section
@@ -419,15 +498,67 @@ function compactToMemory(entries) {
     const block = `\n## Archived History (${new Date().toISOString().slice(0,10)})\n${summary}\n`;
     fs.appendFileSync(MEMORY_FILE, block);
     _cache.memory.mtime = 0; // invalidate memory cache
+    compactMemoryIfNeeded(); // OPT-1: prevent unbounded growth
   } catch {}
+}
+
+// OPT-1: Cap JARVIS-MEMORY.md growth — if over 10KB, summarize oldest 50% via GPT-4o-mini
+async function compactMemoryIfNeeded() {
+  try {
+    const stats = fs.statSync(MEMORY_FILE);
+    if (stats.size <= 10 * 1024) return; // under 10KB, nothing to do
+
+    const content = fs.readFileSync(MEMORY_FILE, 'utf-8');
+    const lines = content.split('\n');
+    const half = Math.floor(lines.length / 2);
+    const oldHalf = lines.slice(0, half).join('\n');
+    const newHalf = lines.slice(half).join('\n');
+
+    if (!openai) {
+      // No OpenAI key — hard-truncate: keep only the newer half with a marker
+      const truncated = `## [Auto-compacted ${new Date().toISOString().slice(0,10)} — older entries removed, no summarizer available]\n\n${newHalf}`;
+      fs.writeFileSync(MEMORY_FILE, truncated);
+      _cache.memory.mtime = 0;
+      console.log('[JARVIS] Memory compacted (truncated, no OpenAI for summary)');
+      return;
+    }
+
+    // Use GPT-4o-mini to summarize the oldest 50%
+    const res = await rateLimitedOpenAI(() =>
+      openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'Summarize the following JARVIS memory entries into a single compact paragraph. Preserve key facts, user preferences, project names, and important decisions. Drop redundant or trivial entries. Max 300 words.'
+          },
+          { role: 'user', content: oldHalf.slice(0, 8000) }
+        ],
+        max_tokens: 400,
+        temperature: 0
+      })
+    );
+
+    const summaryText = res.choices[0]?.message?.content?.trim();
+    if (!summaryText) return;
+
+    const compacted = `## Compacted Memory (${new Date().toISOString().slice(0,10)})\n${summaryText}\n\n${newHalf}`;
+    fs.writeFileSync(MEMORY_FILE, compacted);
+    _cache.memory.mtime = 0;
+    console.log('[JARVIS] Memory compacted via GPT-4o-mini (was ' + (stats.size / 1024).toFixed(1) + 'KB)');
+  } catch (err) {
+    console.error('[JARVIS] Memory compaction error:', err.message);
+  }
 }
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ========== CHROME DETECTION ==========
+// ========== CHROME DETECTION (OPT-2: cached) ==========
+let _cachedChromePath = undefined; // undefined = not checked yet, null = not found
 function findChrome() {
+  if (_cachedChromePath !== undefined) return _cachedChromePath;
   const paths = [
     'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
     'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
@@ -437,8 +568,9 @@ function findChrome() {
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
   ];
   for (const p of paths) {
-    try { if (fs.existsSync(p)) return p; } catch {}
+    try { if (fs.existsSync(p)) { _cachedChromePath = p; return p; } } catch {}
   }
+  _cachedChromePath = null;
   return null;
 }
 
@@ -453,10 +585,13 @@ async function htmlToPdf(htmlPath, pdfPath) {
   if (chromePath) launchOpts.executablePath = chromePath;
 
   const browser = await puppeteer.launch(launchOpts);
-  const page = await browser.newPage();
-  await page.goto(`file:///${htmlPath.replace(/\\/g, '/')}`, { waitUntil: 'networkidle0' });
-  await page.pdf({ path: pdfPath, format: 'A4', printBackground: true, margin: { top: 0, right: 0, bottom: 0, left: 0 } });
-  await browser.close();
+  try {
+    const page = await browser.newPage();
+    await page.goto(`file:///${htmlPath.replace(/\\/g, '/')}`, { waitUntil: 'networkidle0' });
+    await page.pdf({ path: pdfPath, format: 'A4', printBackground: true, margin: { top: 0, right: 0, bottom: 0, left: 0 } });
+  } finally {
+    await browser.close();
+  }
 }
 
 // ========== PERSISTENT MEMORY ==========
@@ -472,12 +607,7 @@ function saveHistory(exchanges) {
   try { fs.writeFileSync(HISTORY_FILE, JSON.stringify(exchanges, null, 2)); } catch {}
 }
 
-function appendHistory(role, content) {
-  const exchanges = loadHistory();
-  exchanges.push({ role, content: content.slice(0, 2000), ts: new Date().toISOString() });
-  if (exchanges.length > MAX_HISTORY * 2) exchanges.splice(0, exchanges.length - MAX_HISTORY * 2);
-  saveHistory(exchanges);
-}
+// OPT-3: appendHistory() removed — all callers use appendHistoryFast() which includes overflow compaction
 
 // Adaptive history window — voice=6 entries, text=16 entries (fast), task=32
 // Older entries are summarized into JARVIS-MEMORY on overflow, never deleted
@@ -488,13 +618,26 @@ function formatHistoryForPrompt(exchanges, isVoice = false, isTask = false) {
   ).join('\n');
 }
 
-// ========== SEMANTIC MEMORY (EMBEDDINGS) ==========
+// ========== SEMANTIC MEMORY (EMBEDDINGS) — cached in memory ==========
+let _embeddingsCache = null;
+let _embeddingsCacheMtime = 0;
+
 function loadEmbeddings() {
-  try { return JSON.parse(fs.readFileSync(EMBEDDINGS_FILE, 'utf-8')); } catch { return []; }
+  try {
+    const stat = fs.statSync(EMBEDDINGS_FILE);
+    if (_embeddingsCache && stat.mtimeMs === _embeddingsCacheMtime) return _embeddingsCache;
+    _embeddingsCache = JSON.parse(fs.readFileSync(EMBEDDINGS_FILE, 'utf-8'));
+    _embeddingsCacheMtime = stat.mtimeMs;
+    return _embeddingsCache;
+  } catch { return []; }
 }
 
 function saveEmbeddings(entries) {
-  try { fs.writeFileSync(EMBEDDINGS_FILE, JSON.stringify(entries)); } catch {}
+  try {
+    fs.writeFileSync(EMBEDDINGS_FILE, JSON.stringify(entries));
+    _embeddingsCache = entries; // update cache immediately
+    _embeddingsCacheMtime = Date.now();
+  } catch {}
 }
 
 function cosineSimilar(a, b) {
@@ -838,7 +981,7 @@ const _taskWords = new Set([
   'haz','haga','abre','abra','busca','busque','crea','cree','pon','ponga',
 ]);
 
-// Simple regex fallback for routeToGPT and other references
+// Simple regex fallback for task detection
 const TASK_PATTERN = /\b(create|build|make|write|open|play|search|find|fix|update|install|cria|crie|criar|abre|abra|abrir|faz|faça|fazer|gera|gere|gerar|monta|monte|montar|coloca|coloque|colocar|toca|toque|tocar|pesquisa|pesquise|pesquisar|busca|busque|buscar|edita|edite|editar|salva|salve|salvar|envia|envie|enviar|manda|mande|mandar|move|mova|mover|baixa|baixe|baixar|organiza|organize|organizar|formata|formate|formatar|calcula|calcule|calcular|traduz|traduza|traduzir|instala|instale|instalar|configura|configure|configurar|testa|teste|testar|executa|execute|executar|roda|rode|rodar|fecha|feche|fechar|copia|copie|copiar|adiciona|adicione|adicionar|remove|remova|remover|altera|altere|alterar|verifica|verifique|verificar|conecta|conecte|conectar|publica|publique|publicar|compartilha|compartilhe|compartilhar|responde|responda|responder|ouvir|escutar|ouça|escute|reproduz|reproduza|reproduzir|desenvolve|desenvolva|desenvolver|implementa|implemente|implementar|analisa|analise|analisar|elabora|elabore|elaborar|prepara|prepare|preparar|documenta|documente|documentar|corrige|corrija|corrigir|atualiza|atualize|atualizar|desenha|desenhe|desenhar|constroi|construa|construir|renomeia|renomeie|renomear|deleta|delete|deletar|apaga|apague|apagar|agenda|agende|agendar|digita|digite|digitar|inicia|inicie|iniciar|para|pare|parar)\b/i;
 
 function isTaskRequest(message) {
@@ -1281,31 +1424,7 @@ async function trySmartFastExecution(message, language = 'BR') {
   }
 }
 
-// ========== HYBRID ROUTING — GPT-mini (Q&A) vs Claude (Build) ==========
-// Routes simple questions to GPT-4o-mini (fast + cheap).
-// Anything that builds, fixes, creates, or has an @agent → Claude.
-// Default: Claude (safe).
-function routeToGPT(message) {
-  if (!openai) return false;
-  // Explicit @agent or build verbs → always Claude
-  if (/@[\w-]+/.test(message)) return false;
-  if (TASK_PATTERN.test(message)) return false;
-  if (/\b(opus|sonnet|haiku)\b/i.test(message)) return false;
-
-  // Greetings & casual conversation → GPT-mini
-  const greetingPattern = /^(hi|hey|hello|good morning|good evening|good night|how are you|you ok|tudo bem|tudo bom|oi|olá|ola|bom dia|boa tarde|boa noite|como vai|e aí|e ai|beleza|valeu|obrigado|obrigada|thanks|thank you)\b/i;
-  if (greetingPattern.test(message.trim())) return true;
-
-  // Q&A signals → GPT-mini
-  const qaPattern = /^(what|how|why|which|who|when|where|explain|tell me|what is|what are|can you|could you|difference|compare|define|describe|is it|are there|does|do you|should i|would|why is|how does|how do|o que|como|por que|qual|quem|quando|onde|explica|me diz|diferença|é possível|você sabe|me conta|o que é|como funciona|para que serve)\b/i;
-  if (qaPattern.test(message.trim())) return true;
-
-  // Short messages with no build verbs → GPT-mini (casual chat)
-  const clean = message.trim().replace(/^jarvis[,.]??\s*/i, '');
-  if (clean.split(' ').length <= 6 && !TASK_PATTERN.test(clean)) return true;
-
-  return false;
-}
+// OPT-4: routeToGPT() removed — was defined but never called (dead code)
 
 // ========== PROJECT STATUS TRACKER ==========
 // After Claude finishes a build task, extract a brief status and write to JARVIS-MEMORY.md.
@@ -1717,9 +1836,8 @@ app.post('/api/chat', async (req, res) => {
     sessionStats.requests++;
     sessionStats.tokensIn += Math.ceil(message.length / 4);
 
-    // Translate to English only when EN mode is active
-    const englishMessage = (language === 'EN' && isPortuguese(message)) ? await translateToEnglish(message) : message;
-    const wasTranslated = language === 'EN' && englishMessage !== message;
+    // Claude understands all languages natively — no translation needed (saves 200-500ms)
+    const englishMessage = message;
 
     let fullMessage = englishMessage;
     if (attachmentId && attachments.has(attachmentId)) {
@@ -1730,8 +1848,6 @@ app.post('/api/chat', async (req, res) => {
     res.setHeader('Transfer-Encoding', 'chunked');
     res.setHeader('X-Accel-Buffering', 'no');
     res.setHeader('Cache-Control', 'no-cache');
-
-    if (wasTranslated) res.write(`[translated]${englishMessage}\n`);
 
     // ── INSTANT ANSWERS: Hora, data, clima (antes de qualquer roteamento) ──
     const msgClean = fullMessage.toLowerCase().replace(/^jarvis[,.]?\s*/i, '').trim();
@@ -1971,7 +2087,7 @@ REGRAS:
 
       await Promise.all(parallelTasks.map((task, idx) => new Promise((resolve) => {
         const taskModel = selectModelByComplexity(task);
-        const taskProc = getPool(taskModel).acquire();
+        const taskProc = acquireWithFallback(taskModel);
         if (!taskProc) { resolve(); return; }
 
         const taskPrompt = buildJarvisPrompt(task, semanticCtx, false, language, taskModel, conclaveEnabled);
@@ -2050,11 +2166,11 @@ REGRAS:
     const semanticContext = await findRelevantMemories(englishMessage);
     const metaContext = '';
     const model = selectModelByComplexity(englishMessage);
-    const proc = getPool(model).acquire();
+    const proc = acquireWithFallback(model);
 
-    // Double-guard: pool returned null (shouldn't happen if claudeCliAvailable, but defensive)
+    // Double-guard: pool returned null (shouldn't happen with fallback, but defensive)
     if (!proc) {
-      console.error('[JARVIS] ❌ Pool returned null process');
+      console.error('[JARVIS] ❌ All pools exhausted, cold spawn failed');
       try { res.write('[error] Claude process pool exhausted. Try again.'); res.end(); } catch {}
       return;
     }
@@ -2449,8 +2565,8 @@ app.post('/api/analyze-screen-fast', async (req, res) => {
     // Persist Q&A to history so follow-up chats/voice queries know about the screen discussion
     if (saveHistory && response) {
       const userEntry = message ? `[screen] ${message}` : '[screen] (describe)';
-      appendHistory('user', userEntry);
-      appendHistory('assistant', response);
+      appendHistoryFast('user', userEntry);
+      appendHistoryFast('assistant', response);
     }
 
     res.json({ response });
@@ -2516,8 +2632,8 @@ Be direct and concise. If the user's question is about specific content visible 
         const response = output.trim();
         if (saveHistory && response) {
           const userEntry = message ? `[screen] ${message}` : '[screen] (describe)';
-          appendHistory('user', userEntry);
-          appendHistory('assistant', response);
+          appendHistoryFast('user', userEntry);
+          appendHistoryFast('assistant', response);
         }
         res.json({ response });
         resolve();
@@ -2829,8 +2945,8 @@ print(json.dumps({"excel_running": excel_running}))
 `;
     } else if (action === 'read') {
       script = `
-import json
-fp = r"""${filePath}"""
+import json, sys
+fp = sys.argv[1]
 try:
     from openpyxl import load_workbook
     wb = load_workbook(fp, data_only=True)
@@ -2843,10 +2959,10 @@ except Exception as e:
     } else if (action === 'write') {
       const ops = JSON.stringify(operations || []);
       script = `
-import json, subprocess, os, time, ctypes
+import json, subprocess, os, time, ctypes, sys
 
-fp = r"""${filePath}"""
-ops = ${ops}
+fp = sys.argv[1]
+ops = json.loads(sys.argv[2])
 reopen = ${req.body.reopen !== false ? 'True' : 'False'}
 
 user32 = ctypes.windll.user32
@@ -2921,8 +3037,13 @@ else:
     const tmpScript = path.join(os.tmpdir(), 'jarvis_excel_live.py');
     fs.writeFileSync(tmpScript, script);
 
+    // Pass filePath and ops as command-line args to prevent Python injection
+    const scriptArgs = [tmpScript];
+    if (filePath) scriptArgs.push(filePath);
+    if (action === 'write') scriptArgs.push(JSON.stringify(operations || []));
+
     const { execFile } = await import('child_process');
-    execFile(PYTHON_CMD, [tmpScript], { timeout: 30000 }, (err, stdout, stderr) => {
+    execFile(PYTHON_CMD, scriptArgs, { timeout: 30000 }, (err, stdout, stderr) => {
       try { fs.unlinkSync(tmpScript); } catch {}
       if (err) return res.status(500).json({ error: err.message, stderr });
       try { res.json(JSON.parse(stdout.trim())); }
