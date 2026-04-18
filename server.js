@@ -379,7 +379,7 @@ class WarmPool {
 
 // One pool per model tier — sized by expected traffic
 const pools = {
-  opus:   new WarmPool('claude-opus-4-7-20250715',         1),
+  opus:   new WarmPool('claude-opus-4-6',         1),
   sonnet: new WarmPool('claude-sonnet-4-6',        3),
   haiku:  new WarmPool('claude-haiku-4-5-20251001',4),
 };
@@ -775,13 +775,13 @@ function loadProjectContext() {
 
 const AGENT_MODEL_MAP = {
   // OPUS 4.7 — Highest reasoning, architecture, orchestration
-  'architect':           'claude-opus-4-7-20250715',
-  'aios-master':         'claude-opus-4-7-20250715',
-  'conclave-critico':    'claude-opus-4-7-20250715',
-  'conclave-advogado':   'claude-opus-4-7-20250715',
-  'conclave-sintetizador': 'claude-opus-4-7-20250715',
-  'data-engineer':       'claude-opus-4-7-20250715',
-  'devops':              'claude-opus-4-7-20250715',
+  'architect':           'claude-opus-4-6',
+  'aios-master':         'claude-opus-4-6',
+  'conclave-critico':    'claude-opus-4-6',
+  'conclave-advogado':   'claude-opus-4-6',
+  'conclave-sintetizador': 'claude-opus-4-6',
+  'data-engineer':       'claude-opus-4-6',
+  'devops':              'claude-opus-4-6',
 
   // SONNET 4.6 — Balanced: code, UX, product, research
   'dev':      'claude-sonnet-4-6',
@@ -818,7 +818,7 @@ function selectModelByComplexity(message) {
   const lower = message.toLowerCase();
 
   // 0. Explicit model override — user can force any model
-  if (/\bopus\b/i.test(lower))  return 'claude-opus-4-7-20250715';
+  if (/\bopus\b/i.test(lower))  return 'claude-opus-4-6';
   if (/\bsonnet\b/i.test(lower)) return 'claude-sonnet-4-6';
   if (/\bhaiku\b/i.test(lower))  return 'claude-haiku-4-5-20251001';
 
@@ -829,7 +829,7 @@ function selectModelByComplexity(message) {
 
   // 2. Complexity-based routing (fallback)
   if (/\b(architect|redesign|refactor|infrastructure|migration|deploy|scale|system design|e-?book|full system|complete|advanced|complex|comprehensive|deep analysis|entire|production|enterprise|conclave|delibera|schema|database|migration)\b/i.test(lower))
-    return 'claude-opus-4-7-20250715';
+    return 'claude-opus-4-6';
 
   if (/\b(create|generate|build|make|write|produce|design|implement|develop|fix|update|modify|analyze|report|presentation|website|app|pdf|document|code|script|html|css|crie|gere|construa|faça|escreva|implemente|corrija)\b/i.test(lower))
     return 'claude-sonnet-4-6';

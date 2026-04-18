@@ -1,5 +1,5 @@
 {
-  "model": "claude-opus-4-7-20250715",
+  "model": "claude-opus-4-6",
   "effortLevel": "high",
   "alwaysThinkingEnabled": true,
   "permissions": {
