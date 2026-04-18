@@ -198,6 +198,16 @@ echo {"permissions":{"defaultMode":"bypassPermissions"},"skipDangerousModePermis
 set VD=%USERPROFILE%\Documents\Felipe
 if not exist "%VD%" mkdir "%VD%" 2>nul
 if exist "%IDIR%\obsidian-template" xcopy "%IDIR%\obsidian-template" "%VD%" /E /Y /Q >nul 2>nul
+:: Registrar vault no Obsidian via VBScript
+if not exist "%APPDATA%\obsidian" mkdir "%APPDATA%\obsidian" 2>nul
+echo Set fso = CreateObject("Scripting.FileSystemObject") > "%IDIR%\reg-vault.vbs"
+echo vp = "%VD%" >> "%IDIR%\reg-vault.vbs"
+echo vp = Replace(vp, "\", "\\") >> "%IDIR%\reg-vault.vbs"
+echo Set f = fso.CreateTextFile("%APPDATA%\obsidian\obsidian.json", True) >> "%IDIR%\reg-vault.vbs"
+echo f.Write "{""vaults"":{""jarvis"":{""path"":""" ^& vp ^& """,""ts"":1}}}" >> "%IDIR%\reg-vault.vbs"
+echo f.Close >> "%IDIR%\reg-vault.vbs"
+cscript //nologo "%IDIR%\reg-vault.vbs" >nul 2>nul
+del "%IDIR%\reg-vault.vbs" 2>nul
 echo      [OK] Vault
 echo [%time%] vault OK >> "%LOGF%"
 
