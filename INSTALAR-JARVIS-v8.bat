@@ -267,8 +267,11 @@ echo      [OK] Atalho no Desktop
 echo.
 echo      Iniciando JARVIS...
 call :RPATH
+:: Matar qualquer JARVIS antigo rodando na porta 3000
+for /f "tokens=5" %%p in ('netstat -ano 2^>nul ^| findstr ":3000.*LISTENING"') do taskkill /F /PID %%p >nul 2>nul
+ping -n 3 127.0.0.1 >nul
 cd /d "%IDIR%"
-start "" cmd /k "title JARVIS && node server.js"
+start "" cmd /k "title JARVIS && cd /d %IDIR% && node server.js"
 ping -n 9 127.0.0.1 >nul
 start "" "http://localhost:3000"
 echo.
