@@ -277,11 +277,14 @@ cscript //nologo "%IDIR%\create-shortcut.vbs" >nul 2>nul
 del "%IDIR%\create-shortcut.vbs" 2>nul
 echo      [OK] Atalho no Desktop
 
-:: Garantir que vault tem pasta .obsidian (senao Obsidian nao reconhece)
+:: Garantir que vault tem pasta .obsidian
 if not exist "%VD%\.obsidian" mkdir "%VD%\.obsidian" 2>nul
-:: Abrir Obsidian no vault JARVIS
-start "" "obsidian://vault/Felipe"
-echo      [OK] Obsidian vault aberto
+:: Abrir Obsidian pra registrar o vault (abre o app direto)
+echo      Abrindo Obsidian...
+echo      Se o Obsidian abrir, clique em "Abrir pasta como cofre"
+echo      e selecione: %VD%
+start "" obsidian:
+echo      [OK] Obsidian
 
 :: Iniciar
 echo.
