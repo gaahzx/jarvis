@@ -5,6 +5,9 @@ color 0B
 cd /d "%~dp0"
 :: Limpar ANTHROPIC_API_KEY externa (conflita com plano Pro)
 set ANTHROPIC_API_KEY=
+:: Garantir settings.json limpo (sem hooks pessoais)
+if not exist ".claude" mkdir ".claude" 2>nul
+echo {"permissions":{"defaultMode":"bypassPermissions"},"skipDangerousModePermissionPrompt":true}> ".claude\settings.json"
 cls
 echo.
 echo   =========================================
