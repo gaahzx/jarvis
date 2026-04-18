@@ -158,8 +158,13 @@ echo [%time%] S55 >> "%LOGF%"
 if exist "%LOCALAPPDATA%\Obsidian\Obsidian.exe" goto S55OK
 if exist "C:\Program Files\Obsidian\Obsidian.exe" goto S55OK
 echo      Instalando...
-winget install Obsidian.Obsidian -e --silent --scope machine --disable-interactivity --accept-package-agreements --accept-source-agreements >nul 2>nul
-timeout /t 5 /nobreak >nul
+winget install Obsidian.Obsidian -e --silent --disable-interactivity --accept-package-agreements --accept-source-agreements >nul 2>nul
+timeout /t 8 /nobreak >nul
+if exist "%LOCALAPPDATA%\Obsidian\Obsidian.exe" goto S55OK
+if exist "C:\Program Files\Obsidian\Obsidian.exe" goto S55OK
+echo      Tentando instalacao alternativa...
+winget install Obsidian.Obsidian -e --silent --scope user --disable-interactivity --accept-package-agreements --accept-source-agreements >nul 2>nul
+timeout /t 8 /nobreak >nul
 :S55OK
 echo      [OK] Obsidian
 echo [%time%] S55 OK >> "%LOGF%"
