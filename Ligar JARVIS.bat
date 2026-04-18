@@ -1,5 +1,5 @@
 @echo off
-setlocal EnableDelayedExpansion
+setlocal
 title JARVIS - Starting Up
 color 0B
 cd /d "%~dp0"
@@ -44,8 +44,8 @@ if errorlevel 1 (
     :: Refresh PATH after global install
     for /f "tokens=2*" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH 2^>nul') do set "SYS_PATH=%%b"
     for /f "tokens=2*" %%a in ('reg query "HKCU\Environment" /v PATH 2^>nul') do set "USR_PATH=%%b"
-    set "PATH=!SYS_PATH!;!USR_PATH!"
-    for /f "delims=" %%p in ('npm prefix -g 2^>nul') do set "PATH=%%p;!PATH!"
+    set "PATH=%SYS_PATH%;%USR_PATH%"
+    for /f "delims=" %%p in ('npm prefix -g 2^>nul') do set "PATH=%%p;%PATH%"
     where claude >nul 2>&1
     if errorlevel 1 (
         color 0E
@@ -59,25 +59,14 @@ if errorlevel 1 (
 )
 
 :: ── 4. Claude autenticado ──
-where claude >nul 2>&1 && (
-    claude --print --output-format text --dangerously-skip-permissions "say OK" >nul 2>&1
-    if errorlevel 1 (
-        color 0E
-        echo   [--] Claude nao autenticado. Abrindo login...
-        echo.
-        echo       Faca login no navegador que vai abrir e volte aqui.
-        echo.
-        claude auth login 2>nul || claude 2>nul
-        echo.
-        claude --print --output-format text --dangerously-skip-permissions "say OK" >nul 2>&1
-        if errorlevel 1 (
-            echo   [AVISO] Claude nao autenticado. Tarefas desabilitadas.
-        ) else (
-            echo   [OK] Claude autenticado
-        )
-    ) else (
-        echo   [OK] Claude autenticado
-    )
+if exist "%USERPROFILE%\.claude\credentials.json" echo   [OK] Claude autenticado
+if exist "%USERPROFILE%\.claude\.credentials.json" echo   [OK] Claude autenticado
+if not exist "%USERPROFILE%\.claude\credentials.json" if not exist "%USERPROFILE%\.claude\.credentials.json" (
+    color 0E
+    echo   [--] Claude nao autenticado. Abrindo login...
+    echo       Faca login e feche a janela quando concluir.
+    start /wait "Claude Login" cmd /c "claude auth login"
+    echo   [OK] Login concluido
 )
 
 :: ── 5. .env existe ──
@@ -129,7 +118,7 @@ if not errorlevel 1 (
 :healthDone
 echo.
 
-if "!FAIL!"=="1" (
+if "%FAIL%"=="1" (
     color 0C
     echo   =========================================
     echo     FALHA no Health Check. Corrija acima.
