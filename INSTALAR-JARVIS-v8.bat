@@ -277,6 +277,10 @@ cscript //nologo "%IDIR%\create-shortcut.vbs" >nul 2>nul
 del "%IDIR%\create-shortcut.vbs" 2>nul
 echo      [OK] Atalho no Desktop
 
+:: Abrir Obsidian no vault JARVIS
+start "" "obsidian://open?path=%VD%"
+echo      [OK] Obsidian vault aberto
+
 :: Iniciar
 echo.
 echo      Iniciando JARVIS...
