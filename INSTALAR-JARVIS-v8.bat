@@ -55,6 +55,9 @@ timeout /t 10 /nobreak >nul
 call :RPATH
 :S1OK
 echo      [OK] Git
+:: Configurar Git Bash path pro Claude Desktop
+if exist "C:\Program Files\Git\bin\bash.exe" setx CLAUDE_CODE_GIT_BASH_PATH "C:\Program Files\Git\bin\bash.exe" >nul 2>nul
+if exist "C:\Program Files (x86)\Git\bin\bash.exe" setx CLAUDE_CODE_GIT_BASH_PATH "C:\Program Files (x86)\Git\bin\bash.exe" >nul 2>nul
 echo [%time%] S1 OK >> "%LOGF%"
 
 :: STEP 2 NODE
