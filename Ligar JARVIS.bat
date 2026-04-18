@@ -3,6 +3,8 @@ setlocal
 title JARVIS - Starting Up
 color 0B
 cd /d "%~dp0"
+:: Limpar ANTHROPIC_API_KEY externa (conflita com plano Pro)
+set ANTHROPIC_API_KEY=
 cls
 echo.
 echo   =========================================

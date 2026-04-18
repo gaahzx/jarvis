@@ -131,6 +131,9 @@ echo [%time%] S4 OK >> "%LOGF%"
 echo.
 echo   [5/8] Autenticacao...
 echo [%time%] S5 >> "%LOGF%"
+:: Limpar ANTHROPIC_API_KEY externa (causa conflito com plano Pro)
+set ANTHROPIC_API_KEY=
+setx ANTHROPIC_API_KEY "" >nul 2>nul
 if exist "%USERPROFILE%\.claude\credentials.json" goto S5OK
 if exist "%USERPROFILE%\.claude\.credentials.json" goto S5OK
 echo.
