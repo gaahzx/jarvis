@@ -10,7 +10,7 @@ system/memory-embeddings.json
 system/last-audio*
 system/workflows/
 Documents and Projects/
-pet/
+pet/node_modules/
 sensors/
 launcher/node_modules/
 launcher/dist/
