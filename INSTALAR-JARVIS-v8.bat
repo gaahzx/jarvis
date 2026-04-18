@@ -165,11 +165,19 @@ echo   [6/8] Baixando JARVIS...
 echo [%time%] S6 >> "%LOGF%"
 if exist "%IDIR%\server.js" goto S6OK
 echo      Baixando do GitHub...
+echo [%time%] IDIR=%IDIR% >> "%LOGF%"
+echo [%time%] CD antes=%CD% >> "%LOGF%"
 cd /d "%IDIR%"
+echo [%time%] CD depois=%CD% >> "%LOGF%"
 rmdir /S /Q "%IDIR%\jarvis-tmp" 2>nul
+echo      git clone...
 git clone --depth 1 %REPO% "%IDIR%\jarvis-tmp"
+echo [%time%] git exit=%ERRORLEVEL% >> "%LOGF%"
+if exist "%IDIR%\jarvis-tmp\server.js" echo [%time%] clone tem server.js >> "%LOGF%"
+if not exist "%IDIR%\jarvis-tmp\server.js" echo [%time%] CLONE VAZIO >> "%LOGF%"
 echo      Copiando arquivos...
 xcopy "%IDIR%\jarvis-tmp" "%IDIR%" /E /Y /Q
+echo [%time%] xcopy exit=%ERRORLEVEL% >> "%LOGF%"
 rmdir /S /Q "%IDIR%\jarvis-tmp" 2>nul
 :S6OK
 if not exist "%IDIR%\server.js" (
@@ -198,7 +206,8 @@ echo [%time%] S7 >> "%LOGF%"
 echo      npm install (2-5 minutos)...
 cd /d "%IDIR%"
 call :RPATH
-call npm install --production --no-optional --no-audit
+set PUPPETEER_SKIP_DOWNLOAD=1
+call npm install --production --no-audit
 echo      [OK] node_modules
 echo [%time%] S7 OK >> "%LOGF%"
 
