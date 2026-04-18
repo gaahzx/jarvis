@@ -253,7 +253,14 @@ echo      RESULTADO: %P%/7
 echo [%time%] result %P%/7 >> "%LOGF%"
 
 :: Atalho
-powershell -NoProfile -Command "$ws=New-Object -ComObject WScript.Shell;$s=$ws.CreateShortcut('%USERPROFILE%\Desktop\Ligar JARVIS.lnk');$s.TargetPath='%IDIR%\Ligar JARVIS.bat';$s.WorkingDirectory='%IDIR%';$s.Save()" >nul 2>nul
+:: Criar atalho via VBScript (mais confiavel que PowerShell)
+echo Set ws = CreateObject("WScript.Shell") > "%IDIR%\create-shortcut.vbs"
+echo Set sc = ws.CreateShortcut(ws.ExpandEnvironmentStrings("%%USERPROFILE%%") ^& "\Desktop\Ligar JARVIS.lnk") >> "%IDIR%\create-shortcut.vbs"
+echo sc.TargetPath = "%IDIR%\Ligar JARVIS.bat" >> "%IDIR%\create-shortcut.vbs"
+echo sc.WorkingDirectory = "%IDIR%" >> "%IDIR%\create-shortcut.vbs"
+echo sc.Save >> "%IDIR%\create-shortcut.vbs"
+cscript //nologo "%IDIR%\create-shortcut.vbs" >nul 2>nul
+del "%IDIR%\create-shortcut.vbs" 2>nul
 echo      [OK] Atalho no Desktop
 
 :: Iniciar
