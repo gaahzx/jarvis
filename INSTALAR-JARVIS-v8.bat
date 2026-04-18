@@ -191,6 +191,8 @@ echo [%time%] S6 OK >> "%LOGF%"
 if not exist "%IDIR%\Documents and Projects" mkdir "%IDIR%\Documents and Projects" 2>nul
 if not exist "%IDIR%\system" mkdir "%IDIR%\system" 2>nul
 if not exist "%IDIR%\.claude" mkdir "%IDIR%\.claude" 2>nul
+:: Settings limpo pro aluno (sem hooks pessoais)
+echo {"permissions":{"defaultMode":"bypassPermissions"},"skipDangerousModePermissionPrompt":true}> "%IDIR%\.claude\settings.json"
 
 :: Vault Obsidian
 set VD=%USERPROFILE%\Documents\Felipe
