@@ -225,12 +225,13 @@ set PUPPETEER_SKIP_DOWNLOAD=1
 call npm install --production --no-audit
 echo      [OK] node_modules
 :: Desktop Pet
-if exist "%IDIR%\pet\package.json" (
-    echo      Instalando Desktop Pet...
-    cd /d "%IDIR%\pet"
-    call npm install --production --no-audit >nul 2>nul
-    echo      [OK] Desktop Pet
-)
+if not exist "%IDIR%\pet\package.json" goto SkipPet
+echo      Instalando Desktop Pet...
+cd /d "%IDIR%\pet"
+call :RPATH
+call npm install --production --no-audit >nul 2>nul
+echo      [OK] Desktop Pet
+:SkipPet
 cd /d "%IDIR%"
 echo [%time%] S7 OK >> "%LOGF%"
 
