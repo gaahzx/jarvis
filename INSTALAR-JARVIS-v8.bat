@@ -136,11 +136,13 @@ set ANTHROPIC_API_KEY=
 setx ANTHROPIC_API_KEY "" >nul 2>nul
 if exist "%USERPROFILE%\.claude\credentials.json" goto S5OK
 if exist "%USERPROFILE%\.claude\.credentials.json" goto S5OK
+call :RPATH
+set PATH=%USERPROFILE%\.local\bin;%USERPROFILE%\AppData\Local\Programs\claude-code;%PATH%
 echo.
 echo      Faca login no Claude na janela que vai abrir.
 echo      Pressione qualquer tecla quando estiver pronto...
 pause >nul
-start "Login" cmd /c "claude auth login"
+start "Login" cmd /k "set PATH=%USERPROFILE%\.local\bin;%USERPROFILE%\AppData\Local\Programs\claude-code;%PATH% && claude auth login && echo. && echo Login OK! Pode fechar esta janela. && pause"
 echo      Aguardando login...
 timeout /t 30 /nobreak >nul
 :S5OK
