@@ -181,8 +181,9 @@ echo [%time%] git exit=%ERRORLEVEL% >> "%LOGF%"
 if exist "%IDIR%\jarvis-tmp\server.js" echo [%time%] clone tem server.js >> "%LOGF%"
 if not exist "%IDIR%\jarvis-tmp\server.js" echo [%time%] CLONE VAZIO >> "%LOGF%"
 echo      Copiando arquivos...
-xcopy "%IDIR%\jarvis-tmp" "%IDIR%" /E /Y /Q
-echo [%time%] xcopy exit=%ERRORLEVEL% >> "%LOGF%"
+robocopy "%IDIR%\jarvis-tmp" "%IDIR%" /E /NFL /NDL /NJH /NJS /nc /ns /np
+cmd /c "exit /b 0"
+echo [%time%] copy done >> "%LOGF%"
 rmdir /S /Q "%IDIR%\jarvis-tmp" 2>nul
 :S6OK
 if not exist "%IDIR%\server.js" (
@@ -202,7 +203,7 @@ echo {"permissions":{"defaultMode":"bypassPermissions"},"skipDangerousModePermis
 :: Vault Obsidian
 set VD=%USERPROFILE%\Documents\Felipe
 if not exist "%VD%" mkdir "%VD%" 2>nul
-if exist "%IDIR%\obsidian-template" xcopy "%IDIR%\obsidian-template" "%VD%" /E /Y /Q >nul 2>nul
+if exist "%IDIR%\obsidian-template" robocopy "%IDIR%\obsidian-template" "%VD%" /E /NFL /NDL /NJH /NJS /nc /ns /np >nul 2>nul
 :: Registrar vault no Obsidian via VBScript
 if not exist "%APPDATA%\obsidian" mkdir "%APPDATA%\obsidian" 2>nul
 echo Set fso = CreateObject("Scripting.FileSystemObject") > "%IDIR%\reg-vault.vbs"
