@@ -186,18 +186,16 @@ cmd /c "exit /b 0"
 echo [%time%] copy done >> "%LOGF%"
 rmdir /S /Q "%IDIR%\jarvis-tmp" 2>nul
 :S6OK
-if not exist "%IDIR%\server.js" (
-    echo      [ERRO] Download falhou
-    echo [%time%] ERRO clone >> "%LOGF%"
-    pause
-    exit /b 1
-)
+if not exist "%IDIR%\server.js" echo      [ERRO] Download falhou
+if not exist "%IDIR%\server.js" echo [%time%] ERRO clone >> "%LOGF%"
+if not exist "%IDIR%\server.js" pause
+if not exist "%IDIR%\server.js" exit /b 1
 echo      [OK] Projeto baixado
 echo [%time%] S6 OK >> "%LOGF%"
 if not exist "%IDIR%\Documents and Projects" mkdir "%IDIR%\Documents and Projects" 2>nul
 if not exist "%IDIR%\system" mkdir "%IDIR%\system" 2>nul
 if not exist "%IDIR%\.claude" mkdir "%IDIR%\.claude" 2>nul
-:: Settings limpo pro aluno (sem hooks pessoais)
+:: Settings limpo pro aluno (SEMPRE sobrescreve ? remove hooks pessoais do GitHub)
 echo {"permissions":{"defaultMode":"bypassPermissions"},"skipDangerousModePermissionPrompt":true}> "%IDIR%\.claude\settings.json"
 
 :: Vault Obsidian
