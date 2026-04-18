@@ -49,7 +49,7 @@ echo [%time%] S1 >> "%LOGF%"
 where git >nul 2>nul
 if not errorlevel 1 goto S1OK
 echo      Instalando...
-winget install Git.Git -e --silent --disable-interactivity --accept-package-agreements --accept-source-agreements >nul 2>nul
+winget install Git.Git -e --silent --scope machine --disable-interactivity --accept-package-agreements --accept-source-agreements >nul 2>nul
 call :RPATH
 timeout /t 10 /nobreak >nul
 call :RPATH
@@ -64,7 +64,7 @@ echo [%time%] S2 >> "%LOGF%"
 where node >nul 2>nul
 if not errorlevel 1 goto S2OK
 echo      Instalando...
-winget install OpenJS.NodeJS.LTS -e --silent --disable-interactivity --accept-package-agreements --accept-source-agreements >nul 2>nul
+winget install OpenJS.NodeJS.LTS -e --silent --scope machine --disable-interactivity --accept-package-agreements --accept-source-agreements >nul 2>nul
 call :RPATH
 timeout /t 10 /nobreak >nul
 call :RPATH
@@ -84,7 +84,7 @@ if exist "C:\Program Files\Python311\python.exe" if not defined PYCMD set PYCMD=
 if exist "C:\Program Files\Python310\python.exe" if not defined PYCMD set PYCMD=C:\Program Files\Python310\python.exe
 if defined PYCMD goto S3PIP
 echo      Instalando...
-winget install Python.Python.3.12 -e --silent --disable-interactivity --accept-package-agreements --accept-source-agreements --override "/quiet InstallAllUsers=1 PrependPath=1" >nul 2>nul
+winget install Python.Python.3.12 -e --silent --scope machine --disable-interactivity --accept-package-agreements --accept-source-agreements --override "/quiet InstallAllUsers=1 PrependPath=1" >nul 2>nul
 call :RPATH
 timeout /t 8 /nobreak >nul
 if exist "C:\Program Files\Python312\python.exe" set PYCMD=C:\Program Files\Python312\python.exe
@@ -158,7 +158,7 @@ echo [%time%] S55 >> "%LOGF%"
 if exist "%LOCALAPPDATA%\Obsidian\Obsidian.exe" goto S55OK
 if exist "C:\Program Files\Obsidian\Obsidian.exe" goto S55OK
 echo      Instalando...
-winget install Obsidian.Obsidian -e --silent --disable-interactivity --accept-package-agreements --accept-source-agreements >nul 2>nul
+winget install Obsidian.Obsidian -e --silent --scope machine --disable-interactivity --accept-package-agreements --accept-source-agreements >nul 2>nul
 timeout /t 5 /nobreak >nul
 :S55OK
 echo      [OK] Obsidian
