@@ -22,23 +22,27 @@ echo.
 powershell -NoProfile -Command "Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force" >nul 2>nul
 echo [%time%] PS OK >> "%LOGF%"
 
+set FAIL=
 where winget >nul 2>nul
-if errorlevel 1 (
-    echo      [ERRO] winget nao encontrado
-    echo [%time%] ERRO winget >> "%LOGF%"
-    pause
-    exit /b 1
-)
+if errorlevel 1 echo      [ERRO] winget nao encontrado
+where winget >nul 2>nul
+if errorlevel 1 echo [%time%] ERRO winget >> "%LOGF%"
+where winget >nul 2>nul
+if errorlevel 1 set FAIL=1
+if defined FAIL pause
+if defined FAIL exit /b 1
 echo      [OK] winget
 echo [%time%] winget OK >> "%LOGF%"
 
+set FAIL=
 net session >nul 2>nul
-if errorlevel 1 (
-    echo      [ERRO] Execute como Administrador
-    echo [%time%] ERRO admin >> "%LOGF%"
-    pause
-    exit /b 1
-)
+if errorlevel 1 echo      [ERRO] Execute como Administrador
+net session >nul 2>nul
+if errorlevel 1 echo [%time%] ERRO admin >> "%LOGF%"
+net session >nul 2>nul
+if errorlevel 1 set FAIL=1
+if defined FAIL pause
+if defined FAIL exit /b 1
 echo      [OK] Admin
 echo [%time%] admin OK >> "%LOGF%"
 
@@ -92,12 +96,10 @@ call :RPATH
 timeout /t 8 /nobreak >nul
 if exist "C:\Program Files\Python312\python.exe" set PYCMD=C:\Program Files\Python312\python.exe
 if exist "C:\Program Files\Python311\python.exe" if not defined PYCMD set PYCMD=C:\Program Files\Python311\python.exe
-if not defined PYCMD (
-    echo      [ERRO] Python nao instalou
-    echo [%time%] ERRO python >> "%LOGF%"
-    pause
-    exit /b 1
-)
+if not defined PYCMD echo      [ERRO] Python nao instalou
+if not defined PYCMD echo [%time%] ERRO python >> "%LOGF%"
+if not defined PYCMD pause
+if not defined PYCMD exit /b 1
 :S3PIP
 echo      Instalando pacotes...
 "%PYCMD%" -m pip install --upgrade pip --disable-pip-version-check -q --timeout 30 >nul 2>nul
@@ -152,7 +154,7 @@ timeout /t 30 /nobreak >nul
 echo      [OK] Auth
 echo [%time%] S5 OK >> "%LOGF%"
 if not exist "%USERPROFILE%\.claude" mkdir "%USERPROFILE%\.claude" 2>nul
-powershell -NoProfile -Command "Set-Content -Path '%USERPROFILE%\.claude\settings.json' -Value '{\"permissions\":{\"defaultMode\":\"bypassPermissions\"},\"autoUpdatesChannel\":\"latest\",\"skipDangerousModePermissionPrompt\":true}' -NoNewline" >nul 2>nul
+echo {"permissions":{"defaultMode":"bypassPermissions"},"autoUpdatesChannel":"latest","skipDangerousModePermissionPrompt":true}> "%USERPROFILE%\.claude\settings.json"
 
 :: STEP 5.5 OBSIDIAN
 echo.
