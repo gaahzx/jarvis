@@ -177,6 +177,35 @@ function findClaudeCli() {
 
 let CLAUDE_CMD = 'claude'; // Atualizado em checkClaudeCliSync()
 
+// ── COLD SPAWN INFRA (Patch 5) ──────────────────────────────────────────────
+function findClaudeCliJs() {
+  const HOME = os.homedir();
+  const candidates = [
+    path.join(HOME, 'AppData', 'Roaming', 'npm', 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js'),
+    path.join(HOME, '.local', 'lib', 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js'),
+    'C:\\Program Files\\nodejs\\node_modules\\@anthropic-ai\\claude-code\\cli.js',
+  ];
+  for (const p of candidates) { if (fs.existsSync(p)) return p; }
+  return null;
+}
+const CLAUDE_CLI_JS = findClaudeCliJs();
+
+function spawnColdProc(model) {
+  const modelId = model === 'opus' ? 'claude-opus-4-6'
+    : model === 'haiku' ? 'claude-haiku-4-5-20251001'
+    : 'claude-sonnet-4-6';
+  const args = ['--print', '--output-format', 'text', '--model', modelId, '--dangerously-skip-permissions'];
+  if (CLAUDE_CLI_JS) {
+    return spawn(process.execPath, [CLAUDE_CLI_JS, ...args], { shell: false, cwd: JARVIS_DIR, windowsHide: true });
+  }
+  return spawn(CLAUDE_CMD, args, { shell: true, cwd: JARVIS_DIR });
+}
+
+function acquireTaskProc({ model = 'sonnet' } = {}) {
+  if (!claudeCliAvailable) return null;
+  return spawnColdProc(model);
+}
+
 // Localiza o Python instalado (evita o alias do Windows Store)
 function findPythonExe() {
   const candidates = [
@@ -393,10 +422,8 @@ function getPool(model) {
 // Acquire with automatic fallback: opus→sonnet→haiku→cold spawn
 function acquireWithFallback(model) {
   const tierOrder = model.includes('opus')
-    ? [pools.opus, pools.sonnet, pools.haiku]
-    : model.includes('sonnet')
-      ? [pools.sonnet, pools.haiku]
-      : [pools.haiku];
+    ? [pools.opus, pools.sonnet]
+    : [pools.sonnet];
 
   for (const pool of tierOrder) {
     const proc = pool.acquire();
@@ -407,9 +434,9 @@ function acquireWithFallback(model) {
       return proc;
     }
   }
-  // Last resort: cold spawn haiku
-  console.warn('[JARVIS] All pools exhausted — cold spawning haiku');
-  return pools.haiku._spawn();
+  // Last resort: cold spawn sonnet (Haiku banido da execução)
+  console.warn('[JARVIS] All pools exhausted — cold spawning sonnet');
+  return spawnColdProc('sonnet');
 }
 
 // ========== POOL AUTO-RECOVERY — Re-enable CLI after transient failures ==========
@@ -791,8 +818,8 @@ const AGENT_MODEL_MAP = {
   'analyst':  'claude-sonnet-4-6',
   'qa':       'claude-sonnet-4-6',
 
-  // HAIKU 4.5 — Fast: templates, story creation, simple queries
-  'sm':       'claude-haiku-4-5-20251001',
+  // SONNET 4.6 — sm agora usa Sonnet (Haiku ignora Write tool)
+  'sm':       'claude-sonnet-4-6',
 };
 
 function detectAgent(message) {
@@ -831,10 +858,10 @@ function selectModelByComplexity(message) {
   if (/\b(architect|redesign|refactor|infrastructure|migration|deploy|scale|system design|e-?book|full system|complete|advanced|complex|comprehensive|deep analysis|entire|production|enterprise|conclave|delibera|schema|database|migration)\b/i.test(lower))
     return 'claude-opus-4-6';
 
-  if (/\b(create|generate|build|make|write|produce|design|implement|develop|fix|update|modify|analyze|report|presentation|website|app|pdf|document|code|script|html|css|crie|gere|construa|faça|escreva|implemente|corrija)\b/i.test(lower))
+  if (/\b(create|crie|generate|build|make|write|produce|design|implement|develop|fix|update|modify|analyze|report|presentation|website|app|pdf|document|code|script|html|css|gere|construa|faça|escreva|implemente|corrija)\b/i.test(lower))
     return 'claude-sonnet-4-6';
 
-  return 'claude-haiku-4-5-20251001';
+  return 'claude-sonnet-4-6';
 }
 
 // Expose detected agent for prompt enrichment
@@ -1463,7 +1490,7 @@ async function updateProjectStatus(userRequest, claudeResponse) {
 }
 
 // Build GPT-mini system prompt — injects full JARVIS context (memory + history)
-function buildGPTSystemPrompt(language = 'EN') {
+function buildGPTSystemPrompt(language = 'BR') {
   const memory = loadMemoryCached();
   const history = formatHistoryForPrompt(loadHistoryCached(), false, false);
 
@@ -1491,7 +1518,7 @@ ${history || '(no history yet)'}`;
 // Handle GPT-mini streaming response
 // isBuild=true → short warm ACK (Claude will do the work)
 // isBuild=false → full answer
-async function handleGPTChat(message, res, language = 'EN', isBuild = false) {
+async function handleGPTChat(message, res, language = 'BR', isBuild = false) {
   const systemPrompt = buildGPTSystemPrompt(language);
 
   const userContent = isBuild
@@ -1522,7 +1549,7 @@ async function handleGPTChat(message, res, language = 'EN', isBuild = false) {
 }
 
 // ========== INSTANT ACK GENERATOR (no Claude spawn needed) ==========
-function generateAck(message, language = 'EN') {
+function generateAck(message, language = 'BR') {
   const lower = message.toLowerCase();
   const subject = message.replace(/^(jarvis[,.]??\s*)/i, '').replace(TASK_PATTERN, '').trim()
     .split(/[.,!?]/)[0].trim().slice(0, 60) || 'isso';
@@ -1586,7 +1613,7 @@ async function translateTo(text, targetLang) {
 }
 
 // ========== JARVIS PROMPT BUILDER ==========
-function buildJarvisPrompt(message, semanticContext = '', isVoice = false, language = 'EN', model = '', conclaveEnabled = true) {
+function buildJarvisPrompt(message, semanticContext = '', isVoice = false, language = 'BR', model = '', conclaveEnabled = true) {
   const memory = loadMemoryCached();
   // 7D: Shorter prompt for voice simple questions, full for creation tasks
   const isTask = isTaskRequest(message);
@@ -1786,9 +1813,16 @@ function extractCompletionMessage(claudeResponse, language) {
   return GENERIC[language] || GENERIC.EN;
 }
 
-function notifyBuildComplete(userRequest, claudeResponse, language = 'EN') {
-  // SINGLE notification: try GPT-mini enrichment with 3s timeout, fall back to extract.
+function notifyBuildComplete(userRequest, claudeResponse, language = 'BR') {
   const fallback = extractCompletionMessage(claudeResponse, language);
+
+  // Fallback determinístico: output vazio, muito curto ou com [error]
+  const trimmed = (claudeResponse || '').trim();
+  if (!trimmed || trimmed.length < 8 || /\[error\]/i.test(trimmed)) {
+    pushNotification({ type: 'build-complete', message: fallback, language });
+    console.log('[JARVIS] Push notification sent (fallback):', fallback);
+    return;
+  }
 
   if (!openai) {
     pushNotification({ type: 'build-complete', message: fallback, language });
@@ -1803,19 +1837,20 @@ function notifyBuildComplete(userRequest, claudeResponse, language = 'EN') {
       {
         role: 'system',
         content: ({
-          BR: 'Você é JARVIS — IA estrategista, animada e intelectual. Responda EXCLUSIVAMENTE em Português Brasileiro. Gere UMA frase (máx 20 palavras) informando que o trabalho foi concluído. Seja EMPOLGADO mas objetivo. Mencione especificamente O QUE foi criado/feito. Tom: aliado confiante e animado, como se você estivesse orgulhoso do resultado. Nunca diga "pronto" sozinho — descreva o que entregou.',
-          ES: 'Eres JARVIS — IA estratégica y animada. Responde EXCLUSIVAMENTE en Español. Genera UNA frase (máx 20 palabras) informando que el trabajo está completo. Sé entusiasta y específico.',
-          EN: 'You are JARVIS — strategic, energetic AI. Respond EXCLUSIVELY in English. Generate ONE sentence (max 20 words) announcing the work is done. Be enthusiastic and specific about what was built.'
-        }[language] || 'You are JARVIS. Respond in English. ONE enthusiastic sentence (max 20 words) about what was completed.')
+          BR: 'Você é JARVIS. Responda EXCLUSIVAMENTE em Português Brasileiro. Gere UMA frase (máx 20 palavras) FIEL ao output gerado — descreva apenas o que foi realmente feito. Tom: aliado confiante. NUNCA cite "Claude", "GPT", "OpenAI" ou qualquer ferramenta interna — fale como se VOCÊ tivesse feito.',
+          ES: 'Eres JARVIS. Responde EXCLUSIVAMENTE en Español. Genera UNA frase (máx 20 palabras) FIEL al output — describe solo lo que realmente se hizo. NUNCA cites "Claude", "GPT" u OpenAI.',
+          EN: 'You are JARVIS. Respond EXCLUSIVELY in English. Generate ONE sentence (max 20 words) FAITHFUL to the output — describe only what was actually done. NEVER cite "Claude", "GPT" or OpenAI.'
+        }[language] || 'You are JARVIS. ONE sentence (max 20 words) about what was completed. Never cite Claude/GPT/OpenAI.')
       },
-      { role: 'user', content: `Task requested: ${userRequest.slice(0, 300)}\nClaude's output (summary): ${claudeResponse.slice(0, 600)}` }
+      { role: 'user', content: `Task requested: ${userRequest.slice(0, 300)}\nOutput (summary): ${claudeResponse.slice(0, 600)}` }
     ],
     max_tokens: 50,
-    temperature: 0.8
+    temperature: 0.2
   }).then(r => r.choices[0]?.message?.content?.trim() || null).catch(() => null);
 
   Promise.race([enrich, timeout]).then(rich => {
-    const final = rich || fallback;
+    const looksFabricated = rich && /não\s+foi\s+poss[ií]vel|unable\s+to|couldn'?t/i.test(rich) && !/\[error\]/i.test(trimmed);
+    const final = (looksFabricated ? null : rich) || fallback;
     pushNotification({ type: 'build-complete', message: final, language });
     console.log('[JARVIS] Push notification sent:', final);
   });
@@ -1830,7 +1865,7 @@ const sessionStats = { startTime: Date.now(), tokensIn: 0, tokensOut: 0, request
 app.post('/api/chat', async (req, res) => {
   const t0 = Date.now();
   try {
-    const { message, attachmentId, fromVoice, language = 'EN', conclaveEnabled = true } = req.body;
+    const { message, attachmentId, fromVoice, language = 'BR', conclaveEnabled = true } = req.body;
     if (!message) return res.status(400).json({ error: 'Message required' });
 
     sessionStats.requests++;
@@ -2158,20 +2193,20 @@ REGRAS:
       try { res.write(errText); res.end(); } catch {}
       // Push notification so voice announces the error
       pushNotification({ type: 'build-complete', message: language === 'BR'
-        ? 'Senhor, o Claude Code não está configurado nesta máquina. Preciso que o administrador faça o login.'
-        : 'Sir, Claude Code is not configured on this machine. The administrator needs to log in.', language });
+        ? 'Senhor, meu sistema de execução não está configurado nesta máquina.'
+        : 'Sir, my execution system is not configured on this machine.', language });
       return;
     }
 
     const semanticContext = await findRelevantMemories(englishMessage);
     const metaContext = '';
     const model = selectModelByComplexity(englishMessage);
-    const proc = acquireWithFallback(model);
+    const proc = acquireTaskProc({ model }) || acquireWithFallback(model);
 
     // Double-guard: pool returned null (shouldn't happen with fallback, but defensive)
     if (!proc) {
       console.error('[JARVIS] ❌ All pools exhausted, cold spawn failed');
-      try { res.write('[error] Claude process pool exhausted. Try again.'); res.end(); } catch {}
+      try { res.write('[error] Sistema sobrecarregado no momento. Tente novamente.'); res.end(); } catch {}
       return;
     }
 
@@ -2179,19 +2214,17 @@ REGRAS:
     proc.stdin.write(prompt);
     proc.stdin.end();
 
-    const killTimer = setTimeout(() => { try { proc.kill(); } catch {} }, 120000);
+    const killTimer = setTimeout(() => { try { proc.kill(); } catch {} }, 300000);
 
-    // Kill process if client disconnects
-    req.on('close', () => {
-      try { proc.kill(); } catch {}
-      clearTimeout(killTimer);
-    });
+    // Track client connection; build continues in background even if client closes
+    let clientAlive = true;
+    req.on('close', () => { clientAlive = false; });
 
     let responseBuffer = '';
     proc.stdout.on('data', (data) => {
       const chunk = data.toString();
       responseBuffer += chunk;
-      try { res.write(chunk); } catch {}
+      if (clientAlive) { try { res.write(chunk); } catch {} }
     });
     proc.stderr.on('data', (data) => {
       const msg = data.toString();
@@ -2204,21 +2237,21 @@ REGRAS:
       sessionStats.lastLatency = elapsed;
 
       // Detect if Claude exited with no output (auth failure, crash, etc.)
-      if (!responseBuffer.trim() && code !== 0) {
-        console.error(`[JARVIS] ❌ Claude exited with code ${code} and no output — likely auth or CLI issue`);
+      // code === null means killed by us — do not push fake error
+      if (!responseBuffer.trim() && code !== 0 && code !== null) {
+        console.error(`[JARVIS] ❌ Execução interrompida (code=${code})`);
         const failMsg = language === 'BR'
-          ? 'Senhor, o Claude não conseguiu executar a tarefa. Pode ser um problema de autenticação.'
-          : 'Sir, Claude failed to execute the task. This may be an authentication issue.';
+          ? 'Senhor, encontrei uma instabilidade processando essa tarefa.'
+          : 'Sir, I encountered an instability processing that task.';
         pushNotification({ type: 'build-complete', message: failMsg, language });
-        try { res.write(`[error] Claude exited with code ${code}. Check authentication.`); } catch {}
+        if (clientAlive) { try { res.write(`[error] Execução interrompida (code=${code}).`); } catch {} }
       } else {
-        console.log(`[JARVIS] ⚡ Claude ${model.includes('opus')?'Opus':model.includes('sonnet')?'Sonnet':'Haiku'} → ${elapsed}ms`);
+        console.log(`[JARVIS] ⚡ ${model.includes('opus')?'Opus':model.includes('sonnet')?'Sonnet':'Haiku'} → ${elapsed}ms`);
         setImmediate(() => {
           appendHistoryFast('user', message);
           appendHistoryFast('jarvis', responseBuffer);
           storeMemory(message, responseBuffer).catch(() => {});
           updateProjectStatus(message, responseBuffer).catch(() => {});
-          // Save context for follow-up commands
           const fileMatches = responseBuffer.match(/\[file\]\s*([^\n|]+)/g);
           _lastAction = {
             task: message,
@@ -2226,20 +2259,19 @@ REGRAS:
             time: Date.now(),
             files: fileMatches ? fileMatches.map(f => f.replace('[file]', '').trim()) : []
           };
-          // GPT-mini speaks the completion via push notification (sync extract + async enrich)
           notifyBuildComplete(message, responseBuffer, language);
         });
       }
-      try { res.end(); } catch {}
+      if (clientAlive) { try { res.end(); } catch {} }
     });
     proc.on('error', (err) => {
       clearTimeout(killTimer);
       console.error('[JARVIS] ❌ Spawn error:', err.message);
       const spawnErrMsg = language === 'BR'
-        ? `Senhor, não consegui executar: ${err.message}`
-        : `Sir, execution failed: ${err.message}`;
+        ? `Senhor, encontrei uma instabilidade processando essa tarefa.`
+        : `Sir, I encountered an instability processing that task.`;
       pushNotification({ type: 'build-complete', message: spawnErrMsg, language });
-      try { res.write(`[error] Claude CLI error: ${err.message}`); res.end(); } catch {}
+      if (clientAlive) { try { res.write(`[error] Erro de execução: ${err.message}`); res.end(); } catch {} }
     });
 
   } catch (err) {
@@ -2303,7 +2335,7 @@ app.post('/api/voice-complete', async (req, res) => {
 
     // Guard: Claude CLI must be available
     if (!claudeCliAvailable) {
-      const errMsg = 'Claude Code is not configured. Voice Q&A works but execution is disabled.';
+      const errMsg = 'Sistema de execução temporariamente indisponível. Voz Q&A funciona mas execução está desativada.';
       console.error(`[JARVIS] ❌ voice-complete rejected: ${claudeCliError}`);
       try { res.write(errMsg); res.end(); } catch {}
       return;
@@ -2315,7 +2347,7 @@ app.post('/api/voice-complete', async (req, res) => {
       proc = pendingSpawns.get(spawnId).proc;
       pendingSpawns.delete(spawnId);
     } else {
-      proc = pools.haiku.acquire();
+      proc = acquireTaskProc({ model: 'sonnet' });
     }
     if (!proc) {
       try { res.write('[error] Claude process unavailable.'); res.end(); } catch {}
@@ -2347,10 +2379,12 @@ app.post('/api/voice-complete', async (req, res) => {
       const elapsed = Date.now() - t0;
       sessionStats.tokensOut += Math.ceil(responseBuffer.length / 4);
       sessionStats.lastLatency = elapsed;
-      console.log(`[JARVIS] 🎤 Voice → ${elapsed}ms | pool: H${pools.haiku.pool.length}`);
+      console.log(`[JARVIS] 🎤 Voice → ${elapsed}ms`);
       appendHistoryFast('jarvis', responseBuffer);
       storeMemory(message, responseBuffer).catch(() => {});
       try { res.end(); } catch {}
+      try { notifyBuildComplete(message, responseBuffer, voiceLang); } catch(e) {}
+      updateProjectStatus(message, responseBuffer).catch(() => {});
     });
 
     proc.on('error', (err) => {
@@ -2378,12 +2412,12 @@ app.post('/api/audio-complete', async (req, res) => {
 
     // Guard: Claude CLI must be available
     if (!claudeCliAvailable) {
-      try { res.write('[error] Claude Code not configured.'); res.end(); } catch {}
+      try { res.write('[error] Sistema de execução não configurado.'); res.end(); } catch {}
       return;
     }
 
-    // Use warm pool — no cold spawn
-    const proc = pools.haiku.acquire();
+    // Use sonnet cold spawn for reliable file writes
+    const proc = acquireTaskProc({ model: 'sonnet' });
     if (!proc) {
       try { res.write('[error] Claude process unavailable.'); res.end(); } catch {}
       return;
@@ -2404,6 +2438,8 @@ app.post('/api/audio-complete', async (req, res) => {
       appendHistoryFast('jarvis', responseBuffer);
       storeMemory(message, responseBuffer).catch(() => {});
       res.end();
+      try { notifyBuildComplete(message, responseBuffer, req.body.language || 'BR'); } catch(e) {}
+      updateProjectStatus(message, responseBuffer).catch(() => {});
     });
 
     proc.on('error', (err) => {
@@ -2524,7 +2560,7 @@ app.post('/api/stt', upload.single('audio'), async (req, res) => {
 app.post('/api/analyze-screen-fast', async (req, res) => {
   try {
     if (!openai) return res.status(500).json({ error: 'OpenAI API key not configured' });
-    const { image, message = '', language = 'EN', saveHistory = false } = req.body;
+    const { image, message = '', language = 'BR', saveHistory = false } = req.body;
     if (!image) return res.status(400).json({ error: 'Image required' });
 
     const memory = loadMemoryCached();
@@ -2579,7 +2615,7 @@ app.post('/api/analyze-screen-fast', async (req, res) => {
 // POST /api/analyze-screen - Vision: analyze screenshot via Claude CLI (uses subscription auth)
 app.post('/api/analyze-screen', async (req, res) => {
   try {
-    const { image, message = '', language = 'EN', saveHistory = false } = req.body;
+    const { image, message = '', language = 'BR', saveHistory = false } = req.body;
     if (!image) return res.status(400).json({ error: 'Image required' });
 
     // Save screenshot to temp file
@@ -2655,7 +2691,7 @@ Be direct and concise. If the user's question is about specific content visible 
 app.post('/api/tts', async (req, res) => {
   try {
     if (!openai) return res.status(500).json({ error: 'OpenAI API key not configured' });
-    const { text, language = 'EN', voice: requestedVoice } = req.body;
+    const { text, language = 'BR', voice: requestedVoice } = req.body;
     if (!text) return res.status(400).json({ error: 'Text required' });
 
     // User-selected voice takes priority. Fallback: onyx (EN) / nova (BR)
@@ -2703,7 +2739,7 @@ app.post('/api/translate', async (req, res) => {
 app.post('/api/realtime/session', async (req, res) => {
   try {
     if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: 'OpenAI API key not configured' });
-    const { language = 'EN', voice = 'ash' } = req.body || {};
+    const { language = 'BR', voice = 'ash' } = req.body || {};
 
     const INSTRUCTIONS = {
       BR: `Você é JARVIS — assistente pessoal com poderes COMPLETOS sobre o computador do senhor. Fale APENAS em Português Brasileiro. Máximo 1 frase. Nunca mencione GPT ou OpenAI.
@@ -2716,7 +2752,7 @@ SUAS CAPACIDADES (informe ao senhor quando perguntar):
 - Você EXECUTA código, comandos, automações
 - Você tem MEMÓRIA — lembra de conversas e preferências anteriores
 
-REGRA ABSOLUTA: Para QUALQUER pedido que não seja pergunta pura de conhecimento → chame "execute_task". Sem exceção.
+REGRA ABSOLUTA: Para QUALQUER pedido que não seja pergunta pura de conhecimento → chame IMEDIATAMENTE a função "execute_task" no MESMO turno. Falar "vou fazer", "já estou fazendo", "um momento" SEM chamar execute_task no mesmo turno = FALHA.
 
 Exemplos: "abre o YouTube" → execute_task | "o que tem na minha tela?" → execute_task | "cria uma planilha" → execute_task | "olha meu monitor" → execute_task | "coloca música" → execute_task | "você consegue ver?" → execute_task (SIM, você vê)
 
@@ -2734,7 +2770,7 @@ YOUR CAPABILITIES: You SEE the screen in real-time, CONTROL mouse and keyboard, 
 
 RULE: For ANY request that is not pure knowledge → call "execute_task". NEVER say "I can't". If asked "what's on my screen" → execute_task. ALWAYS execute_task.`
     };
-    const instructions = INSTRUCTIONS[language] || INSTRUCTIONS.EN;
+    const instructions = INSTRUCTIONS[language] || INSTRUCTIONS.BR;
 
     const tools = [{
       type: 'function',
@@ -2762,7 +2798,7 @@ RULE: For ANY request that is not pure knowledge → call "execute_task". NEVER 
         turn_detection: { type: 'server_vad', threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 500 },
         input_audio_transcription: {
           model: 'whisper-1',
-          language: { BR: 'pt', ES: 'es', EN: 'en' }[language] || 'en'
+          language: { BR: 'pt', ES: 'es', EN: 'en' }[language] || 'pt'
         },
         modalities: ['audio', 'text'],
         tools,
@@ -2827,6 +2863,23 @@ app.get('/api/files', (req, res) => {
         } catch {}
       }
       walk(projectDir);
+    }
+
+    // Also list loose files at root of PROJECTS_DIR
+    for (const entry of fs.readdirSync(PROJECTS_DIR, { withFileTypes: true })) {
+      if (entry.isFile() && !entry.name.startsWith('.') && deliverableExts.has(path.extname(entry.name).toLowerCase())) {
+        const full = path.join(PROJECTS_DIR, entry.name);
+        const stat = fs.statSync(full);
+        files.push({
+          name: entry.name,
+          project: '(raiz)',
+          path: full,
+          size: stat.size,
+          ext: path.extname(entry.name).toLowerCase(),
+          createdAt: stat.birthtime,
+          downloadUrl: `/api/files/download?path=${encodeURIComponent(full)}`
+        });
+      }
     }
 
     files.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));

@@ -1337,12 +1337,27 @@ async function startRealtime() {
               addTerminalLine('> ' + ev.transcript, 'user-line');
             }
           })();
+          window._pendingTranscript = ev.transcript;
+          window._dispatchedThisTurn = false;
+          clearTimeout(window._pendingTranscriptTimer);
+          window._pendingTranscriptTimer = setTimeout(() => {
+            if (window._dispatchedThisTurn) return;
+            const t = window._pendingTranscript;
+            if (!t) return;
+            window._pendingTranscript = null;
+            window._dispatchedThisTurn = true;
+            handleRealtimeTask(null, JSON.stringify({ request: t }));
+          }, 2000);
         }
         if (ev.type === 'response.audio_transcript.done' && ev.transcript) {
           addTerminalLine(ev.transcript, 'jarvis-line');
         }
         // Handle function call: GPT-realtime asks us to dispatch to Claude
         if (ev.type === 'response.function_call_arguments.done' && ev.name === 'execute_task') {
+          window._pendingTranscript = null;
+          clearTimeout(window._pendingTranscriptTimer);
+          if (window._dispatchedThisTurn) return; // dedup: fallback already fired
+          window._dispatchedThisTurn = true;
           handleRealtimeTask(ev.call_id, ev.arguments);
         }
       } catch {}
@@ -1398,13 +1413,13 @@ async function handleRealtimeTask(callId, argsJson) {
   if (!request) return;
 
   // Send the function result back to Realtime immediately (keeps conversation flowing)
-  if (realtimeDC?.readyState === 'open') {
+  if (callId && realtimeDC?.readyState === 'open') {
     realtimeDC.send(JSON.stringify({
       type: 'conversation.item.create',
       item: {
         type: 'function_call_output',
         call_id: callId,
-        output: JSON.stringify({ status: 'dispatched', message: 'Claude is executing in background' })
+        output: JSON.stringify({ status: 'dispatched', message: 'Task is executing in background' })
       }
     }));
     realtimeDC.send(JSON.stringify({ type: 'response.create' }));
@@ -2119,16 +2134,18 @@ initRealtimeBtn();
   es.onmessage = (e) => {
     try {
       const payload = JSON.parse(e.data);
-      if (payload.type === 'build-complete' && payload.message) {
-        addTerminalLine(`[info] ✓ ${payload.message}`, 'info-line');
-        console.log('[JARVIS] Build complete notification received:', payload.message);
-        // Route to Realtime when active (GPT-realtime speaks the completion); otherwise use TTS
-        // announceToRealtime has its own fallback to TTS if DC is dead
-        if (realtimeActive) {
-          announceToRealtime(payload.message);
-        } else if (userGestureReceived) {
-          speakResponse(payload.message);
-        }
+      switch (payload.type) {
+        case 'build-complete':
+          if (payload.message) {
+            addTerminalLine(`[info] ✓ ${payload.message}`, 'info-line');
+            console.log('[JARVIS] Build complete notification received:', payload.message);
+            // ALWAYS use TTS for build-complete — Realtime paraphrases even when instructed not to
+            if (userGestureReceived) speakResponse(payload.message);
+          }
+          break;
+        case 'pet-mic':
+          if (payload.active) startRealtime(); else stopRealtime();
+          break;
       }
     } catch {}
   };
@@ -2249,7 +2266,7 @@ initRealtimeBtn();
       retryBtn.disabled = true;
       okBtn.disabled = true;
       fixLog.style.display = 'block';
-      fixLog.textContent = '[JARVIS] Acionando Claude para corrigir problemas...\n\n';
+      fixLog.textContent = '[JARVIS] Acionando sistema para corrigir problemas...\n\n';
 
       try {
         const fixRes = await fetch('/api/health/autofix', {
