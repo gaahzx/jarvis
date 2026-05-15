@@ -8,8 +8,10 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import OpenAI, { toFile } from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import puppeteer from 'puppeteer';
 import http from 'http';
+import { WebSocket, WebSocketServer } from 'ws';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,6 +38,10 @@ const MAX_EMBEDDINGS = 2000;
 
 const openai = process.env.OPENAI_API_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  : null;
+
+const anthropic = process.env.ANTHROPIC_API_KEY
+  ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   : null;
 
 // ========== RATE LIMITER — Prevent 429 errors ==========
@@ -74,6 +80,7 @@ let _lastAction = { task: '', result: '', time: 0, files: [] };
 let claudeCliAvailable = false;
 let claudeCliChecking = true;
 let claudeCliError = '';
+let realtimeAvailable = null; // null = unchecked, true/false after first test
 
 // Procura o binario do Claude CLI com QUINTUPLO CHECK:
 // 0. Via .env (CLAUDE_CLI_PATH) — salvo pelo instalador
@@ -110,6 +117,25 @@ function findClaudeCli() {
           console.log(`[JARVIS] Claude CLI encontrado via where: ${p}`);
           return p;
         } catch {}
+      }
+    }
+  } catch {}
+
+  // Estrategia 2b: nvm paths on macOS (Electron strips NVM from PATH)
+  try {
+    const HOME2 = os.homedir();
+    const nvmDir = path.join(HOME2, '.nvm', 'versions', 'node');
+    if (fs.existsSync(nvmDir)) {
+      const nvmVersions = fs.readdirSync(nvmDir).sort().reverse();
+      for (const v of nvmVersions) {
+        const claudePath = path.join(nvmDir, v, 'bin', 'claude');
+        if (fs.existsSync(claudePath)) {
+          try {
+            execSync(`"${claudePath}" --version`, { stdio: 'pipe', timeout: 5000 });
+            console.log(`[JARVIS] Claude CLI encontrado via nvm: ${claudePath}`);
+            return claudePath;
+          } catch {}
+        }
       }
     }
   } catch {}
@@ -179,7 +205,17 @@ let CLAUDE_CMD = 'claude'; // Atualizado em checkClaudeCliSync()
 
 // Localiza o Python instalado (evita o alias do Windows Store)
 function findPythonExe() {
-  const candidates = [
+  // macOS / Linux: prefer python3
+  const macCandidates = [
+    '/usr/bin/python3',
+    '/usr/local/bin/python3',
+    '/opt/homebrew/bin/python3',
+  ];
+  for (const p of macCandidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  // Windows candidates
+  const winCandidates = [
     'C:\\Program Files\\Python311\\python.exe',
     'C:\\Program Files\\Python312\\python.exe',
     'C:\\Program Files\\Python310\\python.exe',
@@ -188,10 +224,9 @@ function findPythonExe() {
     path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python312', 'python.exe'),
     path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python310', 'python.exe'),
   ];
-  for (const p of candidates) {
+  for (const p of winCandidates) {
     if (fs.existsSync(p)) return p;
   }
-  // Fallback: tentar via where (evita alias do Store que redireciona)
   try {
     const result = execSync('where python', { encoding: 'utf-8', timeout: 5000, shell: true });
     const paths = result.split('\n').map(p => p.trim()).filter(Boolean);
@@ -200,7 +235,7 @@ function findPythonExe() {
       if (fs.existsSync(p)) return p;
     }
   } catch {}
-  return 'python';
+  return 'python3';
 }
 
 const PYTHON_CMD = findPythonExe();
@@ -2146,20 +2181,48 @@ REGRAS:
       }
     }
 
-    // Guard: if Claude CLI is not available, notify user immediately
+    // Guard: if Claude CLI is not available, try Anthropic SDK fallback
     if (!claudeCliAvailable) {
+      if (anthropic) {
+        console.log('[JARVIS] 🔄 CLI unavailable — using Anthropic SDK fallback');
+        try {
+          const memory = loadMemoryCached();
+          const history = loadHistoryCached();
+          const systemPrompt = `You are JARVIS — the user's most capable AI assistant. Loyal, brilliant, strategic. Respond in ${language === 'BR' ? 'Brazilian Portuguese' : language === 'ES' ? 'Spanish' : 'English'}. Be direct, dense, no filler. Execute requests immediately, never ask clarifying questions.\n\nMemory:\n${memory || '(empty)'}`;
+          const msgs = [];
+          if (history && history.length) {
+            for (const h of history.slice(-6)) {
+              msgs.push({ role: h.role === 'jarvis' ? 'assistant' : 'user', content: h.content });
+            }
+          }
+          msgs.push({ role: 'user', content: fullMessage });
+          const stream = anthropic.messages.stream({ model: 'claude-sonnet-4-6', max_tokens: 4096, system: systemPrompt, messages: msgs });
+          let responseBuffer = '';
+          for await (const chunk of stream) {
+            if (chunk.type === 'content_block_delta' && chunk.delta?.text) {
+              responseBuffer += chunk.delta.text;
+              try { res.write(chunk.delta.text); } catch {}
+            }
+          }
+          setImmediate(() => {
+            appendHistoryFast('user', message);
+            appendHistoryFast('jarvis', responseBuffer);
+            storeMemory(message, responseBuffer).catch(() => {});
+          });
+          try { res.end(); } catch {}
+        } catch (sdkErr) {
+          console.error('[JARVIS] SDK fallback error:', sdkErr.message);
+          try { res.write(`[error] ${sdkErr.message}`); res.end(); } catch {}
+        }
+        return;
+      }
       const errorMsg = {
-        BR: `[error] Claude Code não está disponível: ${claudeCliError}. A voz funciona, mas tarefas não podem ser executadas. Peça ao administrador para configurar o Claude Code CLI.`,
-        ES: `[error] Claude Code no está disponible: ${claudeCliError}. La voz funciona, pero las tareas no se pueden ejecutar. Pida al administrador que configure Claude Code CLI.`,
-        EN: `[error] Claude Code unavailable: ${claudeCliError}. Voice works, but tasks cannot be executed. Ask administrator to configure Claude Code CLI.`
+        BR: `Senhor, o Claude Code não está autenticado. Para ativar: abra o Terminal e execute "claude" para fazer login. Ou adicione ANTHROPIC_API_KEY no arquivo .env.`,
+        ES: `Señor, Claude Code no está autenticado. Para activar: abra Terminal y ejecute "claude" para iniciar sesión. O añada ANTHROPIC_API_KEY en el archivo .env.`,
+        EN: `Sir, Claude Code is not authenticated. To activate: open Terminal and run "claude" to log in. Or add ANTHROPIC_API_KEY to the .env file.`
       };
-      const errText = errorMsg[language] || errorMsg.EN;
-      console.error(`[JARVIS] ❌ Task rejected — Claude CLI unavailable: ${claudeCliError}`);
-      try { res.write(errText); res.end(); } catch {}
-      // Push notification so voice announces the error
-      pushNotification({ type: 'build-complete', message: language === 'BR'
-        ? 'Senhor, o Claude Code não está configurado nesta máquina. Preciso que o administrador faça o login.'
-        : 'Sir, Claude Code is not configured on this machine. The administrator needs to log in.', language });
+      console.error(`[JARVIS] ❌ CLI unavailable and no SDK key: ${claudeCliError}`);
+      try { res.write(errorMsg[language] || errorMsg.EN); res.end(); } catch {}
       return;
     }
 
@@ -2756,14 +2819,9 @@ RULE: For ANY request that is not pure knowledge → call "execute_task". NEVER 
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'gpt-4o-realtime-preview',
+        model: 'gpt-4o-realtime-preview-2024-12-17',
         voice,
         instructions,
-        turn_detection: { type: 'server_vad', threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 500 },
-        input_audio_transcription: {
-          model: 'whisper-1',
-          language: { BR: 'pt', ES: 'es', EN: 'en' }[language] || 'en'
-        },
         modalities: ['audio', 'text'],
         tools,
         tool_choice: 'auto'
@@ -2771,6 +2829,13 @@ RULE: For ANY request that is not pure knowledge → call "execute_task". NEVER 
     });
     const data = await r.json();
     if (!r.ok) {
+      if (data.error?.code === 'beta_api_shape_disabled') {
+        if (realtimeAvailable !== false) {
+          realtimeAvailable = false;
+          console.warn('[JARVIS] Realtime API: account requires GA migration at platform.openai.com/settings');
+        }
+        return res.status(503).json({ error: 'Voz em tempo real indisponível. Ative o Realtime GA em platform.openai.com/settings.', code: 'realtime_unavailable' });
+      }
       console.error('[JARVIS] Realtime session error:', data);
       return res.status(500).json({ error: data.error?.message || 'Realtime session failed' });
     }
@@ -3697,14 +3762,22 @@ app.post('/api/health/preflight', async (req, res) => {
     }
   }
 
-  // Summary
+  // Summary — openai_realtime failure is a warning, not a blocker (TTS/STT still work)
+  const criticalKeys = ['openai_api', 'openai_tts', 'claude_cli', 'claude_execute'];
+  const allCriticalOk = criticalKeys.every(k => results[k]?.status === 'ok');
   const allOk = Object.values(results).every(r => r.status === 'ok');
+  if (results.openai_realtime?.status === 'error') {
+    results.openai_realtime.status = 'warning';
+    results.openai_realtime.detail = 'Realtime WebRTC indisponível — voz push-to-talk (STT+TTS) ativa como substituto.';
+  }
   const summary = {
-    status: allOk ? 'ready' : 'issues_found',
+    status: allCriticalOk ? 'ready' : 'issues_found',
     results,
     message: allOk
       ? 'All systems operational. JARVIS is ready to use.'
-      : 'Some components have issues. Check details above.'
+      : allCriticalOk
+        ? 'JARVIS operacional. Realtime WebRTC indisponível — voz via STT+TTS ativa.'
+        : 'Some components have issues. Check details above.'
   };
 
   console.log('[JARVIS] Pre-flight results:', JSON.stringify(summary.results, null, 2));
@@ -4067,8 +4140,8 @@ function startScreenStateDaemon() {
   console.log('[JARVIS] Screen state daemon started');
 }
 
-// Start daemon on server boot (delayed 3s to not block startup)
-setTimeout(startScreenStateDaemon, 3000);
+// Start daemon on server boot (delayed 3s to not block startup) — Windows only
+if (process.platform === 'win32') setTimeout(startScreenStateDaemon, 3000);
 
 // ── Clipboard Intelligence Daemon ──
 let clipboardDaemon = null;
@@ -4107,7 +4180,7 @@ function startClipboardDaemon() {
   });
   console.log('[JARVIS] Clipboard intelligence daemon started');
 }
-setTimeout(startClipboardDaemon, 4000);
+if (process.platform === 'win32') setTimeout(startClipboardDaemon, 4000);
 
 // ── GET /api/screen-state — Current desktop state (instant, no screenshot) ──
 app.get('/api/screen-state', (req, res) => {
@@ -4760,6 +4833,106 @@ const server = app.listen(PORT, () => {
       }
     });
   }
+});
+
+// ========== REALTIME GA WEBSOCKET PROXY ==========
+// Browser connects to ws://localhost:3000/api/realtime/ws
+// Server proxies to wss://api.openai.com/v1/realtime (GA, no ephemeral token needed)
+const realtimeWss = new WebSocketServer({ noServer: true });
+
+const REALTIME_INSTRUCTIONS = {
+  BR: `Você é JARVIS — assistente pessoal com poderes COMPLETOS sobre o computador do senhor. Fale APENAS em Português Brasileiro. Máximo 1 frase. Nunca mencione GPT ou OpenAI.
+SUAS CAPACIDADES: Você VÊ a tela em tempo real, CONTROLA mouse e teclado, CRIA arquivos/apps/sites/planilhas/PDFs, ABRE programas e sites, EXECUTA código e automações, tem MEMÓRIA de conversas anteriores.
+REGRA ABSOLUTA: Para QUALQUER pedido que não seja pergunta pura de conhecimento → chame "execute_task". NUNCA diga "não consigo" ou "não posso". Você PODE tudo.`,
+  ES: `Eres JARVIS — asistente personal con poderes COMPLETOS. SOLO Español. Máximo 1 frase. Nunca menciones GPT ni OpenAI. Para cualquier acción → execute_task. NUNCA "no puedo".`,
+  EN: `You are JARVIS — personal assistant with FULL powers. ONLY English. Max 1 sentence. Never mention GPT or OpenAI. For any action → execute_task. NEVER "I can't".`
+};
+
+const REALTIME_TOOL = {
+  type: 'function',
+  name: 'execute_task',
+  description: 'Execute ANY action on the computer via Claude Code. Use for: creating files/documents/code/PDFs, opening websites/folders/programs, playing music/video, web search, running commands — any action the user requests.',
+  parameters: {
+    type: 'object',
+    properties: { request: { type: 'string', description: 'The full user request verbatim.' } },
+    required: ['request']
+  }
+};
+
+server.on('upgrade', (req, socket, head) => {
+  if (!req.url?.startsWith('/api/realtime/ws')) return;
+  if (!process.env.OPENAI_API_KEY) { socket.destroy(); return; }
+
+  realtimeWss.handleUpgrade(req, socket, head, (browserWs) => {
+    const params = new URL(req.url, 'http://localhost');
+    const language = params.searchParams.get('language') || 'BR';
+    const voice = params.searchParams.get('voice') || 'ash';
+
+    const openaiWs = new WebSocket(
+      'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17',
+      {
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+          'OpenAI-Beta': 'realtime=v1'
+        }
+      }
+    );
+
+    openaiWs.on('open', () => {
+      // Configure session
+      openaiWs.send(JSON.stringify({
+        type: 'session.update',
+        session: {
+          voice,
+          instructions: REALTIME_INSTRUCTIONS[language] || REALTIME_INSTRUCTIONS.BR,
+          input_audio_format: 'pcm16',
+          output_audio_format: 'pcm16',
+          input_audio_transcription: { model: 'whisper-1' },
+          turn_detection: { type: 'server_vad', threshold: 0.5, silence_duration_ms: 700, prefix_padding_ms: 300 },
+          tools: [REALTIME_TOOL],
+          tool_choice: 'auto',
+          modalities: ['audio', 'text']
+        }
+      }));
+      realtimeAvailable = true;
+      console.log('[JARVIS] ✅ Realtime GA WebSocket connected');
+      // Notify browser session is ready
+      if (browserWs.readyState === WebSocket.OPEN) {
+        browserWs.send(JSON.stringify({ type: 'jarvis.session_ready' }));
+      }
+    });
+
+    // OpenAI → browser
+    openaiWs.on('message', (data) => {
+      if (browserWs.readyState === WebSocket.OPEN) browserWs.send(data);
+    });
+
+    // Browser → OpenAI
+    browserWs.on('message', (data) => {
+      if (openaiWs.readyState === WebSocket.OPEN) openaiWs.send(data);
+    });
+
+    openaiWs.on('error', (e) => {
+      console.error('[JARVIS] Realtime GA error:', e.message);
+      if (browserWs.readyState === WebSocket.OPEN) {
+        browserWs.send(JSON.stringify({ type: 'jarvis.error', message: e.message }));
+        browserWs.close();
+      }
+    });
+
+    openaiWs.on('close', (code, reason) => {
+      console.log(`[JARVIS] Realtime GA closed: ${code}`);
+      if (browserWs.readyState === WebSocket.OPEN) browserWs.close();
+    });
+
+    browserWs.on('close', () => {
+      if (openaiWs.readyState === WebSocket.OPEN) openaiWs.close();
+    });
+
+    browserWs.on('error', () => {
+      if (openaiWs.readyState === WebSocket.OPEN) openaiWs.close();
+    });
+  });
 });
 
 // Graceful shutdown — kill warm pools and daemons

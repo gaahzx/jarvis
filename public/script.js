@@ -634,6 +634,7 @@ let audioChunks = [];
 let currentAttachment = null;
 let voiceEnabled = true;
 let ttsVoice = localStorage.getItem('ttsVoice') || 'ash';
+let voiceRealtimeAvailable = false;
 
 // Realtime API supports a different voice set than TTS.
 // Map TTS voice to nearest valid Realtime voice.
@@ -1247,125 +1248,173 @@ function initContinuousBtn() {
     <circle cx="12" cy="22" r="1.5" fill="currentColor"/>
   </svg>`;
   btn.addEventListener('click', async () => {
-    if (realtimeConnecting) {
-      addTerminalLine(
-        currentLang === 'BR' ? '[status] Conectando, aguarde...' : '[status] Connecting, please wait...',
-        'info-line'
-      );
-      // Wait for current connection attempt to finish, then report final status
-      while (realtimeConnecting) await new Promise(r => setTimeout(r, 200));
+    userGestureReceived = true;
+    if (voiceRealtimeAvailable) {
+      if (realtimeConnecting) {
+        while (realtimeConnecting) await new Promise(r => setTimeout(r, 200));
+        btn.style.color = realtimeActive ? 'var(--cyan)' : '';
+        btn.style.background = realtimeActive ? 'rgba(0,212,255,0.1)' : '';
+        return;
+      }
+      await startRealtime();
       btn.style.color = realtimeActive ? 'var(--cyan)' : '';
       btn.style.background = realtimeActive ? 'rgba(0,212,255,0.1)' : '';
+    } else {
+      // Realtime unavailable — toggle continuous push-to-talk mode
+      continuousMode = !continuousMode;
+      btn.style.color = continuousMode ? 'var(--cyan)' : '';
+      btn.style.background = continuousMode ? 'rgba(0,212,255,0.1)' : '';
       addTerminalLine(
-        realtimeActive
-          ? (currentLang === 'BR' ? '[status] Modo contínuo: ATIVADO' : '[status] Continuous mode: ON')
+        continuousMode
+          ? (currentLang === 'BR' ? '[status] Modo contínuo: ATIVADO — fale, JARVIS ouvirá' : '[status] Continuous mode: ON — speak, JARVIS listens')
           : (currentLang === 'BR' ? '[status] Modo contínuo: DESATIVADO' : '[status] Continuous mode: OFF'),
         'info-line'
       );
-      return;
+      if (continuousMode && !isRecording) startRecording();
+      else if (!continuousMode && isRecording) stopRecording();
     }
-    await startRealtime();
-    btn.style.color = realtimeActive ? 'var(--cyan)' : '';
-    btn.style.background = realtimeActive ? 'rgba(0,212,255,0.1)' : '';
-    addTerminalLine(
-      realtimeActive
-        ? (currentLang === 'BR' ? '[status] Modo contínuo: ATIVADO' : '[status] Continuous mode: ON')
-        : (currentLang === 'BR' ? '[status] Modo contínuo: DESATIVADO' : '[status] Continuous mode: OFF'),
-      'info-line'
-    );
   });
   const sendBtn = document.getElementById('send-btn');
   sendBtn.parentNode.insertBefore(btn, sendBtn);
 }
 
-// ========== REALTIME VOICE MODE (OpenAI WebRTC — ~300ms latency) ==========
-let realtimePC = null;
+// ========== REALTIME VOICE MODE (OpenAI GA WebSocket — PCM16 proxy) ==========
+let realtimeWs = null;
 let realtimeStream = null;
-let realtimeAudio = null;
-let realtimeDC = null;
+let realtimeAudioCtx = null;
+let realtimeProcessor = null;
+let realtimePlaybackCtx = null;
+let realtimePlayQueue = [];
+let realtimePlayNext = 0; // scheduled time for next buffer
 let realtimeActive = false;
 let realtimeConnecting = false;
 let realtimeUserDisabled = false;
+// Keep legacy aliases so rest of code (DC send, etc.) still compiles
+let realtimeDC = null;
+let realtimePC = null;
+
+function _rtSend(obj) {
+  if (realtimeWs?.readyState === WebSocket.OPEN) realtimeWs.send(JSON.stringify(obj));
+}
+
+function _pcm16ToFloat32(base64) {
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const int16 = new Int16Array(bytes.buffer);
+  const f32 = new Float32Array(int16.length);
+  for (let i = 0; i < int16.length; i++) f32[i] = int16[i] / 32768.0;
+  return f32;
+}
+
+function _scheduleAudio(f32) {
+  if (!realtimePlaybackCtx) realtimePlaybackCtx = new AudioContext({ sampleRate: 24000 });
+  const ctx = realtimePlaybackCtx;
+  const buf = ctx.createBuffer(1, f32.length, 24000);
+  buf.copyToChannel(f32, 0);
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.connect(ctx.destination);
+  const now = ctx.currentTime;
+  if (realtimePlayNext < now) realtimePlayNext = now;
+  src.start(realtimePlayNext);
+  realtimePlayNext += buf.duration;
+  src.onended = () => {
+    if (realtimePlayNext <= ctx.currentTime) setAvatarState('idle');
+  };
+}
+
+function _handleRealtimeEvent(ev) {
+  try {
+    if (ev.type === 'jarvis.session_ready') {
+      realtimeActive = true;
+      realtimeConnecting = false;
+      addTerminalLine('[system] ✅ Voz contínua ativa — pode falar', 'system-line');
+      setAvatarState('listening');
+      try { if (wakeWordRecognition) { wakeWordRecognition.onend = null; wakeWordRecognition.stop(); } } catch {}
+      const btn = document.getElementById('realtime-btn');
+      if (btn) { btn.style.color = 'var(--cyan)'; btn.style.background = 'rgba(0,212,255,0.15)'; }
+      const cbtn = document.getElementById('continuous-btn');
+      if (cbtn) { cbtn.style.color = 'var(--cyan)'; cbtn.style.background = 'rgba(0,212,255,0.1)'; }
+      micBtn.classList.add('recording');
+      return;
+    }
+    if (ev.type === 'jarvis.error') {
+      addTerminalLine('[error] Realtime: ' + (ev.message || 'connection failed'), 'error-line');
+      stopRealtime(); return;
+    }
+    if (ev.type === 'input_audio_buffer.speech_started') setAvatarState('listening');
+    if (ev.type === 'response.audio.delta' && ev.delta) {
+      setAvatarState('speaking');
+      _scheduleAudio(_pcm16ToFloat32(ev.delta));
+    }
+    if (ev.type === 'response.audio.done') {
+      // playback drains naturally; avatar state set via onended
+    }
+    if (ev.type === 'response.audio_transcript.done' && ev.transcript) {
+      addTerminalLine(ev.transcript, 'jarvis-line');
+    }
+    if (ev.type === 'conversation.item.input_audio_transcription.completed' && ev.transcript) {
+      addTerminalLine('> ' + ev.transcript, 'user-line');
+    }
+    if (ev.type === 'response.function_call_arguments.done' && ev.name === 'execute_task') {
+      handleRealtimeTask(ev.call_id, ev.arguments);
+    }
+    if (ev.type === 'error') {
+      console.warn('[JARVIS] Realtime server error:', ev.error);
+    }
+  } catch(e) { console.warn('[JARVIS] Event parse error:', e); }
+}
 
 async function startRealtime() {
   if (realtimeActive) { realtimeUserDisabled = true; return stopRealtime(); }
-  if (realtimeConnecting) return; // guard against parallel connects
+  if (realtimeConnecting) return;
   realtimeConnecting = true;
   realtimeUserDisabled = false;
   try {
     userGestureReceived = true;
-    const tokenRes = await fetch('/api/realtime/session', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      // Realtime API only supports: alloy, ash, ballad, coral, echo, sage, shimmer, verse, marin, cedar
-      // TTS voices like onyx, nova, fable are NOT supported — always map to a valid Realtime voice
-      body: JSON.stringify({ language: currentLang, voice: getRealtimeVoice() })
-    });
-    const sess = await tokenRes.json();
-    if (!sess.client_secret?.value) throw new Error(sess.error || 'No ephemeral token');
 
-    const pc = new RTCPeerConnection();
-    realtimePC = pc;
+    // Open mic
+    realtimeStream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 24000, channelCount: 1, echoCancellation: true } });
 
-    // Remote audio sink
-    realtimeAudio = new Audio();
-    realtimeAudio.autoplay = true;
-    pc.ontrack = (e) => { realtimeAudio.srcObject = e.streams[0]; setAvatarState('speaking'); };
+    // WebSocket proxy on our server (adds auth headers)
+    const wsUrl = `ws://${location.host}/api/realtime/ws?language=${currentLang}&voice=${getRealtimeVoice()}`;
+    realtimeWs = new WebSocket(wsUrl);
 
-    // Mic input
-    realtimeStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    realtimeStream.getTracks().forEach(t => pc.addTrack(t, realtimeStream));
+    realtimeWs.onmessage = (e) => {
+      try { _handleRealtimeEvent(JSON.parse(e.data)); } catch {}
+    };
+    realtimeWs.onerror = () => { addTerminalLine('[error] Realtime WebSocket error', 'error-line'); stopRealtime(); };
+    realtimeWs.onclose = (ev) => {
+      if (ev.code === 4000 || ev.code === 4001 || ev.code === 4003) {
+        // OpenAI: account sem acesso GA — desativa realtime e usa push-to-talk
+        voiceRealtimeAvailable = false;
+        addTerminalLine('[system] Realtime indisponível nesta conta — usando push-to-talk (STT+TTS)', 'system-line');
+        const sVoice = document.getElementById('bar-voice-status');
+        if (sVoice) { sVoice.textContent = 'STT'; }
+      }
+      stopRealtime();
+    };
 
-    // Data channel for events
-    const dc = pc.createDataChannel('oai-events');
-    realtimeDC = dc;
-    dc.addEventListener('message', (e) => {
-      try {
-        const ev = JSON.parse(e.data);
-        if (ev.type === 'input_audio_buffer.speech_started') setAvatarState('listening');
-        if (ev.type === 'response.audio.done') setAvatarState('idle');
-        if (ev.type === 'conversation.item.input_audio_transcription.completed' && ev.transcript) {
-          // Translate user transcript to match the active language toggle
-          (async () => {
-            try {
-              const r = await fetch('/api/translate', {
-                method: 'POST', headers: {'Content-Type':'application/json'},
-                body: JSON.stringify({ text: ev.transcript, targetLang: currentLang })
-              });
-              const d = await r.json();
-              addTerminalLine('> ' + (d.translated || ev.transcript), 'user-line');
-            } catch {
-              addTerminalLine('> ' + ev.transcript, 'user-line');
-            }
-          })();
-        }
-        if (ev.type === 'response.audio_transcript.done' && ev.transcript) {
-          addTerminalLine(ev.transcript, 'jarvis-line');
-        }
-        // Handle function call: GPT-realtime asks us to dispatch to Claude
-        if (ev.type === 'response.function_call_arguments.done' && ev.name === 'execute_task') {
-          handleRealtimeTask(ev.call_id, ev.arguments);
-        }
-      } catch {}
-    });
+    // PCM16 capture via AudioContext ScriptProcessor (24kHz)
+    realtimeAudioCtx = new AudioContext({ sampleRate: 24000 });
+    const source = realtimeAudioCtx.createMediaStreamSource(realtimeStream);
+    realtimeProcessor = realtimeAudioCtx.createScriptProcessor(4096, 1, 1);
+    realtimeProcessor.onaudioprocess = (e) => {
+      if (!realtimeActive && !realtimeConnecting) return;
+      if (realtimeWs?.readyState !== WebSocket.OPEN) return;
+      const f32 = e.inputBuffer.getChannelData(0);
+      const int16 = new Int16Array(f32.length);
+      for (let i = 0; i < f32.length; i++) int16[i] = Math.max(-32768, Math.min(32767, Math.round(f32[i] * 32767)));
+      const bytes = new Uint8Array(int16.buffer);
+      let bin = '';
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      realtimeWs.send(JSON.stringify({ type: 'input_audio_buffer.append', audio: btoa(bin) }));
+    };
+    source.connect(realtimeProcessor);
+    realtimeProcessor.connect(realtimeAudioCtx.destination);
 
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    const sdpRes = await fetch('https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview', {
-      method: 'POST',
-      body: offer.sdp,
-      headers: { 'Authorization': `Bearer ${sess.client_secret.value}`, 'Content-Type': 'application/sdp' }
-    });
-    await pc.setRemoteDescription({ type: 'answer', sdp: await sdpRes.text() });
-
-    realtimeActive = true;
-    realtimeConnecting = false;
-    // Stop wake word listener (Realtime owns the mic now)
-    try { if (wakeWordRecognition) { wakeWordRecognition.onend = null; wakeWordRecognition.stop(); } } catch {}
-    const btn = document.getElementById('realtime-btn');
-    if (btn) { btn.style.color = 'var(--cyan)'; btn.style.background = 'rgba(0,212,255,0.15)'; }
-    const cbtn = document.getElementById('continuous-btn');
-    if (cbtn) { cbtn.style.color = 'var(--cyan)'; cbtn.style.background = 'rgba(0,212,255,0.1)'; }
-    micBtn.classList.add('recording');
+    addTerminalLine('[system] Conectando voz contínua...', 'system-line');
   } catch (err) {
     addTerminalLine('[error] Realtime: ' + err.message, 'error-line');
     realtimeConnecting = false;
@@ -1376,11 +1425,14 @@ async function startRealtime() {
 function stopRealtime() {
   realtimeActive = false;
   realtimeConnecting = false;
-  try { realtimeDC?.close(); } catch {}
-  try { realtimePC?.close(); } catch {}
+  try { realtimeProcessor?.disconnect(); } catch {}
+  try { realtimeAudioCtx?.close(); } catch {}
   try { realtimeStream?.getTracks().forEach(t => t.stop()); } catch {}
-  if (realtimeAudio) { realtimeAudio.srcObject = null; realtimeAudio = null; }
-  realtimePC = null; realtimeStream = null; realtimeDC = null;
+  try { realtimeWs?.close(); } catch {}
+  try { realtimePlaybackCtx?.close(); } catch {}
+  realtimeWs = null; realtimeStream = null; realtimeAudioCtx = null;
+  realtimeProcessor = null; realtimePlaybackCtx = null; realtimePlayNext = 0;
+  realtimeDC = null; realtimePC = null;
   const btn = document.getElementById('realtime-btn');
   if (btn) { btn.style.color = ''; btn.style.background = ''; }
   const cbtn = document.getElementById('continuous-btn');
@@ -1398,17 +1450,15 @@ async function handleRealtimeTask(callId, argsJson) {
   if (!request) return;
 
   // Send the function result back to Realtime immediately (keeps conversation flowing)
-  if (realtimeDC?.readyState === 'open') {
-    realtimeDC.send(JSON.stringify({
-      type: 'conversation.item.create',
-      item: {
-        type: 'function_call_output',
-        call_id: callId,
-        output: JSON.stringify({ status: 'dispatched', message: 'Claude is executing in background' })
-      }
-    }));
-    realtimeDC.send(JSON.stringify({ type: 'response.create' }));
-  }
+  _rtSend({
+    type: 'conversation.item.create',
+    item: {
+      type: 'function_call_output',
+      call_id: callId,
+      output: JSON.stringify({ status: 'dispatched', message: 'Claude is executing in background' })
+    }
+  });
+  _rtSend({ type: 'response.create' });
 
   // Fire Claude in background via /api/chat (non-blocking)
   try {
@@ -1440,29 +1490,21 @@ async function handleRealtimeTask(callId, argsJson) {
 // The message is ALREADY the final sentence to speak — just tell the model to say it verbatim.
 // Falls back to TTS if Realtime data channel is dead.
 function announceToRealtime(message) {
-  // If Realtime DC is alive, inject the message for GPT to speak
-  if (realtimeActive && realtimeDC?.readyState === 'open') {
+  if (realtimeActive && realtimeWs?.readyState === WebSocket.OPEN) {
     try {
       const INSTR = {
         BR: `Fale exatamente esta frase ao senhor, sem traduzir nem adicionar nada: "${message}"`,
         ES: `Di exactamente esta frase al señor, sin traducir ni añadir nada: "${message}"`,
         EN: `Say exactly this sentence to the user, do not translate or add anything: "${message}"`
       };
-      const instruction = INSTR[currentLang] || INSTR.EN;
-      realtimeDC.send(JSON.stringify({
-        type: 'conversation.item.create',
-        item: { type: 'message', role: 'system', content: [{ type: 'input_text', text: instruction }] }
-      }));
-      realtimeDC.send(JSON.stringify({ type: 'response.create' }));
+      _rtSend({ type: 'conversation.item.create', item: { type: 'message', role: 'system', content: [{ type: 'input_text', text: INSTR[currentLang] || INSTR.EN }] } });
+      _rtSend({ type: 'response.create' });
       return;
     } catch (e) {
-      console.warn('[JARVIS] Realtime DC send failed, falling back to TTS:', e.message);
+      console.warn('[JARVIS] Realtime WS send failed, falling back to TTS:', e.message);
     }
   }
-  // Fallback: Realtime is supposed to be active but DC is dead — use TTS directly
-  if (userGestureReceived) {
-    speakResponse(message);
-  }
+  if (userGestureReceived) speakResponse(message);
 }
 
 function initRealtimeBtn() {
@@ -1790,11 +1832,14 @@ function startWakeWord() {
       const transcript = event.results[i][0].transcript.toLowerCase();
       // Detect "jarvis" in any pronunciation (jarvis, járvis, jarvís)
       if (transcript.includes('jarvis') || transcript.includes('járvis') || transcript.includes('jarves')) {
-        if (!realtimeActive && !realtimeConnecting) {
-          addTerminalLine('[info] 🎤 JARVIS ativado por voz — modo escuta + cowork ON', 'info-line');
-          // Activate voice
-          startRealtime();
-          // Activate cowork mode (screen awareness)
+        if (!realtimeActive && !realtimeConnecting && !isRecording) {
+          addTerminalLine('[info] 🎤 JARVIS ativado por voz', 'info-line');
+          if (voiceRealtimeAvailable) {
+            startRealtime();
+          } else {
+            userGestureReceived = true;
+            startRecording();
+          }
           fetch('/api/cowork/start', { method: 'POST' }).catch(() => {});
         }
         break;
@@ -2063,16 +2108,25 @@ chatInput.addEventListener('keydown', (e) => {
 
 micBtn.addEventListener('click', () => {
   userGestureReceived = true;
-  // Feedback visual imediato
-  micBtn.classList.toggle('recording');
-  addTerminalLine(realtimeActive ? '[system] Desconectando voz...' : '[system] Conectando voz...', 'system-line');
-  startRealtime().then(() => {
-    if (realtimeActive) micBtn.classList.add('recording');
-    else micBtn.classList.remove('recording');
-  }).catch((err) => {
-    micBtn.classList.remove('recording');
-    addTerminalLine(`[error] Voz: ${err.message || err}`, 'error-line');
-  });
+  if (voiceRealtimeAvailable) {
+    micBtn.classList.toggle('recording');
+    addTerminalLine(realtimeActive ? '[system] Desconectando voz...' : '[system] Conectando voz...', 'system-line');
+    startRealtime().then(() => {
+      if (realtimeActive) micBtn.classList.add('recording');
+      else micBtn.classList.remove('recording');
+    }).catch((err) => {
+      micBtn.classList.remove('recording');
+      addTerminalLine(`[error] Voz: ${err.message || err}`, 'error-line');
+    });
+  } else {
+    // Realtime indisponível — usa push-to-talk com Web Speech / Whisper
+    if (isRecording) {
+      stopRecording();
+    } else {
+      addTerminalLine('[system] Ouvindo... (clique novamente para enviar)', 'system-line');
+      startRecording();
+    }
+  }
 });
 
 // Terminal direct input
@@ -2162,6 +2216,10 @@ initRealtimeBtn();
       if (result.status === 'ok') {
         icon.textContent = '✅';
         el.classList.add('pf-ok');
+      } else if (result.status === 'warning') {
+        icon.textContent = '⚠️';
+        el.classList.add('pf-ok');
+        el.setAttribute('data-detail', result.detail || '');
       } else {
         icon.textContent = '❌';
         el.classList.add('pf-err');
@@ -2413,9 +2471,12 @@ initRealtimeBtn();
         if (barApi) barApi.className = 'bar-fill ok';
         if (sApi) { sApi.textContent = 'OK'; sApi.style.color = 'var(--green, #00ff88)'; }
 
-        if (data.capabilities?.voice_realtime) {
+        voiceRealtimeAvailable = !!data.capabilities?.voice_realtime;
+        const voiceOk = voiceRealtimeAvailable || data.capabilities?.voice_stt || data.capabilities?.voice_tts;
+        if (voiceOk) {
           if (barVoice) barVoice.className = 'bar-fill ok';
-          if (sVoice) { sVoice.textContent = 'OK'; sVoice.style.color = 'var(--green, #00ff88)'; }
+          const label = voiceRealtimeAvailable ? 'OK' : 'STT';
+          if (sVoice) { sVoice.textContent = label; sVoice.style.color = 'var(--green, #00ff88)'; }
         } else {
           if (barVoice) barVoice.className = 'bar-fill err';
           if (sVoice) { sVoice.textContent = 'OFF'; sVoice.style.color = '#ff4455'; }
