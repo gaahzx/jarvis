@@ -8,8 +8,11 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import OpenAI, { toFile } from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import puppeteer from 'puppeteer';
+import whatsapp from './system/whatsapp.js';
 import http from 'http';
+import { WebSocket, WebSocketServer } from 'ws';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,15 +31,75 @@ const PORT = process.env.PORT || 3000;
 const JARVIS_DIR = __dirname;
 const PROJECTS_DIR = path.join(JARVIS_DIR, 'Documents and Projects');
 const SYSTEM_DIR = path.join(JARVIS_DIR, 'system');
+
+// Ensure projects dir exists — Claude defaults its cwd here so deliverables land in the right place
+try { fs.mkdirSync(PROJECTS_DIR, { recursive: true }); } catch {}
 const MEMORY_FILE = path.join(SYSTEM_DIR, 'JARVIS-MEMORY.md');
 const HISTORY_FILE = path.join(SYSTEM_DIR, 'JARVIS-HISTORY.json');
 const EMBEDDINGS_FILE = path.join(SYSTEM_DIR, 'memory-embeddings.json');
 const MAX_HISTORY = 20;
-const MAX_EMBEDDINGS = 2000;
+const MAX_EMBEDDINGS = 800; // each entry ~3KB → ~2.4MB max (was 7.5MB at 2000)
 
 const openai = process.env.OPENAI_API_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   : null;
+
+const anthropic = process.env.ANTHROPIC_API_KEY
+  ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+  : null;
+
+// ========== Responses API helper — chat.completions-compatible shape ==========
+// Migrates JARVIS to the Responses API while preserving the calling convention.
+// Returns { choices: [{ message: { content, role } }], output_text, id, usage }.
+// Streaming: pass stream:true → returns the raw async iterator from Responses API.
+async function oaiResp(params) {
+  if (!openai) throw new Error('OpenAI not configured');
+  const body = {
+    model: params.model,
+    input: params.messages,
+  };
+  if (params.max_tokens != null) body.max_output_tokens = params.max_tokens;
+  if (params.temperature != null) body.temperature = params.temperature;
+  if (params.tools) body.tools = params.tools;
+  if (params.previous_response_id) body.previous_response_id = params.previous_response_id;
+  if (params.store != null) body.store = params.store;
+  if (params.reasoning) body.reasoning = params.reasoning;
+
+  // response_format (Chat Completions) → text.format (Responses)
+  if (params.response_format) {
+    const rf = params.response_format;
+    if (rf.type === 'json_object') body.text = { format: { type: 'json_object' } };
+    else if (rf.type === 'json_schema') {
+      const j = rf.json_schema || {};
+      body.text = { format: { type: 'json_schema', name: j.name, strict: j.strict, schema: j.schema } };
+    }
+  }
+
+  if (params.stream) {
+    body.stream = true;
+    const raw = await openai.responses.create(body);
+    // Transform Responses events → chat.completions delta shape so consumers
+    // can keep reading `chunk.choices[0].delta.content`.
+    return (async function* () {
+      for await (const ev of raw) {
+        if (ev.type === 'response.output_text.delta' && ev.delta) {
+          yield { choices: [{ delta: { content: ev.delta } }] };
+        } else if (ev.type === 'response.completed') {
+          yield { choices: [{ delta: {}, finish_reason: 'stop' }] };
+        }
+      }
+    })();
+  }
+
+  const r = await openai.responses.create(body);
+  return {
+    choices: [{ message: { content: r.output_text || '', role: 'assistant' } }],
+    output_text: r.output_text || '',
+    id: r.id,
+    usage: r.usage,
+    _raw: r,
+  };
+}
 
 // ========== RATE LIMITER — Prevent 429 errors ==========
 const _rateLimiter = { lastCall: 0, minInterval: 500 }; // min 500ms between OpenAI calls
@@ -74,6 +137,7 @@ let _lastAction = { task: '', result: '', time: 0, files: [] };
 let claudeCliAvailable = false;
 let claudeCliChecking = true;
 let claudeCliError = '';
+let realtimeAvailable = null; // null = unchecked, true/false after first test
 
 // Procura o binario do Claude CLI com QUINTUPLO CHECK:
 // 0. Via .env (CLAUDE_CLI_PATH) — salvo pelo instalador
@@ -110,6 +174,25 @@ function findClaudeCli() {
           console.log(`[JARVIS] Claude CLI encontrado via where: ${p}`);
           return p;
         } catch {}
+      }
+    }
+  } catch {}
+
+  // Estrategia 2b: nvm paths on macOS (Electron strips NVM from PATH)
+  try {
+    const HOME2 = os.homedir();
+    const nvmDir = path.join(HOME2, '.nvm', 'versions', 'node');
+    if (fs.existsSync(nvmDir)) {
+      const nvmVersions = fs.readdirSync(nvmDir).sort().reverse();
+      for (const v of nvmVersions) {
+        const claudePath = path.join(nvmDir, v, 'bin', 'claude');
+        if (fs.existsSync(claudePath)) {
+          try {
+            execSync(`"${claudePath}" --version`, { stdio: 'pipe', timeout: 5000 });
+            console.log(`[JARVIS] Claude CLI encontrado via nvm: ${claudePath}`);
+            return claudePath;
+          } catch {}
+        }
       }
     }
   } catch {}
@@ -179,7 +262,17 @@ let CLAUDE_CMD = 'claude'; // Atualizado em checkClaudeCliSync()
 
 // Localiza o Python instalado (evita o alias do Windows Store)
 function findPythonExe() {
-  const candidates = [
+  // macOS / Linux: prefer python3
+  const macCandidates = [
+    '/usr/bin/python3',
+    '/usr/local/bin/python3',
+    '/opt/homebrew/bin/python3',
+  ];
+  for (const p of macCandidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  // Windows candidates
+  const winCandidates = [
     'C:\\Program Files\\Python311\\python.exe',
     'C:\\Program Files\\Python312\\python.exe',
     'C:\\Program Files\\Python310\\python.exe',
@@ -188,10 +281,9 @@ function findPythonExe() {
     path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python312', 'python.exe'),
     path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python310', 'python.exe'),
   ];
-  for (const p of candidates) {
+  for (const p of winCandidates) {
     if (fs.existsSync(p)) return p;
   }
-  // Fallback: tentar via where (evita alias do Store que redireciona)
   try {
     const result = execSync('where python', { encoding: 'utf-8', timeout: 5000, shell: true });
     const paths = result.split('\n').map(p => p.trim()).filter(Boolean);
@@ -200,7 +292,7 @@ function findPythonExe() {
       if (fs.existsSync(p)) return p;
     }
   } catch {}
-  return 'python';
+  return 'python3';
 }
 
 const PYTHON_CMD = findPythonExe();
@@ -286,52 +378,33 @@ if (cliExists) {
   claudeCliChecking = true;
 }
 
-// ========== WARM POOL — Zero-latency CLI spawning ==========
-// Pre-spawns claude processes so they're ready before requests arrive.
-// Acquiring from pool = 0ms spawn wait. Background refill keeps pool full.
+// ========== CLAUDE SPAWNER — Cold-spawn on demand ==========
+// Claude CLI auto-exits after ~5s without stdin, so pre-spawning a warm pool is unsafe.
+// We cold-spawn on demand and immediately write the prompt to stdin.
+// Cold-spawn overhead is ~200-500ms, which is acceptable.
 class WarmPool {
-  constructor(model, size) {
+  constructor(model, _size) {
     this.model = model;
-    this.size = size;
-    this.pool = [];
+    this.size = 0;        // no pre-spawn
+    this.pool = [];        // kept for compatibility (always empty)
     this.spawnErrors = 0;
-    // Only fill if Claude CLI is available
-    if (claudeCliAvailable) this.fill();
-    // Periodic cleanup: kill processes older than 90s to free PIDs
-    this._cleanupInterval = setInterval(() => {
-      const now = Date.now();
-      const before = this.pool.length;
-      this.pool = this.pool.filter(proc => {
-        if (now - proc._warmSince > 90000) {
-          try { proc.kill(); } catch {}
-          return false;
-        }
-        return true;
-      });
-      if (before > this.pool.length) {
-        console.log(`[JARVIS] [${this.model}] Cleaned ${before - this.pool.length} stale pool process(es)`);
-        if (claudeCliAvailable) this.fill();
-      }
-    }, 30000); // Check every 30s
   }
 
   _spawn() {
+    // cwd = PROJECTS_DIR so any relative path Claude uses lands in "Documents and Projects/"
     const proc = spawn(CLAUDE_CMD, [
       '--print', '--output-format', 'text',
       '--model', this.model,
       '--dangerously-skip-permissions'
-    ], { shell: true, cwd: JARVIS_DIR });
+    ], { shell: false, cwd: PROJECTS_DIR });
     proc._warmSince = Date.now();
     proc._model = this.model;
-    // Log stderr errors — filter expected warm-pool warnings
     proc.stderr.on('data', (data) => {
       const msg = data.toString().trim();
       if (!msg) return;
-      // Warm pool processes will always warn about no stdin — that's expected
       if (msg.includes('no stdin data received') || msg.includes('Input must be provided')) return;
       console.error(`[JARVIS] [${this.model}] stderr: ${msg}`);
     });
-    // Track spawn failures
     proc.on('error', (err) => {
       this.spawnErrors++;
       console.error(`[JARVIS] [${this.model}] spawn error #${this.spawnErrors}: ${err.message}`);
@@ -344,37 +417,15 @@ class WarmPool {
     return proc;
   }
 
-  fill() {
-    if (!claudeCliAvailable) return;
-    while (this.pool.length < this.size) {
-      this.pool.push(this._spawn());
-    }
-  }
+  fill() { /* no-op — cold-spawn only */ }
 
-  // Acquire a warm process. Immediately schedule refill.
+  // Cold-spawn on demand. Caller MUST write stdin within ~3s.
   acquire() {
     if (!claudeCliAvailable) return null;
-    let proc;
-    if (this.pool.length > 0) {
-      proc = this.pool.shift();
-      // Drop stale processes (>90s old — they may have timed out)
-      if (Date.now() - proc._warmSince > 90000) {
-        try { proc.kill(); } catch {}
-        proc = this._spawn();
-      }
-    } else {
-      proc = this._spawn(); // emergency cold spawn
-    }
-    setImmediate(() => this.fill()); // refill async
-    return proc;
+    return this._spawn();
   }
 
-  // Drain and refill (e.g. after model change)
-  flush() {
-    for (const p of this.pool) try { p.kill(); } catch {}
-    this.pool = [];
-    if (claudeCliAvailable) this.fill();
-  }
+  flush() { /* no-op — no pool to flush */ }
 }
 
 // One pool per model tier — sized by expected traffic
@@ -390,13 +441,15 @@ function getPool(model) {
   return pools.haiku;
 }
 
-// Acquire with automatic fallback: opus→sonnet→haiku→cold spawn
+// Acquire with automatic fallback.
+// Sonnet/Opus tier (tasks) stays in Sonnet/Opus — NEVER falls back to Haiku.
+// Haiku tier (casual chat) can stay Haiku.
 function acquireWithFallback(model) {
   const tierOrder = model.includes('opus')
-    ? [pools.opus, pools.sonnet, pools.haiku]
+    ? [pools.opus, pools.sonnet]            // Opus → Sonnet (no Haiku)
     : model.includes('sonnet')
-      ? [pools.sonnet, pools.haiku]
-      : [pools.haiku];
+      ? [pools.sonnet, pools.opus]          // Sonnet → Opus (no Haiku)
+      : [pools.haiku, pools.sonnet];        // Haiku → Sonnet (casual fallback)
 
   for (const pool of tierOrder) {
     const proc = pool.acquire();
@@ -407,9 +460,10 @@ function acquireWithFallback(model) {
       return proc;
     }
   }
-  // Last resort: cold spawn haiku
-  console.warn('[JARVIS] All pools exhausted — cold spawning haiku');
-  return pools.haiku._spawn();
+  // Last resort: cold spawn the requested tier (or Sonnet if it was Haiku-requested)
+  const coldModel = model.includes('haiku') ? pools.sonnet : (model.includes('opus') ? pools.opus : pools.sonnet);
+  console.warn(`[JARVIS] All pools exhausted — cold spawning ${coldModel.model}`);
+  return coldModel._spawn();
 }
 
 // ========== POOL AUTO-RECOVERY — Re-enable CLI after transient failures ==========
@@ -525,7 +579,7 @@ async function compactMemoryIfNeeded() {
 
     // Use GPT-4o-mini to summarize the oldest 50%
     const res = await rateLimitedOpenAI(() =>
-      openai.chat.completions.create({
+      oaiResp({
         model: 'gpt-4o-mini',
         messages: [
           {
@@ -691,9 +745,54 @@ function chunkText(text, maxChunk = 800) {
   return chunks;
 }
 
+// Auto-extract a 1-line learning from every meaningful exchange + append to JARVIS-MEMORY.md.
+// This is the COMPOUNDING — JARVIS gets smarter each turn.
+let _memoryAppendQueue = [];
+let _memoryAppendTimer = null;
+async function _maybeAppendMemoryFact(userMsg, jarvisReply) {
+  try {
+    if (!openai) return;
+    if (!userMsg || !jarvisReply || userMsg.length < 10 || jarvisReply.length < 10) return;
+    // Skip trivial exchanges
+    if (/^(oi|olá|hello|hi|tudo bem|que horas|que dia|obrigad)/i.test(userMsg.trim())) return;
+
+    const r = await openai.responses.create({
+      model: 'gpt-4o-mini',
+      instructions: 'Extraia UMA frase factual breve (máx 25 palavras) do diálogo abaixo APENAS se tiver: preferência declarada, decisão tomada, projeto mencionado, fato sobre o usuário, ou aprendizado. Se for conversa trivial, responda exatamente "NONE".',
+      input: `User: ${userMsg.slice(0, 500)}\nJARVIS: ${jarvisReply.slice(0, 800)}`,
+      max_output_tokens: 80,
+    });
+    const fact = (r.output_text || '').trim();
+    if (!fact || fact.toUpperCase().startsWith('NONE') || fact.length < 10) return;
+    _memoryAppendQueue.push(`- ${fact}`);
+    if (!_memoryAppendTimer) {
+      _memoryAppendTimer = setTimeout(_flushMemoryAppendQueue, 5000);
+    }
+  } catch {}
+}
+function _flushMemoryAppendQueue() {
+  try {
+    _memoryAppendTimer = null;
+    if (_memoryAppendQueue.length === 0) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const existing = fs.existsSync(MEMORY_FILE) ? fs.readFileSync(MEMORY_FILE, 'utf-8') : '';
+    // De-dup against memory (don't append same fact twice)
+    const newFacts = _memoryAppendQueue.filter(f => !existing.includes(f.slice(2, 50)));
+    if (newFacts.length === 0) { _memoryAppendQueue = []; return; }
+    const header = existing.includes(`## Sessão: ${today}`) ? '' : `\n## Sessão: ${today}\n`;
+    fs.appendFileSync(MEMORY_FILE, header + newFacts.join('\n') + '\n');
+    _cache.memory.mtime = 0;
+    console.log(`[JARVIS] 🧠 Memória ampliada (+${newFacts.length} fatos)`);
+    _memoryAppendQueue = [];
+    compactMemoryIfNeeded();
+  } catch (e) { console.error('[JARVIS] memory append:', e.message); }
+}
+
 async function storeMemory(userMsg, jarvisReply) {
   try {
     if (!openai) return;
+    // Fire-and-forget: extract a fact + append to MEMORY.md
+    _maybeAppendMemoryFact(userMsg, jarvisReply);
     const category = categorizeMemory(userMsg, jarvisReply);
     const fullText = `User: ${userMsg}\nJARVIS: ${jarvisReply}`;
     const chunks = chunkText(fullText);
@@ -822,19 +921,28 @@ function selectModelByComplexity(message) {
   if (/\bsonnet\b/i.test(lower)) return 'claude-sonnet-4-6';
   if (/\bhaiku\b/i.test(lower))  return 'claude-haiku-4-5-20251001';
 
-  // 1. Agent-based routing — any agent can be used with any model
-  //    Default mapping below is optimal, but not a restriction
-  const agent = detectAgent(message);
-  if (agent && AGENT_MODEL_MAP[agent]) return AGENT_MODEL_MAP[agent];
+  // 1. Build/execute tasks ALWAYS go to Sonnet or Opus — never Haiku.
+  //    User directive: tasks must run on Sonnet/Opus.
+  const taskMode = isTaskRequest(message);
 
-  // 2. Complexity-based routing (fallback)
+  // 2. Agent-based routing — any agent can be used with any model
+  const agent = detectAgent(message);
+  if (agent && AGENT_MODEL_MAP[agent]) {
+    const m = AGENT_MODEL_MAP[agent];
+    // If routing tasks, never let Haiku win — upgrade to Sonnet
+    if (taskMode && m.includes('haiku')) return 'claude-sonnet-4-6';
+    return m;
+  }
+
+  // 3. Complexity-based routing
   if (/\b(architect|redesign|refactor|infrastructure|migration|deploy|scale|system design|e-?book|full system|complete|advanced|complex|comprehensive|deep analysis|entire|production|enterprise|conclave|delibera|schema|database|migration)\b/i.test(lower))
     return 'claude-opus-4-6';
 
   if (/\b(create|generate|build|make|write|produce|design|implement|develop|fix|update|modify|analyze|report|presentation|website|app|pdf|document|code|script|html|css|crie|gere|construa|faça|escreva|implemente|corrija)\b/i.test(lower))
     return 'claude-sonnet-4-6';
 
-  return 'claude-haiku-4-5-20251001';
+  // 4. Fallback: tasks → Sonnet, casual chat → Haiku
+  return taskMode ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001';
 }
 
 // Expose detected agent for prompt enrichment
@@ -1043,34 +1151,34 @@ function tryFastExecution(message, language = 'BR') {
 
   // ── Open URL patterns ──
   const urlPatterns = [
-    { rx: /(?:abr[aie]|open|acesse?|navegue?)\s+(?:o\s+)?youtube(?!\s+e\s)/i, url: 'https://www.youtube.com' },
-    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?google/i, url: 'https://www.google.com' },
-    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?spotify/i, url: 'https://open.spotify.com' },
-    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?github/i, url: 'https://github.com' },
-    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?gmail/i, url: 'https://mail.google.com' },
-    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?whatsapp/i, url: 'https://web.whatsapp.com' },
-    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?twitter|(?:abr[aie]|open)\s+(?:o\s+)?x\b/i, url: 'https://x.com' },
-    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?instagram/i, url: 'https://www.instagram.com' },
-    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?linkedin/i, url: 'https://www.linkedin.com' },
-    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?netflix/i, url: 'https://www.netflix.com' },
-    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?claude/i, url: 'https://claude.ai' },
-    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?chatgpt/i, url: 'https://chat.openai.com' },
-    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?notion/i, url: 'https://www.notion.so' },
-    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?figma/i, url: 'https://www.figma.com' },
-    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?canva/i, url: 'https://www.canva.com' },
-    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?trello/i, url: 'https://trello.com' },
-    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?vercel/i, url: 'https://vercel.com' },
-    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?supabase/i, url: 'https://supabase.com' },
-    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?twitch/i, url: 'https://www.twitch.tv' },
-    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?reddit/i, url: 'https://www.reddit.com' },
-    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?amazon/i, url: 'https://www.amazon.com.br' },
-    { rx: /(?:abr[aie]|open|acesse?)\s+(?:o\s+)?mercado\s*livre/i, url: 'https://www.mercadolivre.com.br' },
+    { rx: /(?:abr[aie]|open|acesse?|navegue?)\s+(?:[oa]s?\s+)?youtube(?!\s+e\s)/i, url: 'https://www.youtube.com' },
+    { rx: /(?:abr[aie]|open|acesse?)\s+(?:[oa]s?\s+)?google/i, url: 'https://www.google.com' },
+    // spotify removed — handled by program patterns (open native app, not web)
+    { rx: /(?:abr[aie]|open|acesse?)\s+(?:[oa]s?\s+)?github/i, url: 'https://github.com' },
+    { rx: /(?:abr[aie]|open|acesse?)\s+(?:[oa]s?\s+)?gmail/i, url: 'https://mail.google.com' },
+    { rx: /(?:abr[aie]|open|acesse?)\s+(?:[oa]s?\s+)?whatsapp/i, url: 'https://web.whatsapp.com' },
+    { rx: /(?:abr[aie]|open|acesse?)\s+(?:[oa]s?\s+)?twitter|(?:abr[aie]|open)\s+(?:[oa]s?\s+)?x\b/i, url: 'https://x.com' },
+    { rx: /(?:abr[aie]|open|acesse?)\s+(?:[oa]s?\s+)?instagram/i, url: 'https://www.instagram.com' },
+    { rx: /(?:abr[aie]|open|acesse?)\s+(?:[oa]s?\s+)?linkedin/i, url: 'https://www.linkedin.com' },
+    { rx: /(?:abr[aie]|open|acesse?)\s+(?:[oa]s?\s+)?netflix/i, url: 'https://www.netflix.com' },
+    { rx: /(?:abr[aie]|open|acesse?)\s+(?:[oa]s?\s+)?claude/i, url: 'https://claude.ai' },
+    { rx: /(?:abr[aie]|open|acesse?)\s+(?:[oa]s?\s+)?chatgpt/i, url: 'https://chat.openai.com' },
+    { rx: /(?:abr[aie]|open|acesse?)\s+(?:[oa]s?\s+)?notion/i, url: 'https://www.notion.so' },
+    { rx: /(?:abr[aie]|open|acesse?)\s+(?:[oa]s?\s+)?figma/i, url: 'https://www.figma.com' },
+    { rx: /(?:abr[aie]|open|acesse?)\s+(?:[oa]s?\s+)?canva/i, url: 'https://www.canva.com' },
+    { rx: /(?:abr[aie]|open|acesse?)\s+(?:[oa]s?\s+)?trello/i, url: 'https://trello.com' },
+    { rx: /(?:abr[aie]|open|acesse?)\s+(?:[oa]s?\s+)?vercel/i, url: 'https://vercel.com' },
+    { rx: /(?:abr[aie]|open|acesse?)\s+(?:[oa]s?\s+)?supabase/i, url: 'https://supabase.com' },
+    { rx: /(?:abr[aie]|open|acesse?)\s+(?:[oa]s?\s+)?twitch/i, url: 'https://www.twitch.tv' },
+    { rx: /(?:abr[aie]|open|acesse?)\s+(?:[oa]s?\s+)?reddit/i, url: 'https://www.reddit.com' },
+    { rx: /(?:abr[aie]|open|acesse?)\s+(?:[oa]s?\s+)?amazon/i, url: 'https://www.amazon.com.br' },
+    { rx: /(?:abr[aie]|open|acesse?)\s+(?:[oa]s?\s+)?mercado\s*livre/i, url: 'https://www.mercadolivre.com.br' },
   ];
 
   for (const { rx, url } of urlPatterns) {
     if (rx.test(msg)) {
       try {
-        execSync(`start "" "${url}"`, { shell: true, timeout: 3000 });
+        execSync(process.platform === 'darwin' ? `open "${url}"` : `start "" "${url}"`, { shell: true, timeout: 3000 });
         const name = new URL(url).hostname.replace('www.', '');
         const summaries = { BR: `${name} aberto.`, ES: `${name} abierto.`, EN: `${name} opened.` };
         return { output: `[file] ${url}`, summary: summaries[language] || summaries.EN };
@@ -1084,7 +1192,7 @@ function tryFastExecution(message, language = 'BR') {
 
   // Helper: open URL and return result
   function openUrl(url, summary) {
-    try { execSync(`start "" "${url}"`, { shell: true, timeout: 3000 }); return { output: `[file] ${url}`, summary }; } catch { return null; }
+    try { execSync(process.platform === 'darwin' ? `open "${url}"` : `start "" "${url}"`, { shell: true, timeout: 3000 }); return { output: `[file] ${url}`, summary }; } catch { return null; }
   }
 
   // ── YOUTUBE: Tocar música/vídeo ──
@@ -1124,7 +1232,8 @@ function tryFastExecution(message, language = 'BR') {
       console.log(`[JARVIS] ▶ YouTube: ${ytResult.trim()}`);
     } catch (e) {
       // Fallback: open search page
-      execSync(`start "" "https://www.youtube.com/results?search_query=${encodeURIComponent(clean)}"`, { shell: true, timeout: 3000 });
+      const ytSearchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(clean)}`;
+      execSync(process.platform === 'darwin' ? `open "${ytSearchUrl}"` : `start "" "${ytSearchUrl}"`, { shell: true, timeout: 3000 });
     }
     const summaries = { BR: `Tocando "${clean}" no YouTube.`, ES: `Reproduciendo "${clean}" en YouTube.`, EN: `Playing "${clean}" on YouTube.` };
     return { output: `[system] YouTube: ${clean}`, summary: summaries[language] || summaries.EN };
@@ -1146,7 +1255,7 @@ function tryFastExecution(message, language = 'BR') {
 
   // ── GOOGLE MAPS: Navegação / Como chegar ──
   const mapsMatch = msg.match(/(?:como\s+cheg[ao]|rota\s+(?:para|pra|até)|naveg[ae]\s+(?:para|pra|até)|directions?\s+to|how\s+to\s+get\s+to|route\s+to)\s+(.+)/i)
-    || msg.match(/(?:abr[aie]|open)\s+(?:o\s+)?(?:google\s+)?maps?\s+(?:em|in|para|pra|de)?\s*(.+)/i);
+    || msg.match(/(?:abr[aie]|open)\s+(?:[oa]s?\s+)?(?:google\s+)?maps?\s+(?:em|in|para|pra|de)?\s*(.+)/i);
   if (mapsMatch) {
     const dest = encodeURIComponent(mapsMatch[1].trim());
     return openUrl(`https://www.google.com/maps/search/${dest}`, { BR: `Abrindo mapa.`, ES: `Abriendo mapa.`, EN: `Opening map.` }[language]);
@@ -1167,7 +1276,7 @@ function tryFastExecution(message, language = 'BR') {
   }
 
   // ── TRADUZIR ──
-  const translateMatch = msg.match(/(?:traduz[ai]?|translate|traduc[ie])\s+(?:isso|isto|this|para|to|pra|em)?\s*(?:para|to|pra|em)?\s*(?:o\s+)?(?:inglês|english|espanhol|spanish|português|portuguese|francês|french|alemão|german)?\s*[:\-]?\s*"?(.+)"?/i);
+  const translateMatch = msg.match(/(?:traduz[ai]?|translate|traduc[ie])\s+(?:isso|isto|this|para|to|pra|em)?\s*(?:para|to|pra|em)?\s*(?:[oa]s?\s+)?(?:inglês|english|espanhol|spanish|português|portuguese|francês|french|alemão|german)?\s*[:\-]?\s*"?(.+)"?/i);
   if (translateMatch && /traduz|translate|traduc/i.test(msg)) {
     // Let Claude handle translation — not a fast-path
     return null;
@@ -1183,9 +1292,9 @@ function tryFastExecution(message, language = 'BR') {
 
   // ── VOLUME do sistema ──
   const volMatch = msg.match(/(?:volume|som)\s+(?:em|para|pra|to|at)?\s*(\d+)\s*%?/i)
-    || msg.match(/(?:aumenta?|sobe?|up)\s+(?:o\s+)?(?:volume|som)/i)
-    || msg.match(/(?:diminui?|abaixa?|baixa?|down)\s+(?:o\s+)?(?:volume|som)/i)
-    || msg.match(/(?:muta?|mute|silenci[ao])\s+(?:o\s+)?(?:volume|som|audio)/i);
+    || msg.match(/(?:aumenta?|sobe?|up)\s+(?:[oa]s?\s+)?(?:volume|som)/i)
+    || msg.match(/(?:diminui?|abaixa?|baixa?|down)\s+(?:[oa]s?\s+)?(?:volume|som)/i)
+    || msg.match(/(?:muta?|mute|silenci[ao])\s+(?:[oa]s?\s+)?(?:volume|som|audio)/i);
   if (volMatch) {
     let volCmd = '';
     if (/muta|mute|silenci/i.test(msg)) {
@@ -1218,10 +1327,10 @@ function tryFastExecution(message, language = 'BR') {
   }
 
   // ── DESLIGAR / REINICIAR PC ──
-  if (/\b(deslig[ae]|shutdown|turn\s+off)\s+(?:o\s+)?(?:pc|computador|computer|máquina)\b/i.test(msg)) {
+  if (/\b(deslig[ae]|shutdown|turn\s+off)\s+(?:[oa]s?\s+)?(?:pc|computador|computer|máquina)\b/i.test(msg)) {
     return { output: '[system] Shutdown solicitado', summary: { BR: 'Desligando em 30 segundos. Digite "shutdown /a" pra cancelar.', ES: 'Apagando en 30 segundos.', EN: 'Shutting down in 30 seconds.' }[language] };
   }
-  if (/\b(reinici[ae]|restart|reboot)\s+(?:o\s+)?(?:pc|computador|computer|máquina)\b/i.test(msg)) {
+  if (/\b(reinici[ae]|restart|reboot)\s+(?:[oa]s?\s+)?(?:pc|computador|computer|máquina)\b/i.test(msg)) {
     return { output: '[system] Restart solicitado', summary: { BR: 'Reiniciando em 30 segundos.', ES: 'Reiniciando en 30 segundos.', EN: 'Restarting in 30 seconds.' }[language] };
   }
 
@@ -1230,33 +1339,68 @@ function tryFastExecution(message, language = 'BR') {
     return null; // Multi-step → Computer Use v2 or Claude handles it
   }
 
-  // ── Open programs (only simple "abre X" without follow-up actions) ──
-  const programPatterns = [
-    { rx: /(?:abr[aie]|open)\s+(?:o\s+)?excel$/i, cmd: 'start excel', name: 'Excel' },
-    { rx: /(?:abr[aie]|open)\s+(?:o\s+)?word$/i, cmd: 'start winword', name: 'Word' },
-    { rx: /(?:abr[aie]|open)\s+(?:o\s+)?powerpoint$|(?:abr[aie]|open)\s+(?:o\s+)?pptx?$/i, cmd: 'start powerpnt', name: 'PowerPoint' },
-    { rx: /(?:abr[aie]|open)\s+(?:o\s+)?notepad$|(?:abr[aie]|open)\s+(?:o\s+)?bloco\s*de\s*notas$/i, cmd: 'start notepad', name: 'Notepad' },
-    { rx: /(?:abr[aie]|open)\s+(?:o\s+)?calculadora$|(?:abr[aie]|open)\s+(?:the\s+)?calculator$/i, cmd: 'start calc', name: 'Calculator' },
-    { rx: /(?:abr[aie]|open)\s+(?:o\s+)?explorador$|(?:abr[aie]|open)\s+(?:the\s+)?(?:file\s+)?explorer$/i, cmd: 'start explorer', name: 'Explorer' },
-    { rx: /(?:abr[aie]|open)\s+(?:o\s+)?terminal$|(?:abr[aie]|open)\s+(?:o\s+)?cmd$/i, cmd: 'start cmd', name: 'Terminal' },
-    { rx: /(?:abr[aie]|open)\s+(?:o\s+)?vs\s*code$|(?:abr[aie]|open)\s+(?:o\s+)?visual\s*studio\s*code$/i, cmd: 'start code', name: 'VS Code' },
-    { rx: /(?:abr[aie]|open)\s+(?:o\s+)?paint$/i, cmd: 'start mspaint', name: 'Paint' },
-    { rx: /(?:abr[aie]|open)\s+(?:o\s+)?obs$/i, cmd: 'start "" "C:\\Program Files\\obs-studio\\bin\\64bit\\obs64.exe"', name: 'OBS Studio' },
-    { rx: /(?:abr[aie]|open)\s+(?:o\s+)?obsidian$/i, cmd: 'start obsidian:', name: 'Obsidian' },
-    { rx: /(?:abr[aie]|open)\s+(?:o\s+)?discord$/i, cmd: 'start discord:', name: 'Discord' },
-    { rx: /(?:abr[aie]|open)\s+(?:o\s+)?(?:brave|brave\s+browser)$/i, cmd: 'start brave', name: 'Brave' },
-    { rx: /(?:abr[aie]|open)\s+(?:o\s+)?telegram$/i, cmd: 'start "" "%LOCALAPPDATA%\\Telegram Desktop\\Telegram.exe"', name: 'Telegram' },
-    { rx: /(?:abr[aie]|open)\s+(?:as?\s+)?(?:configurac[oõ]es|settings)$/i, cmd: 'start ms-settings:', name: 'Configuracoes' },
-    { rx: /(?:abr[aie]|open)\s+(?:o\s+)?painel\s+de\s+controle$/i, cmd: 'start control', name: 'Painel de Controle' },
+  // ── Open programs — platform-aware (macOS uses `open -a`, Windows uses `start`) ──
+  const isMac = process.platform === 'darwin';
+  const programPatterns = isMac ? [
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?excel$/i, cmd: 'open -a "Microsoft Excel"', name: 'Excel' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?word$/i, cmd: 'open -a "Microsoft Word"', name: 'Word' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?powerpoint$|(?:abr[aie]|open)\s+(?:[oa]s?\s+)?pptx?$/i, cmd: 'open -a "Microsoft PowerPoint"', name: 'PowerPoint' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?notepad$|(?:abr[aie]|open)\s+(?:[oa]s?\s+)?bloco\s*de\s*notas$|(?:abr[aie]|open)\s+(?:[oa]s?\s+)?notas$/i, cmd: 'open -a "Notes"', name: 'Notas' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?calculadora$|(?:abr[aie]|open)\s+(?:the\s+)?calculator$/i, cmd: 'open -a "Calculator"', name: 'Calculadora' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?finder$|(?:abr[aie]|open)\s+(?:[oa]s?\s+)?explorador/i, cmd: 'open -a "Finder"', name: 'Finder' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?terminal$/i, cmd: 'open -a "Terminal"', name: 'Terminal' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?iterm$/i, cmd: 'open -a "iTerm"', name: 'iTerm' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?vs\s*code$|(?:abr[aie]|open)\s+(?:[oa]s?\s+)?visual\s*studio\s*code$/i, cmd: 'open -a "Visual Studio Code"', name: 'VS Code' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?safari$/i, cmd: 'open -a "Safari"', name: 'Safari' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?(?:chrome|google\s+chrome)$/i, cmd: 'open -a "Google Chrome"', name: 'Chrome' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?(?:brave|brave\s+browser)$/i, cmd: 'open -a "Brave Browser"', name: 'Brave' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?firefox$/i, cmd: 'open -a "Firefox"', name: 'Firefox' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?obsidian$/i, cmd: 'open -a "Obsidian"', name: 'Obsidian' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?discord$/i, cmd: 'open -a "Discord"', name: 'Discord' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?slack$/i, cmd: 'open -a "Slack"', name: 'Slack' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?telegram$/i, cmd: 'open -a "Telegram"', name: 'Telegram' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?spotify$/i, cmd: 'open -a "Spotify"', name: 'Spotify' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?zoom$/i, cmd: 'open -a "zoom.us"', name: 'Zoom' },
+    { rx: /(?:abr[aie]|open)\s+(?:as?\s+)?(?:configura[cç][oõ]es|settings|preferen[cç][ai]as?|ajustes)$/i, cmd: 'open -a "System Settings"', name: 'Ajustes do Sistema' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?(?:mail|email|correio)$/i, cmd: 'open -a "Mail"', name: 'Mail' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?calend[aá]rio$|(?:abr[aie]|open)\s+(?:the\s+)?calendar$/i, cmd: 'open -a "Calendar"', name: 'Calendário' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?messages?$|(?:abr[aie]|open)\s+(?:as\s+)?mensagens$/i, cmd: 'open -a "Messages"', name: 'Mensagens' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?facetime$/i, cmd: 'open -a "FaceTime"', name: 'FaceTime' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?photos$|(?:abr[aie]|open)\s+(?:as\s+)?fotos$/i, cmd: 'open -a "Photos"', name: 'Fotos' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?reminders?$|(?:abr[aie]|open)\s+(?:os\s+)?lembretes$/i, cmd: 'open -a "Reminders"', name: 'Lembretes' },
+  ] : [
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?excel$/i, cmd: 'start excel', name: 'Excel' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?word$/i, cmd: 'start winword', name: 'Word' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?powerpoint$|(?:abr[aie]|open)\s+(?:[oa]s?\s+)?pptx?$/i, cmd: 'start powerpnt', name: 'PowerPoint' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?notepad$|(?:abr[aie]|open)\s+(?:[oa]s?\s+)?bloco\s*de\s*notas$/i, cmd: 'start notepad', name: 'Notepad' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?calculadora$|(?:abr[aie]|open)\s+(?:the\s+)?calculator$/i, cmd: 'start calc', name: 'Calculator' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?terminal$|(?:abr[aie]|open)\s+(?:[oa]s?\s+)?cmd$/i, cmd: 'start cmd', name: 'Terminal' },
+    { rx: /(?:abr[aie]|open)\s+(?:[oa]s?\s+)?vs\s*code$|(?:abr[aie]|open)\s+(?:[oa]s?\s+)?visual\s*studio\s*code$/i, cmd: 'start code', name: 'VS Code' },
   ];
 
+  // Map of app name → web fallback if app not installed
+  const APP_WEB_FALLBACK = {
+    'Spotify': 'https://open.spotify.com', 'Discord': 'https://discord.com/app',
+    'Slack': 'https://slack.com', 'Telegram': 'https://web.telegram.org',
+    'Obsidian': 'https://obsidian.md', 'Zoom': 'https://zoom.us',
+  };
   for (const { rx, cmd, name } of programPatterns) {
     if (rx.test(msg)) {
       try {
         execSync(cmd, { shell: true, timeout: 5000 });
-        const summaries = { BR: `${name} aberto.`, ES: `${name} abierto.`, EN: `${name} opened.` };
+        const summaries = { BR: `${name} aberto, senhor.`, ES: `${name} abierto.`, EN: `${name} opened.` };
         return { output: `[system] ${name} iniciado`, summary: summaries[language] || summaries.EN };
-      } catch { return null; }
+      } catch (e) {
+        // App not installed — fallback to web if known
+        const fallback = APP_WEB_FALLBACK[name];
+        if (fallback) {
+          try {
+            execSync(process.platform === 'darwin' ? `open "${fallback}"` : `start "" "${fallback}"`, { shell: true, timeout: 3000 });
+            return { output: `[system] ${name} via web`, summary: `${name} aberto via web, senhor (app não instalado).` };
+          } catch {}
+        }
+        return { output: `[error] ${name} não pôde ser aberto`, summary: `Não consegui abrir ${name}, senhor — confirme que está instalado.` };
+      }
     }
   }
 
@@ -1275,7 +1419,7 @@ function tryFastExecution(message, language = 'BR') {
     for (const p of candidates) {
       if (fs.existsSync(p)) {
         try {
-          execSync(`start "" "${p}"`, { shell: true, timeout: 3000 });
+          execSync(process.platform === 'darwin' ? `open "${p}"` : `start "" "${p}"`, { shell: true, timeout: 3000 });
           const summaries = { BR: `Pasta "${folderName}" aberta.`, ES: `Carpeta "${folderName}" abierta.`, EN: `Folder "${folderName}" opened.` };
           return { output: `[file] ${p}`, summary: summaries[language] || summaries.EN };
         } catch { return null; }
@@ -1289,7 +1433,7 @@ function tryFastExecution(message, language = 'BR') {
     let url = urlMatch[1];
     if (!url.startsWith('http')) url = 'https://' + url;
     try {
-      execSync(`start "" "${url}"`, { shell: true, timeout: 3000 });
+      execSync(process.platform === 'darwin' ? `open "${url}"` : `start "" "${url}"`, { shell: true, timeout: 3000 });
       const summaries = { BR: `${url} aberto.`, ES: `${url} abierto.`, EN: `${url} opened.` };
       return { output: `[file] ${url}`, summary: summaries[language] || summaries.EN };
     } catch { return null; }
@@ -1361,7 +1505,7 @@ async function trySmartFastExecution(message, language = 'BR') {
   if (!isSimpleAction) return null;
 
   try {
-    const res = await openai.chat.completions.create({
+    const res = await oaiResp({
       model: 'gpt-4o-mini',
       messages: [{
         role: 'system',
@@ -1434,7 +1578,7 @@ async function updateProjectStatus(userRequest, claudeResponse) {
   if (!isTaskRequest(userRequest)) return; // only for build tasks
 
   try {
-    const res = await openai.chat.completions.create({
+    const res = await oaiResp({
       model: 'gpt-4o-mini',
       messages: [
         {
@@ -1463,7 +1607,7 @@ async function updateProjectStatus(userRequest, claudeResponse) {
 }
 
 // Build GPT-mini system prompt — injects full JARVIS context (memory + history)
-function buildGPTSystemPrompt(language = 'EN') {
+function buildGPTSystemPrompt(language = 'BR') {
   const memory = loadMemoryCached();
   const history = formatHistoryForPrompt(loadHistoryCached(), false, false);
 
@@ -1491,24 +1635,103 @@ ${history || '(no history yet)'}`;
 // Handle GPT-mini streaming response
 // isBuild=true → short warm ACK (Claude will do the work)
 // isBuild=false → full answer
-async function handleGPTChat(message, res, language = 'EN', isBuild = false) {
-  const systemPrompt = buildGPTSystemPrompt(language);
+// Per-session conversation chain (Responses API native multi-turn)
+// Reset after 5 min silence so JARVIS doesn't carry stale context indefinitely.
+const _convoState = { lastResponseId: null, lastTurnAt: 0, model: 'gpt-4o-mini' };
+const CONVO_TIMEOUT_MS = 5 * 60 * 1000;
 
+function _getOrResetConvo() {
+  const now = Date.now();
+  if (now - _convoState.lastTurnAt > CONVO_TIMEOUT_MS) {
+    _convoState.lastResponseId = null;
+  }
+  _convoState.lastTurnAt = now;
+  return _convoState;
+}
+
+// Voice prompt with FULL knowledge access: Obsidian vault index + relevant notes + JARVIS-MEMORY.md
+function buildVoicePrompt(language, obsidianContext = '') {
+  const langRule = {
+    BR: `[REGRA ABSOLUTA DE IDIOMA — INEGOCIÁVEL]
+Você responde SOMENTE em Português Brasileiro. SEMPRE. SEM EXCEÇÃO.
+Mesmo que o senhor fale em inglês ou outra língua, sua resposta é SEMPRE em PT-BR.
+ÚNICA exceção: se o senhor pedir EXPLICITAMENTE "uma dica em inglês" ou "como se diz em inglês" — aí pode citar a frase/palavra em inglês entre aspas, mas o restante da resposta continua em PT-BR.
+Trate o usuário como "senhor".`,
+    ES: 'Responde EXCLUSIVAMENTE en Español. Trate al usuario como "señor".',
+    EN: 'Respond EXCLUSIVELY in English. Address the user as "sir".',
+  }[language] || 'Respond in English. Address the user as "sir".';
+
+  // Always-on knowledge: JARVIS persistent memory + recent history
+  let memBlock = '';
+  try {
+    const mem = loadMemoryCached();
+    if (mem) memBlock = `\n\nMEMÓRIA PERSISTENTE (fatos, preferências, decisões):\n${mem.slice(0, 4000)}`;
+  } catch {}
+  let histBlock = '';
+  try {
+    const hist = formatHistoryForPrompt(loadHistoryCached(), true, false);
+    if (hist) histBlock = `\n\nCONVERSAS RECENTES:\n${hist.slice(0, 1500)}`;
+  } catch {}
+  const kb = obsidianContext
+    ? `\n\nVAULT OBSIDIAN (seu conhecimento expandido — use quando relevante, sem citar fontes):\n${obsidianContext}`
+    : '';
+  return `Você é JARVIS — assistente pessoal afiado, leal, executivo. ${langRule}
+Seja conciso (1-3 frases via voz). Direto, caloroso, ligeiramente espirituoso.
+NUNCA repita o mesmo opener — varie ("Senhor.", "Pois bem,", "Certamente.", "Pode crer,", "Entendido.", "Aqui vai,", "Resumindo:", "Olha só,", direto ao ponto às vezes).
+NUNCA mencione que é GPT/OpenAI/Claude — você é JARVIS.
+Mantenha continuidade — este é diálogo de voz em andamento.${memBlock}${histBlock}${kb}`;
+}
+
+async function handleGPTChat(message, res, language = 'BR', isBuild = false) {
   const userContent = isBuild
-    ? `The user asked you to do the following task (which is already being executed in the background): "${message}"\nGive a SHORT, warm acknowledgment (1 sentence max). Do NOT try to answer or execute it yourself. Just confirm you're on it.`
+    ? `User just asked: "${message}". Give a SHORT warm acknowledgment (1 sentence). Don't try to do the task.`
     : message;
 
-  const stream = await openai.chat.completions.create({
+  // For voice (non-build) use Responses API with previous_response_id for dynamic conversation
+  if (!isBuild) {
+    const convo = _getOrResetConvo();
+    // Pull relevant Obsidian knowledge for this turn (best-effort, fast: file scan)
+    const kbContext = (typeof _obsidianContextFor === 'function')
+      ? _obsidianContextFor(message, 3, 1200) : '';
+    const reqBody = {
+      model: 'gpt-4o-mini',
+      instructions: buildVoicePrompt(language, kbContext),
+      input: userContent,
+      max_output_tokens: 300,
+      stream: true,
+      store: true,
+      temperature: 0.9, // higher = more variety in responses
+    };
+    if (convo.lastResponseId) reqBody.previous_response_id = convo.lastResponseId;
+
+    let fullResponse = '';
+    let responseId = null;
+    const raw = await openai.responses.create(reqBody);
+    for await (const ev of raw) {
+      if (ev.type === 'response.output_text.delta' && ev.delta) {
+        fullResponse += ev.delta;
+        if (res) { try { res.write(ev.delta); } catch {} }
+      }
+      if (ev.type === 'response.completed' && ev.response) {
+        responseId = ev.response.id;
+      }
+    }
+    if (responseId) convo.lastResponseId = responseId;
+    return fullResponse;
+  }
+
+  // Build/ACK path keeps the old behavior (small ACK with full persona)
+  const systemPrompt = buildGPTSystemPrompt(language);
+  const stream = await oaiResp({
     model: 'gpt-4o-mini',
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userContent }
     ],
     stream: true,
-    max_tokens: isBuild ? 60 : 600,
+    max_tokens: 60,
     temperature: 0.8
   });
-
   let fullResponse = '';
   for await (const chunk of stream) {
     const text = chunk.choices[0]?.delta?.content || '';
@@ -1517,12 +1740,15 @@ async function handleGPTChat(message, res, language = 'EN', isBuild = false) {
       if (res) { try { res.write(text); } catch {} }
     }
   }
-
   return fullResponse;
 }
 
+// Expose conversation reset for explicit context breaks
+function resetVoiceConvo() { _convoState.lastResponseId = null; _convoState.lastTurnAt = 0; }
+app.post('/api/voice-reset', (req, res) => { resetVoiceConvo(); res.json({ ok: true }); });
+
 // ========== INSTANT ACK GENERATOR (no Claude spawn needed) ==========
-function generateAck(message, language = 'EN') {
+function generateAck(message, language = 'BR') {
   const lower = message.toLowerCase();
   const subject = message.replace(/^(jarvis[,.]??\s*)/i, '').replace(TASK_PATTERN, '').trim()
     .split(/[.,!?]/)[0].trim().slice(0, 60) || 'isso';
@@ -1569,7 +1795,7 @@ async function translateTo(text, targetLang) {
   if (!openai) return text;
   try {
     return await rateLimitedOpenAI(async () => {
-      const res = await openai.chat.completions.create({
+      const res = await oaiResp({
         model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: `Translate the following text to ${targetLang}. Return ONLY the translated text, no explanations.` },
@@ -1586,7 +1812,7 @@ async function translateTo(text, targetLang) {
 }
 
 // ========== JARVIS PROMPT BUILDER ==========
-function buildJarvisPrompt(message, semanticContext = '', isVoice = false, language = 'EN', model = '', conclaveEnabled = true) {
+function buildJarvisPrompt(message, semanticContext = '', isVoice = false, language = 'BR', model = '', conclaveEnabled = true) {
   const memory = loadMemoryCached();
   // 7D: Shorter prompt for voice simple questions, full for creation tasks
   const isTask = isTaskRequest(message);
@@ -1659,11 +1885,38 @@ ${_lastAction.task && (Date.now() - _lastAction.time < 300000) ? `\nLAST ACTION 
     if (language === 'BR') {
       prompt += `
 
-REGRA - PROJETOS em Documents and Projects/:
-1. Salvar em: ${PROJECTS_DIR}/{nome-projeto}/
-2. Emitir [system] Criando projeto em path...
-3. Após criar arquivo: emitir [file] nome.ext | /caminho/completo
-4. Ao concluir: emitir [system] Concluído. Seu [item] está pronto.
+SUPER PODERES (use quando o usuário pedir):
+
+🟢 **WhatsApp** (web.whatsapp.com via puppeteer):
+- Conectar (1x QR scan): curl -X POST http://localhost:${PORT}/api/whatsapp/connect
+- Listar conversas: curl http://localhost:${PORT}/api/whatsapp/chats
+- Mensagens de um contato: curl -X POST http://localhost:${PORT}/api/whatsapp/open -H "Content-Type: application/json" -d '{"name":"NomeContato"}'; curl http://localhost:${PORT}/api/whatsapp/messages
+- Enviar: curl -X POST http://localhost:${PORT}/api/whatsapp/send -H "Content-Type: application/json" -d '{"name":"NomeContato","text":"mensagem"}'
+- Analisar conversa: curl -X POST http://localhost:${PORT}/api/whatsapp/analyze -H "Content-Type: application/json" -d '{"name":"NomeContato","prompt":"O que cliente quer?"}'
+
+🟢 **Automação macOS** (AppleScript + shell):
+- AppleScript (controlar apps): curl -X POST http://localhost:${PORT}/api/macos/exec -H "Content-Type: application/json" -d '{"type":"applescript","code":"tell application \\"Safari\\" to activate"}'
+- Shell (mv, cp, mkdir, open): use bash diretamente — você já tem permissão total via --dangerously-skip-permissions
+
+🟢 **Análise de planilha na tela** (já existe):
+- Pergunte sobre "a planilha aberta" e o screen vision (GPT-4o) analisa o screenshot dos monitores
+- Para EDITAR planilha aberta: use /api/excel-live (fecha Excel, edita openpyxl, reabre)
+
+🟢 **Relatórios**: gere HTML → /api/pdf para PDF, ou direto markdown em ${PROJECTS_DIR}/
+
+🟢 **Obsidian (3º CÉREBRO — base de conhecimento permanente)**:
+- Buscar: curl "http://localhost:${PORT}/api/obsidian/search?q=termo"
+- Ler nota: curl "http://localhost:${PORT}/api/obsidian/note?path=Pasta/Nota.md"
+- Criar/atualizar nota (SALVA aprendizado permanente):
+  curl -X POST http://localhost:${PORT}/api/obsidian/write -H "Content-Type: application/json" -d '{"title":"Nome","folder":"Categoria","content":"# Título\\n\\nConteúdo markdown"}'
+- QUANDO escrever: usuário pediu "lembra disso/salva/anota", OU você concluiu algo importante.
+
+REGRA OBRIGATÓRIA - SALVAR EM "Documents and Projects/":
+- TODO arquivo gerado MUST ir para: ${PROJECTS_DIR}/{nome-projeto-curto-kebab-case}/
+- Use SEMPRE o caminho absoluto acima — NUNCA salve direto em ${JARVIS_DIR} nem em qualquer outro lugar.
+- Crie a subpasta {nome-projeto} primeiro: mkdir -p "${PROJECTS_DIR}/nome-projeto"
+- Após cada arquivo criado, emita: [file] nome.ext | ${PROJECTS_DIR}/nome-projeto/nome.ext
+- Ao concluir, emita: [system] Concluído. Seu {item} está em ${PROJECTS_DIR}/nome-projeto/
 
 CRIAÇÃO DE ARQUIVOS: PDF via HTML depois /api/pdf. Binários via bibliotecas Python.
 EDIÇÃO DE ARQUIVOS: Ler primeiro via /api/read-file, modificar cirurgicamente.
@@ -1694,11 +1947,28 @@ ${projectContext ? `\nCONTEXTO DO PROJETO:\n${projectContext}` : ''}`;
     } else {
       prompt += `
 
-RULE - PROJECTS in Documents and Projects/:
-1. Save in: ${PROJECTS_DIR}/{project-name}/
-2. Emit [system] Creating project in path...
-3. After creating file: emit [file] name.ext | /path/complete
-4. When done: emit [system] Done. Your [item] is ready, sir.
+SUPER POWERS (use when user asks):
+
+🟢 **WhatsApp** (web.whatsapp.com via puppeteer):
+- Connect (QR scan once): POST /api/whatsapp/connect
+- List chats: GET /api/whatsapp/chats
+- Open chat: POST /api/whatsapp/open {"name":"X"}
+- Read messages: GET /api/whatsapp/messages
+- Send: POST /api/whatsapp/send {"name":"X","text":"..."}
+- Analyze conversation: POST /api/whatsapp/analyze {"name":"X","prompt":"..."}
+
+🟢 **macOS automation**: AppleScript + shell via /api/macos/exec, or use bash directly (full permissions).
+
+🟢 **Spreadsheet on screen**: ask about "the open spreadsheet" → screen vision (GPT-4o) analyzes; edit via /api/excel-live.
+
+🟢 **Reports**: generate HTML → /api/pdf, or markdown in ${PROJECTS_DIR}/
+
+MANDATORY RULE - SAVE TO "Documents and Projects/":
+- EVERY generated file MUST go to: ${PROJECTS_DIR}/{short-kebab-case-project-name}/
+- ALWAYS use the absolute path above — NEVER save directly to ${JARVIS_DIR} or anywhere else.
+- Create the subfolder first: mkdir -p "${PROJECTS_DIR}/project-name"
+- After each file: emit [file] name.ext | ${PROJECTS_DIR}/project-name/name.ext
+- When done, emit: [system] Done. Your {item} is in ${PROJECTS_DIR}/project-name/
 
 FILE CREATION: PDF via HTML then /api/pdf. Binary via Python libraries.
 FILE EDITING: Read first via /api/read-file, modify surgically.
@@ -1786,7 +2056,7 @@ function extractCompletionMessage(claudeResponse, language) {
   return GENERIC[language] || GENERIC.EN;
 }
 
-function notifyBuildComplete(userRequest, claudeResponse, language = 'EN') {
+function notifyBuildComplete(userRequest, claudeResponse, language = 'BR') {
   // SINGLE notification: try GPT-mini enrichment with 3s timeout, fall back to extract.
   const fallback = extractCompletionMessage(claudeResponse, language);
 
@@ -1797,7 +2067,7 @@ function notifyBuildComplete(userRequest, claudeResponse, language = 'EN') {
   }
 
   const timeout = new Promise(resolve => setTimeout(() => resolve(null), 3000));
-  const enrich = openai.chat.completions.create({
+  const enrich = oaiResp({
     model: 'gpt-4o-mini',
     messages: [
       {
@@ -1830,7 +2100,7 @@ const sessionStats = { startTime: Date.now(), tokensIn: 0, tokensOut: 0, request
 app.post('/api/chat', async (req, res) => {
   const t0 = Date.now();
   try {
-    const { message, attachmentId, fromVoice, language = 'EN', conclaveEnabled = true } = req.body;
+    const { message, attachmentId, fromVoice, language = 'BR', conclaveEnabled = true } = req.body;
     if (!message) return res.status(400).json({ error: 'Message required' });
 
     sessionStats.requests++;
@@ -2146,20 +2416,48 @@ REGRAS:
       }
     }
 
-    // Guard: if Claude CLI is not available, notify user immediately
+    // Guard: if Claude CLI is not available, try Anthropic SDK fallback
     if (!claudeCliAvailable) {
+      if (anthropic) {
+        console.log('[JARVIS] 🔄 CLI unavailable — using Anthropic SDK fallback');
+        try {
+          const memory = loadMemoryCached();
+          const history = loadHistoryCached();
+          const systemPrompt = `You are JARVIS — the user's most capable AI assistant. Loyal, brilliant, strategic. Respond in ${language === 'BR' ? 'Brazilian Portuguese' : language === 'ES' ? 'Spanish' : 'English'}. Be direct, dense, no filler. Execute requests immediately, never ask clarifying questions.\n\nMemory:\n${memory || '(empty)'}`;
+          const msgs = [];
+          if (history && history.length) {
+            for (const h of history.slice(-6)) {
+              msgs.push({ role: h.role === 'jarvis' ? 'assistant' : 'user', content: h.content });
+            }
+          }
+          msgs.push({ role: 'user', content: fullMessage });
+          const stream = anthropic.messages.stream({ model: 'claude-sonnet-4-6', max_tokens: 4096, system: systemPrompt, messages: msgs });
+          let responseBuffer = '';
+          for await (const chunk of stream) {
+            if (chunk.type === 'content_block_delta' && chunk.delta?.text) {
+              responseBuffer += chunk.delta.text;
+              try { res.write(chunk.delta.text); } catch {}
+            }
+          }
+          setImmediate(() => {
+            appendHistoryFast('user', message);
+            appendHistoryFast('jarvis', responseBuffer);
+            storeMemory(message, responseBuffer).catch(() => {});
+          });
+          try { res.end(); } catch {}
+        } catch (sdkErr) {
+          console.error('[JARVIS] SDK fallback error:', sdkErr.message);
+          try { res.write(`[error] ${sdkErr.message}`); res.end(); } catch {}
+        }
+        return;
+      }
       const errorMsg = {
-        BR: `[error] Claude Code não está disponível: ${claudeCliError}. A voz funciona, mas tarefas não podem ser executadas. Peça ao administrador para configurar o Claude Code CLI.`,
-        ES: `[error] Claude Code no está disponible: ${claudeCliError}. La voz funciona, pero las tareas no se pueden ejecutar. Pida al administrador que configure Claude Code CLI.`,
-        EN: `[error] Claude Code unavailable: ${claudeCliError}. Voice works, but tasks cannot be executed. Ask administrator to configure Claude Code CLI.`
+        BR: `Senhor, o Claude Code não está autenticado. Para ativar: abra o Terminal e execute "claude" para fazer login. Ou adicione ANTHROPIC_API_KEY no arquivo .env.`,
+        ES: `Señor, Claude Code no está autenticado. Para activar: abra Terminal y ejecute "claude" para iniciar sesión. O añada ANTHROPIC_API_KEY en el archivo .env.`,
+        EN: `Sir, Claude Code is not authenticated. To activate: open Terminal and run "claude" to log in. Or add ANTHROPIC_API_KEY to the .env file.`
       };
-      const errText = errorMsg[language] || errorMsg.EN;
-      console.error(`[JARVIS] ❌ Task rejected — Claude CLI unavailable: ${claudeCliError}`);
-      try { res.write(errText); res.end(); } catch {}
-      // Push notification so voice announces the error
-      pushNotification({ type: 'build-complete', message: language === 'BR'
-        ? 'Senhor, o Claude Code não está configurado nesta máquina. Preciso que o administrador faça o login.'
-        : 'Sir, Claude Code is not configured on this machine. The administrator needs to log in.', language });
+      console.error(`[JARVIS] ❌ CLI unavailable and no SDK key: ${claudeCliError}`);
+      try { res.write(errorMsg[language] || errorMsg.EN); res.end(); } catch {}
       return;
     }
 
@@ -2280,7 +2578,7 @@ app.post('/api/voice-spawn', (req, res) => {
 app.post('/api/voice-complete', async (req, res) => {
   const t0 = Date.now();
   try {
-    const { spawnId, message } = req.body;
+    const { spawnId, message, language = 'BR' } = req.body;
     if (!message) return res.status(400).json({ error: 'Message required' });
 
     sessionStats.requests++;
@@ -2301,7 +2599,38 @@ app.post('/api/voice-complete', async (req, res) => {
     res.setHeader('X-Accel-Buffering', 'no');
     res.setHeader('Cache-Control', 'no-cache');
 
-    // Guard: Claude CLI must be available
+    // ── ULTRA-FAST PATH: regex match for known actions (~50ms, executes immediately) ──
+    // Try local execution FIRST (open apps, sites, folders) before going to GPT/Claude.
+    const fastExec = tryFastExecution(message, language);
+    if (fastExec) {
+      console.log(`[JARVIS] ⚡ Voice fast-exec → ${fastExec.summary}`);
+      try { res.write(fastExec.summary); res.end(); } catch {}
+      // Save to memory + learn pattern
+      setImmediate(() => {
+        appendHistoryFast('user', message);
+        appendHistoryFast('jarvis', fastExec.summary);
+        storeMemory(message, fastExec.summary).catch(() => {});
+      });
+      return;
+    }
+
+    // ── FAST PATH: casual voice → GPT-mini (1-2s) instead of Claude cold-spawn (5-6s) ──
+    const voiceIsTask = isTaskRequest(message);
+    if (!voiceIsTask && openai) {
+      try {
+        const fastResp = await handleGPTChat(message, res, language, false);
+        setImmediate(() => {
+          appendHistoryFast('jarvis', fastResp);
+          storeMemory(message, fastResp).catch(() => {});
+        });
+        try { res.end(); } catch {}
+        return;
+      } catch (e) {
+        console.warn('[JARVIS] voice fast-path failed, falling back to Claude:', e.message);
+      }
+    }
+
+    // Guard: Claude CLI must be available for tasks
     if (!claudeCliAvailable) {
       const errMsg = 'Claude Code is not configured. Voice Q&A works but execution is disabled.';
       console.error(`[JARVIS] ❌ voice-complete rejected: ${claudeCliError}`);
@@ -2309,9 +2638,12 @@ app.post('/api/voice-complete', async (req, res) => {
       return;
     }
 
-    // Use pre-spawned process if available, else grab from warm pool
+    // Tasks → Sonnet/Opus
     let proc;
-    if (spawnId && pendingSpawns.has(spawnId)) {
+    if (voiceIsTask) {
+      const taskModel = selectModelByComplexity(message);
+      proc = acquireWithFallback(taskModel);
+    } else if (spawnId && pendingSpawns.has(spawnId)) {
       proc = pendingSpawns.get(spawnId).proc;
       pendingSpawns.delete(spawnId);
     } else {
@@ -2322,7 +2654,7 @@ app.post('/api/voice-complete', async (req, res) => {
       return;
     }
 
-    const { language: voiceLang = 'EN' } = req.body;
+    const voiceLang = language;
     // Inject screen context if cowork mode is active
     let voiceMessage = message;
     if (coworkActive && coworkScreenContext) {
@@ -2382,8 +2714,11 @@ app.post('/api/audio-complete', async (req, res) => {
       return;
     }
 
-    // Use warm pool — no cold spawn
-    const proc = pools.haiku.acquire();
+    // Tasks → Sonnet/Opus; casual chat → Haiku
+    const audioIsTask = isTaskRequest(message);
+    const proc = audioIsTask
+      ? acquireWithFallback(selectModelByComplexity(message))
+      : pools.haiku.acquire();
     if (!proc) {
       try { res.write('[error] Claude process unavailable.'); res.end(); } catch {}
       return;
@@ -2435,6 +2770,174 @@ const HALLUCINATION_PATTERNS = [
   /^(okay|ok)\.?$/i,
 ];
 
+// ===== /api/whatsapp/* — WhatsApp Web automation via puppeteer =====
+app.post('/api/whatsapp/connect', async (req, res) => {
+  try { res.json(await whatsapp.connect({ headless: false })); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/whatsapp/status', async (req, res) => {
+  try { res.json(await whatsapp.status()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/whatsapp/chats', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 20;
+    res.json({ chats: await whatsapp.getChats(limit) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/whatsapp/open', async (req, res) => {
+  try {
+    const { name } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name required' });
+    res.json(await whatsapp.openChat(name));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/whatsapp/messages', async (req, res) => {
+  try {
+    const count = parseInt(req.query.count) || 20;
+    res.json({ messages: await whatsapp.getMessages(count) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/whatsapp/send', async (req, res) => {
+  try {
+    const { name, text } = req.body || {};
+    if (!text) return res.status(400).json({ error: 'text required' });
+    if (name) await whatsapp.openChat(name);
+    res.json(await whatsapp.sendMessage(text));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/whatsapp/analyze', async (req, res) => {
+  try {
+    const { name, prompt = 'Resuma essa conversa em 3 bullets: pontos-chave, decisões, próximas ações.', count = 30 } = req.body || {};
+    if (name) await whatsapp.openChat(name);
+    const messages = await whatsapp.getMessages(count);
+    const transcript = messages.map(m => `[${m.timestamp || ''}] ${m.from}: ${m.text}`).join('\n');
+    if (!transcript) return res.json({ analysis: '(conversa vazia)' });
+    const r = await openai.responses.create({
+      model: 'gpt-5.5',
+      instructions: 'Você é JARVIS analisando uma conversa de WhatsApp. Responda em Português Brasileiro, conciso e direto.',
+      input: `${prompt}\n\nCONVERSA:\n${transcript}`,
+      reasoning: { effort: 'low' },
+    });
+    res.json({ analysis: r.output_text, messageCount: messages.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ===== /api/macos/exec — generic AppleScript / shell automation =====
+// JARVIS uses this to control apps, move files, run macOS commands.
+// Whitelist of allowed command prefixes to prevent abuse.
+app.post('/api/macos/exec', async (req, res) => {
+  try {
+    const { type, code } = req.body || {};
+    if (!code) return res.status(400).json({ error: 'code required' });
+    if (type !== 'applescript' && type !== 'shell') return res.status(400).json({ error: 'type must be applescript|shell' });
+    const cmd = type === 'applescript'
+      ? `osascript -e ${JSON.stringify(code)}`
+      : code;
+    const { execSync } = await import('child_process');
+    const out = execSync(cmd, { encoding: 'utf-8', timeout: 30000, maxBuffer: 5*1024*1024 });
+    res.json({ output: out, ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message, stderr: e.stderr?.toString() });
+  }
+});
+
+// ===== /api/code-gen — GPT-5.5 via Responses API for code generation (separate quota from Realtime) =====
+// Use when Claude CLI is unavailable or for quick non-interactive code/file tasks.
+// Streams response when stream:true; otherwise returns full text.
+app.post('/api/code-gen', async (req, res) => {
+  try {
+    if (!openai) return res.status(503).json({ error: 'OpenAI not configured' });
+    const {
+      prompt,
+      model = 'gpt-5.5',
+      effort = 'low',           // 'none' | 'low' | 'medium' | 'high' | 'xhigh'
+      stream = false,
+      language = 'BR',
+    } = req.body;
+    if (!prompt) return res.status(400).json({ error: 'prompt required' });
+
+    const sysPrompt = (language === 'BR')
+      ? `Você é o JARVIS, motor de geração de código. Saída direta e executável. Sem preâmbulo. Quando criar arquivos, salve em ${PROJECTS_DIR}/{nome-do-projeto}/ usando caminhos absolutos. Emita [file] nome.ext | caminho-completo após cada arquivo.`
+      : `You are JARVIS code-gen engine. Direct executable output. No preamble. When creating files, save under ${PROJECTS_DIR}/{project-name}/ using absolute paths. Emit [file] name.ext | full-path after each file.`;
+
+    if (stream) {
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Transfer-Encoding', 'chunked');
+      const s = await openai.responses.create({
+        model,
+        input: [
+          { role: 'system', content: sysPrompt },
+          { role: 'user', content: prompt },
+        ],
+        reasoning: { effort },
+        stream: true,
+      });
+      for await (const event of s) {
+        if (event.type === 'response.output_text.delta' && event.delta) {
+          try { res.write(event.delta); } catch { break; }
+        }
+      }
+      try { res.end(); } catch {}
+    } else {
+      const r = await openai.responses.create({
+        model,
+        input: [
+          { role: 'system', content: sysPrompt },
+          { role: 'user', content: prompt },
+        ],
+        reasoning: { effort },
+      });
+      res.json({ output: r.output_text, model });
+    }
+  } catch (err) {
+    console.error('[JARVIS] code-gen error:', err.message);
+    if (!res.headersSent) res.status(500).json({ error: err.message });
+    else try { res.end(); } catch {}
+  }
+});
+
+// ===== /api/audio-chat — gpt-audio fallback for when Realtime quota is exhausted =====
+// Accepts base64 WAV input, returns base64 WAV output. Uses Chat Completions (separate quota).
+app.post('/api/audio-chat', async (req, res) => {
+  try {
+    if (!openai) return res.status(503).json({ error: 'OpenAI not configured' });
+    const { audio_b64, format = 'wav', voice = 'ash', language = 'BR', text } = req.body;
+    if (!audio_b64 && !text) return res.status(400).json({ error: 'audio_b64 or text required' });
+
+    const sysPrompt = REALTIME_INSTRUCTIONS[language] || REALTIME_INSTRUCTIONS.BR;
+    const userContent = audio_b64
+      ? [{ type: 'input_audio', input_audio: { data: audio_b64, format } }]
+      : text;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-audio',
+      modalities: ['text', 'audio'],
+      audio: { voice, format: 'wav' },
+      messages: [
+        { role: 'system', content: sysPrompt },
+        { role: 'user', content: userContent },
+      ],
+    });
+
+    const msg = completion.choices[0].message;
+    res.json({
+      transcript: msg.audio?.transcript || msg.content || '',
+      audio_b64: msg.audio?.data || '',
+      format: 'wav',
+    });
+  } catch (err) {
+    console.error('[JARVIS] audio-chat error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 function isHallucination(text) {
   if (!text || !text.trim()) return true;
   const trimmed = text.trim();
@@ -2473,38 +2976,56 @@ app.post('/api/stt', upload.single('audio'), async (req, res) => {
       return res.json({ text: '', filtered: true, reason: 'Audio too short' });
     }
 
+    // Detect actual audio format from MIME type (iOS sends m4a, browser sends webm)
+    const mimeType = req.file.mimetype || 'audio/webm';
+    const isM4a = mimeType.includes('m4a') || mimeType.includes('mp4') || mimeType.includes('mpeg');
+    const audioFilename = isM4a ? 'audio.m4a' : 'audio.webm';
+    const audioMime = isM4a ? 'audio/mp4' : 'audio/webm';
+
     // Save raw audio for debugging
-    const debugPath = path.join(SYSTEM_DIR, 'last-audio-debug.webm');
+    const debugPath = path.join(SYSTEM_DIR, `last-audio-debug${isM4a ? '.m4a' : '.webm'}`);
     try { fs.writeFileSync(debugPath, req.file.buffer); } catch {}
 
-    console.log(`[JARVIS] STT input: ${req.file.size} bytes, mime: ${req.file.mimetype}, saved to debug`);
+    console.log(`[JARVIS] STT input: ${req.file.size} bytes, mime: ${mimeType} → ${audioMime}, saved to debug`);
 
-    // Single transcription call with English — simpler is more reliable
-    const audioFile = await toFile(req.file.buffer, 'audio.webm', { type: 'audio/webm' });
+    // Map iOS language codes to Whisper codes
+    const clientLang = (req.body?.language || 'BR').toUpperCase();
+    const whisperLangMap = { BR: 'pt', EN: 'en', ES: 'es' };
+    const primaryLang = whisperLangMap[clientLang] || 'pt';
+    const fallbackLang = primaryLang === 'pt' ? 'en' : 'pt';
+    const prompts = {
+      pt: 'Crie um e-book sobre marketing digital. Construa um site. Gere um relatório. Olá JARVIS.',
+      en: 'Create an e-book about digital marketing. Build a website. Generate a report. Hello JARVIS.',
+      es: 'Crea un e-book sobre marketing digital. Construye un sitio web. Genera un informe. Hola JARVIS.',
+    };
 
-    // First attempt: English
+    // First attempt: auto-detect language (no language param → Whisper detects)
+    const audioFile = await toFile(req.file.buffer, audioFilename, { type: audioMime });
     let transcription = await openai.audio.transcriptions.create({
       model: 'whisper-1',
       file: audioFile,
-      language: 'en',
-      prompt: 'Create an e-book about digital marketing. Build a website. Generate a report. Design a presentation. Analyze data. Write code. Hello JARVIS.'
+      response_format: 'verbose_json',
+      prompt: prompts[primaryLang] || prompts.pt,
     });
 
     let raw = transcription.text?.trim() || '';
-    console.log('[JARVIS] STT [en]:', JSON.stringify(raw));
+    let detectedLanguage = transcription.language || primaryLang;
+    console.log(`[JARVIS] STT [auto→${detectedLanguage}]:`, JSON.stringify(raw));
 
-    // If English hallucinated, try Portuguese
+    // If auto-detect hallucinated, try with explicit fallback language
     if (isHallucination(raw)) {
-      console.log('[JARVIS] EN was hallucination, trying PT...');
-      const audioFile2 = await toFile(req.file.buffer, 'audio.webm', { type: 'audio/webm' });
+      console.log(`[JARVIS] auto-detect was hallucination, trying ${fallbackLang}...`);
+      const audioFile2 = await toFile(req.file.buffer, audioFilename, { type: audioMime });
       transcription = await openai.audio.transcriptions.create({
         model: 'whisper-1',
         file: audioFile2,
-        language: 'pt',
-        prompt: 'Crie um e-book sobre marketing digital. Construa um site. Gere um relatório. Olá JARVIS.'
+        response_format: 'verbose_json',
+        language: fallbackLang,
+        prompt: prompts[fallbackLang] || prompts.en,
       });
       raw = transcription.text?.trim() || '';
-      console.log('[JARVIS] STT [pt]:', JSON.stringify(raw));
+      detectedLanguage = transcription.language || fallbackLang;
+      console.log(`[JARVIS] STT [${fallbackLang}]:`, JSON.stringify(raw));
     }
 
     if (isHallucination(raw)) {
@@ -2513,7 +3034,7 @@ app.post('/api/stt', upload.single('audio'), async (req, res) => {
     }
 
     console.log('[JARVIS] STT accepted:', raw);
-    res.json({ text: raw });
+    res.json({ text: raw, transcript: raw, detectedLanguage });
   } catch (err) {
     console.error('[JARVIS] STT error:', err);
     res.status(500).json({ error: err.message });
@@ -2524,7 +3045,7 @@ app.post('/api/stt', upload.single('audio'), async (req, res) => {
 app.post('/api/analyze-screen-fast', async (req, res) => {
   try {
     if (!openai) return res.status(500).json({ error: 'OpenAI API key not configured' });
-    const { image, message = '', language = 'EN', saveHistory = false } = req.body;
+    const { image, message = '', language = 'BR', saveHistory = false } = req.body;
     if (!image) return res.status(400).json({ error: 'Image required' });
 
     const memory = loadMemoryCached();
@@ -2579,7 +3100,7 @@ app.post('/api/analyze-screen-fast', async (req, res) => {
 // POST /api/analyze-screen - Vision: analyze screenshot via Claude CLI (uses subscription auth)
 app.post('/api/analyze-screen', async (req, res) => {
   try {
-    const { image, message = '', language = 'EN', saveHistory = false } = req.body;
+    const { image, message = '', language = 'BR', saveHistory = false } = req.body;
     if (!image) return res.status(400).json({ error: 'Image required' });
 
     // Save screenshot to temp file
@@ -2655,7 +3176,7 @@ Be direct and concise. If the user's question is about specific content visible 
 app.post('/api/tts', async (req, res) => {
   try {
     if (!openai) return res.status(500).json({ error: 'OpenAI API key not configured' });
-    const { text, language = 'EN', voice: requestedVoice } = req.body;
+    const { text, language = 'BR', voice: requestedVoice } = req.body;
     if (!text) return res.status(400).json({ error: 'Text required' });
 
     // User-selected voice takes priority. Fallback: onyx (EN) / nova (BR)
@@ -2703,7 +3224,7 @@ app.post('/api/translate', async (req, res) => {
 app.post('/api/realtime/session', async (req, res) => {
   try {
     if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: 'OpenAI API key not configured' });
-    const { language = 'EN', voice = 'ash' } = req.body || {};
+    const { language = 'BR', voice = 'ash' } = req.body || {};
 
     const INSTRUCTIONS = {
       BR: `Você é JARVIS — assistente pessoal com poderes COMPLETOS sobre o computador do senhor. Fale APENAS em Português Brasileiro. Máximo 1 frase. Nunca mencione GPT ou OpenAI.
@@ -2756,14 +3277,9 @@ RULE: For ANY request that is not pure knowledge → call "execute_task". NEVER 
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'gpt-4o-realtime-preview',
+        model: 'gpt-realtime-2',
         voice,
         instructions,
-        turn_detection: { type: 'server_vad', threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 500 },
-        input_audio_transcription: {
-          model: 'whisper-1',
-          language: { BR: 'pt', ES: 'es', EN: 'en' }[language] || 'en'
-        },
         modalities: ['audio', 'text'],
         tools,
         tool_choice: 'auto'
@@ -2771,6 +3287,13 @@ RULE: For ANY request that is not pure knowledge → call "execute_task". NEVER 
     });
     const data = await r.json();
     if (!r.ok) {
+      if (data.error?.code === 'beta_api_shape_disabled') {
+        if (realtimeAvailable !== false) {
+          realtimeAvailable = false;
+          console.warn('[JARVIS] Realtime API: account requires GA migration at platform.openai.com/settings');
+        }
+        return res.status(503).json({ error: 'Voz em tempo real indisponível. Ative o Realtime GA em platform.openai.com/settings.', code: 'realtime_unavailable' });
+      }
       console.error('[JARVIS] Realtime session error:', data);
       return res.status(500).json({ error: data.error?.message || 'Realtime session failed' });
     }
@@ -3113,12 +3636,23 @@ app.get('/api/files/view', (req, res) => {
 // POST /api/pdf - HTML to PDF via Puppeteer
 app.post('/api/pdf', async (req, res) => {
   try {
-    const { htmlPath, pdfPath } = req.body;
+    let { htmlPath, pdfPath, html, filename } = req.body || {};
+
+    // Accept inline HTML — write to temp HTML in PROJECTS_DIR first
+    if (html && !htmlPath) {
+      const slug = (filename || `doc-${Date.now()}`).replace(/[^\w-]/g, '-').slice(0, 60);
+      const dir = path.join(PROJECTS_DIR, slug);
+      fs.mkdirSync(dir, { recursive: true });
+      htmlPath = path.join(dir, `${slug}.html`);
+      pdfPath = pdfPath || path.join(dir, `${slug}.pdf`);
+      fs.writeFileSync(htmlPath, html);
+    }
+    if (!htmlPath || !pdfPath) return res.status(400).json({ error: 'pass html+filename, or htmlPath+pdfPath' });
+
     const normHtml = path.normalize(htmlPath);
     const normPdf = path.normalize(pdfPath);
-
     if (!normHtml.startsWith(PROJECTS_DIR) || !normPdf.startsWith(PROJECTS_DIR)) {
-      return res.status(403).json({ error: 'Access denied' });
+      return res.status(403).json({ error: 'paths must be under PROJECTS_DIR' });
     }
     if (!fs.existsSync(normHtml)) return res.status(404).json({ error: 'HTML file not found' });
 
@@ -3590,7 +4124,7 @@ app.post('/api/health/preflight', async (req, res) => {
     results.openai_tts = { status: 'error', detail: 'Requires OpenAI API key' };
   } else {
     try {
-      const chatTest = await openai.chat.completions.create({
+      const chatTest = await oaiResp({
         model: 'gpt-4o-mini',
         messages: [{ role: 'user', content: 'Say "ok" and nothing else.' }],
         max_tokens: 5, temperature: 0
@@ -3613,7 +4147,7 @@ app.post('/api/health/preflight', async (req, res) => {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: 'gpt-4o-realtime-preview',
+          model: 'gpt-realtime-2',
           voice: 'ash',
           modalities: ['audio', 'text']
         })
@@ -3697,14 +4231,22 @@ app.post('/api/health/preflight', async (req, res) => {
     }
   }
 
-  // Summary
+  // Summary — openai_realtime failure is a warning, not a blocker (TTS/STT still work)
+  const criticalKeys = ['openai_api', 'openai_tts', 'claude_cli', 'claude_execute'];
+  const allCriticalOk = criticalKeys.every(k => results[k]?.status === 'ok');
   const allOk = Object.values(results).every(r => r.status === 'ok');
+  if (results.openai_realtime?.status === 'error') {
+    results.openai_realtime.status = 'warning';
+    results.openai_realtime.detail = 'Realtime WebRTC indisponível — voz push-to-talk (STT+TTS) ativa como substituto.';
+  }
   const summary = {
-    status: allOk ? 'ready' : 'issues_found',
+    status: allCriticalOk ? 'ready' : 'issues_found',
     results,
     message: allOk
       ? 'All systems operational. JARVIS is ready to use.'
-      : 'Some components have issues. Check details above.'
+      : allCriticalOk
+        ? 'JARVIS operacional. Realtime WebRTC indisponível — voz via STT+TTS ativa.'
+        : 'Some components have issues. Check details above.'
   };
 
   console.log('[JARVIS] Pre-flight results:', JSON.stringify(summary.results, null, 2));
@@ -3798,7 +4340,29 @@ After fixing, output a summary of what was done.`;
 // ═══════════════════════════════════════════════
 // OBSIDIAN BRAIN — Vault endpoints
 // ═══════════════════════════════════════════════
-const OBSIDIAN_VAULT = path.join(os.homedir(), 'Documents', 'Felipe');
+// Auto-detect Obsidian vault: any folder under ~/Documents with a .obsidian/ dir
+function _findObsidianVault() {
+  const docs = path.join(os.homedir(), 'Documents');
+  try {
+    const candidates = [];
+    for (const f of fs.readdirSync(docs)) {
+      if (f === 'Jarvis') continue; // skip our own dir's template
+      const full = path.join(docs, f);
+      try {
+        if (fs.statSync(full).isDirectory() && fs.existsSync(path.join(full, '.obsidian'))) {
+          // Count .md files (rough size signal)
+          let count = 0;
+          try { (function walk(d){ for (const x of fs.readdirSync(d)) { if (x.startsWith('.')) continue; const p = path.join(d,x); try { if (fs.statSync(p).isDirectory()) walk(p); else if (x.endsWith('.md')) count++; } catch{} } })(full); } catch {}
+          candidates.push({ path: full, count });
+        }
+      } catch {}
+    }
+    candidates.sort((a, b) => b.count - a.count);
+    return candidates[0]?.path || path.join(docs, 'Felipe'); // fallback to old name
+  } catch { return path.join(os.homedir(), 'Documents', 'Felipe'); }
+}
+const OBSIDIAN_VAULT = _findObsidianVault();
+console.log(`[JARVIS] 📚 Obsidian vault: ${OBSIDIAN_VAULT}`);
 
 // GET /api/obsidian/stats — count notes, folders, links
 app.get('/api/obsidian/stats', (req, res) => {
@@ -3864,6 +4428,156 @@ app.get('/api/obsidian/tree', (req, res) => {
 });
 
 // GET /api/obsidian/note?path=... — read a note
+// GET /api/obsidian/search?q=... — full-text search across all .md files
+// Returns top-N most relevant notes ranked by token overlap with query.
+app.get('/api/obsidian/search', (req, res) => {
+  try {
+    const q = (req.query.q || '').trim().toLowerCase();
+    const limit = parseInt(req.query.limit) || 5;
+    if (!q) return res.json({ results: [] });
+    if (!fs.existsSync(OBSIDIAN_VAULT)) return res.json({ results: [] });
+
+    const queryTokens = q.split(/\s+/).filter(t => t.length > 2);
+    const results = [];
+
+    function walk(dir) {
+      let entries;
+      try { entries = fs.readdirSync(dir); } catch { return; }
+      for (const f of entries) {
+        if (f.startsWith('.')) continue;
+        const full = path.join(dir, f);
+        let stat;
+        try { stat = fs.statSync(full); } catch { continue; }
+        if (stat.isDirectory()) { walk(full); continue; }
+        if (!f.endsWith('.md')) continue;
+        try {
+          const content = fs.readFileSync(full, 'utf-8');
+          const lower = content.toLowerCase();
+          const title = f.replace(/\.md$/, '');
+          // Score: title hits weighted 3x, body 1x
+          let score = 0;
+          for (const tok of queryTokens) {
+            const titleHits = (title.toLowerCase().match(new RegExp(tok.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
+            const bodyHits = (lower.match(new RegExp(tok.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
+            score += titleHits * 3 + bodyHits;
+          }
+          if (score > 0) {
+            results.push({
+              path: path.relative(OBSIDIAN_VAULT, full).replace(/\\/g, '/'),
+              title,
+              score,
+              excerpt: content.slice(0, 400).trim(),
+            });
+          }
+        } catch {}
+      }
+    }
+    walk(OBSIDIAN_VAULT);
+    results.sort((a, b) => b.score - a.score);
+    res.json({ results: results.slice(0, limit), query: q });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// In-memory cache of Obsidian vault — rebuilt every 60s or when file changes detected.
+// Eliminates per-request file I/O (was adding ~100-200ms to every voice turn).
+const _obsidianCache = { notes: [], builtAt: 0, ttl: 60_000 };
+function _rebuildObsidianCache() {
+  if (!fs.existsSync(OBSIDIAN_VAULT)) { _obsidianCache.notes = []; _obsidianCache.builtAt = Date.now(); return; }
+  const notes = [];
+  function walk(dir) {
+    let entries; try { entries = fs.readdirSync(dir); } catch { return; }
+    for (const f of entries) {
+      if (f.startsWith('.')) continue;
+      const full = path.join(dir, f);
+      let stat; try { stat = fs.statSync(full); } catch { continue; }
+      if (stat.isDirectory()) { walk(full); continue; }
+      if (!f.endsWith('.md')) continue;
+      try {
+        const content = fs.readFileSync(full, 'utf-8');
+        notes.push({
+          title: f.replace(/\.md$/, ''),
+          titleLower: f.toLowerCase(),
+          content,
+          contentLower: content.toLowerCase(),
+        });
+      } catch {}
+    }
+  }
+  walk(OBSIDIAN_VAULT);
+  _obsidianCache.notes = notes;
+  _obsidianCache.builtAt = Date.now();
+}
+// Warm cache on boot
+setImmediate(() => _rebuildObsidianCache());
+
+function _obsidianContextFor(query, maxNotes = 8, maxChars = 4500) {
+  try {
+    if (Date.now() - _obsidianCache.builtAt > _obsidianCache.ttl) _rebuildObsidianCache();
+    if (_obsidianCache.notes.length === 0) return '';
+    // Always include vault index (titles only) so JARVIS knows what's available
+    const index = _obsidianCache.notes.map(n => `- ${n.title}`).join('\n');
+
+    const STOPWORDS = new Set(['que','para','com','dos','das','meu','minha','sua','seu','tem','não','sim','por','foi','são','este','esta','isso','aqui','sobre','você','muito','mais','seus','suas','about','what','this','that','with','from','have','need','your','here','onde','quando','como','quem','tudo','nada','quero','poder','vamos','dizer','falar','dizer','agora']);
+    const tokens = (query || '').toLowerCase()
+      .replace(/[^\w\sáàâãéèêíïóôõúüçñ-]/g, ' ')
+      .split(/\s+/)
+      .filter(t => t.length >= 3 && !STOPWORDS.has(t));
+
+    let snippets = '';
+    if (tokens.length > 0) {
+      const hits = [];
+      for (const n of _obsidianCache.notes) {
+        let score = 0;
+        for (const tok of tokens) {
+          if (n.titleLower.includes(tok)) score += 5;
+          let idx = 0, c = 0;
+          while ((idx = n.contentLower.indexOf(tok, idx)) !== -1) { c++; idx += tok.length; if (c > 30) break; }
+          score += c;
+        }
+        if (score > 0) hits.push({ title: n.title, content: n.content, score });
+      }
+      hits.sort((a, b) => b.score - a.score);
+      for (const h of hits.slice(0, maxNotes)) {
+        snippets += `\n### ${h.title}\n${h.content.slice(0, 700).trim()}\n`;
+        if (snippets.length > maxChars) break;
+      }
+    }
+
+    return `ÍNDICE DO VAULT (${_obsidianCache.notes.length} notas disponíveis):\n${index}\n${snippets ? `\nCONTEÚDO RELEVANTE:\n${snippets}` : ''}`.trim();
+  } catch { return ''; }
+}
+
+// POST /api/obsidian/write — create or append note in vault (Sanitizes path, prevents traversal)
+app.post('/api/obsidian/write', express.json({ limit: '5mb' }), (req, res) => {
+  try {
+    const { title, content, folder = '', mode = 'create' } = req.body || {};
+    if (!title || !content) return res.status(400).json({ error: 'title and content required' });
+    // Sanitize: strip slashes/dots, keep unicode
+    const safeTitle = title.replace(/[\/\\.]+/g, '-').replace(/[<>:"|?*\x00-\x1f]/g, '').trim().slice(0, 120);
+    const safeFolder = (folder || '').replace(/\.\./g, '').replace(/^\/+/, '').slice(0, 80);
+    const fullDir = path.join(OBSIDIAN_VAULT, safeFolder);
+    if (!fullDir.startsWith(OBSIDIAN_VAULT)) return res.status(403).json({ error: 'invalid folder' });
+    fs.mkdirSync(fullDir, { recursive: true });
+    const filePath = path.join(fullDir, `${safeTitle}.md`);
+    if (mode === 'append' && fs.existsSync(filePath)) {
+      fs.appendFileSync(filePath, `\n\n---\n${content}\n`);
+    } else {
+      fs.writeFileSync(filePath, content);
+    }
+    // Invalidate cache so next voice query sees the new note
+    _obsidianCache.builtAt = 0;
+    res.json({
+      ok: true,
+      path: path.relative(OBSIDIAN_VAULT, filePath).replace(/\\/g, '/'),
+      mode,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/obsidian/note', (req, res) => {
   try {
     const notePath = req.query.path;
@@ -3892,7 +4606,7 @@ app.post('/api/obsidian/ingest', express.json({ limit: '10mb' }), async (req, re
 
       if (openai && folder === 'auto') {
         try {
-          const aiRes = await openai.chat.completions.create({
+          const aiRes = await oaiResp({
             model: 'gpt-4o-mini',
             messages: [
               { role: 'system', content: 'Organize this knowledge into an Obsidian note. Return JSON: {"title":"short title","folder":"best folder (Projetos|Negócios & Finanças|Marketing Digital|Programação & IA|Tecnologias)","content":"organized markdown with [[links]] to related concepts"}' },
@@ -3975,7 +4689,7 @@ app.post('/api/obsidian/ingest', express.json({ limit: '10mb' }), async (req, re
       // Use GPT to extract valuable knowledge
       if (openai) {
         try {
-          const aiRes = await openai.chat.completions.create({
+          const aiRes = await oaiResp({
             model: 'gpt-4o-mini',
             messages: [
               { role: 'system', content: 'Extract valuable knowledge from this session. Create 1-3 Obsidian notes. Return JSON array: [{"title":"...","content":"markdown with [[links]]","folder":"best folder name"}]. Only extract decisions, learnings, preferences, projects created. Skip trivial chat.' },
@@ -4029,8 +4743,11 @@ let _screenStateRestarts = 0;
 const MAX_DAEMON_RESTARTS = 10;
 
 function startScreenStateDaemon() {
-  const script = path.join(JARVIS_DIR, 'system', 'screen-state.py');
-  if (!fs.existsSync(script)) { console.log('[JARVIS] screen-state.py not found — will not retry'); return; }
+  // Use macOS-specific script on darwin (the Windows one uses ctypes.windll)
+  const script = process.platform === 'darwin'
+    ? path.join(JARVIS_DIR, 'system', 'screen-state-mac.py')
+    : path.join(JARVIS_DIR, 'system', 'screen-state.py');
+  if (!fs.existsSync(script)) { console.log(`[JARVIS] ${script} not found — will not retry`); return; }
   screenStateDaemon = spawn(PYTHON_CMD, ['-u', script, '--mode=stdout'], {
     cwd: JARVIS_DIR, stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -4067,8 +4784,8 @@ function startScreenStateDaemon() {
   console.log('[JARVIS] Screen state daemon started');
 }
 
-// Start daemon on server boot (delayed 3s to not block startup)
-setTimeout(startScreenStateDaemon, 3000);
+// Start daemon on server boot (delayed 3s to not block startup) — Windows only
+if (process.platform === 'win32') setTimeout(startScreenStateDaemon, 3000);
 
 // ── Clipboard Intelligence Daemon ──
 let clipboardDaemon = null;
@@ -4107,7 +4824,7 @@ function startClipboardDaemon() {
   });
   console.log('[JARVIS] Clipboard intelligence daemon started');
 }
-setTimeout(startClipboardDaemon, 4000);
+if (process.platform === 'win32') setTimeout(startClipboardDaemon, 4000);
 
 // ── GET /api/screen-state — Current desktop state (instant, no screenshot) ──
 app.get('/api/screen-state', (req, res) => {
@@ -4481,66 +5198,65 @@ let coworkInterval = null;
 let coworkLastState = '';
 let coworkScreenContext = ''; // Current screen context for voice queries
 
-app.post('/api/cowork/start', (req, res) => {
-  if (coworkActive) return res.json({ ok: true, status: 'already running' });
-  coworkActive = true;
+// Extracted tick body so server boot can auto-start cowork on launch.
+async function _coworkTick() {
+  if (!coworkActive || !_screenState.value) return;
 
-  coworkInterval = setInterval(async () => {
-    if (!coworkActive || !_screenState.value) return;
+  const state = _screenState.value;
+  const fg = state.fg;
+  if (!fg || !fg.title) return;
 
-    const state = _screenState.value;
-    const fg = state.fg;
-    if (!fg || !fg.title) return;
+  // Só analisa se o contexto mudou (janela diferente)
+  const currentContext = fg.title + '|' + fg.proc;
+  if (currentContext === coworkLastState) return;
+  coworkLastState = currentContext;
 
-    // Só analisa se o contexto mudou (janela diferente)
-    const currentContext = fg.title + '|' + fg.proc;
-    if (currentContext === coworkLastState) return;
-    coworkLastState = currentContext;
-
-    // Análise leve: Claude decide se tem algo útil pra fazer
-    try {
-      const analysisPrompt = `You are JARVIS, an AI assistant observing the user's screen in real-time. You act as a knowledgeable professor and executive assistant.
+  try {
+    const analysisPrompt = `You are JARVIS observing the user's screen in real-time. Professor + exec assistant.
 
 Current window: "${fg.title}" (${fg.proc})
 Other open windows: ${(state.windows || []).slice(0, 5).map(w => w.title).join(', ')}
 
-Based on this context:
-1. Be aware of what the user is working on
-2. If they ask a question via voice, you'll have this context
-3. Only proactively suggest if something is genuinely useful
+Reply JSON only: {"action":"none","context":"brief note"} if nothing to suggest, or {"action":"suggest","message":"brief helpful suggestion in Portuguese","context":"..."} if useful.
+Keep suggestions rare. Max 1 sentence.`;
 
-Reply with JSON: {"action":"none","context":"brief note about what user is doing"} if nothing to suggest, or {"action":"suggest","message":"brief helpful suggestion in Portuguese","context":"what user is doing"} if you have something useful.
-Keep suggestions rare and high-value. Max 1 sentence.`;
+    const proc = spawn(CLAUDE_CMD, [
+      '--print', '--output-format', 'text',
+      '--model', 'claude-haiku-4-5-20251001',
+      '--dangerously-skip-permissions'
+    ], { shell: false, cwd: JARVIS_DIR, timeout: 15000 });
 
-      const proc = spawn(CLAUDE_CMD, [
-        '--print', '--output-format', 'text',
-        '--model', 'claude-haiku-4-5-20251001',
-        '--dangerously-skip-permissions'
-      ], { shell: true, cwd: JARVIS_DIR, timeout: 15000 });
+    proc.stdin.write(analysisPrompt);
+    proc.stdin.end();
 
-      proc.stdin.write(analysisPrompt);
-      proc.stdin.end();
-
-      let stdout = '';
-      proc.stdout.on('data', d => { stdout += d; });
-      proc.on('close', () => {
-        try {
-          const match = stdout.match(/\{[\s\S]*\}/);
-          if (match) {
-            const result = JSON.parse(match[0]);
-            // Save screen context for voice queries
-            if (result.context) coworkScreenContext = result.context;
-            if (result.action === 'suggest' && result.message) {
-              pushNotification({ type: 'cowork-suggest', message: result.message });
-              console.log(`[JARVIS Cowork] 💡 ${result.message}`);
-            }
+    let stdout = '';
+    proc.stdout.on('data', d => { stdout += d; });
+    proc.on('close', () => {
+      try {
+        const match = stdout.match(/\{[\s\S]*\}/);
+        if (match) {
+          const result = JSON.parse(match[0]);
+          if (result.context) coworkScreenContext = result.context;
+          if (result.action === 'suggest' && result.message) {
+            pushNotification({ type: 'cowork-suggest', message: result.message });
+            console.log(`[JARVIS Cowork] 💡 ${result.message}`);
           }
-        } catch {}
-      });
-    } catch {}
-  }, 10000); // Analisa a cada 10 segundos
+        }
+      } catch {}
+    });
+  } catch {}
+}
 
+function startCoworkLoop() {
+  if (coworkActive) return;
+  coworkActive = true;
+  coworkInterval = setInterval(_coworkTick, 10000);
   console.log('[JARVIS] Cowork mode ACTIVATED');
+}
+
+app.post('/api/cowork/start', (req, res) => {
+  if (coworkActive) return res.json({ ok: true, status: 'already running' });
+  startCoworkLoop();
   res.json({ ok: true, status: 'started' });
 });
 
@@ -4553,8 +5269,56 @@ app.post('/api/cowork/stop', (req, res) => {
 });
 
 app.get('/api/cowork/status', (req, res) => {
-  res.json({ active: coworkActive });
+  res.json({ active: coworkActive, screenContext: coworkScreenContext });
 });
+
+// ===== /api/observation — ambient observation: speech + screen → memory =====
+// Cockpit POSTs each ambient utterance here; we save with screen context so JARVIS learns.
+app.post('/api/observation', async (req, res) => {
+  try {
+    const { utterance, language = 'BR' } = req.body || {};
+    if (!utterance || typeof utterance !== 'string') return res.status(400).json({ error: 'utterance required' });
+    const screen = coworkScreenContext || (_screenState.value?.fg?.title || '');
+    const composite = screen ? `[OBSERVED while ${screen}] ${utterance}` : utterance;
+    // Persist as history + memory embedding so future chats can recall
+    appendHistoryFast('observation', composite);
+    storeMemory(composite, '').catch(() => {});
+    res.json({ ok: true, stored: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
+// GET /api/history - Return last 50 conversation exchanges
+app.get('/api/history', (req, res) => {
+  try {
+    const history = loadHistoryCached();
+    res.json({ history: history.slice(-50) });
+  } catch { res.json({ history: [] }); }
+});
+
+// SSE clients registry
+const sseClients = new Set();
+
+app.get('/api/events', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.write('data: {"type":"connected"}\n\n');
+  sseClients.add(res);
+  req.on('close', () => sseClients.delete(res));
+});
+
+// Helper to broadcast to all SSE clients (used internally)
+function broadcastEvent(type, payload) {
+  const data = JSON.stringify({ type, ...payload, ts: Date.now() });
+  sseClients.forEach(client => {
+    try { client.write(`data: ${data}\n\n`); } catch { sseClients.delete(client); }
+  });
+}
+global.broadcastEvent = broadcastEvent;
 
 
 // DESKTOP PET LAUNCHER
@@ -4573,14 +5337,32 @@ app.post('/api/pet/launch', (req, res) => {
     return res.json({ ok: true, action: 'closed', message: 'Desktop Pet fechado.' });
   }
 
+  // Guard: detect orphan pet processes externally (e.g., after server restart)
+  try {
+    const { execSync } = require('child_process');
+    const orphans = execSync('ps -ax -o pid,command | grep "jarvis-pet" | grep -v grep | awk \'{print $1}\'', {
+      encoding: 'utf-8', timeout: 2000
+    }).trim().split('\n').filter(Boolean);
+    for (const p of orphans) { try { process.kill(parseInt(p), 'SIGKILL'); } catch {} }
+    if (orphans.length > 0) console.log(`[JARVIS Pet] Killed ${orphans.length} orphan process(es) before launch`);
+  } catch {}
+
   const petDir = path.join(__dirname, 'pet');
-  const electronExe = path.join(petDir, 'node_modules', 'electron', 'dist', 'electron.exe');
+  // Cross-platform electron binary: require('electron') returns the correct path
+  let electronExe;
+  try {
+    electronExe = require(path.join(petDir, 'node_modules', 'electron'));
+  } catch {
+    // Fallback: platform-aware path
+    electronExe = process.platform === 'darwin'
+      ? path.join(petDir, 'node_modules', 'electron', 'dist', 'Electron.app', 'Contents', 'MacOS', 'Electron')
+      : path.join(petDir, 'node_modules', 'electron', 'dist', 'electron.exe');
+  }
   try {
     petProcess = spawn(electronExe, ['.'], {
       cwd: petDir,
       detached: true,
       stdio: 'ignore',
-      windowsHide: true
     });
     petRunning = true;
     petProcess.on('exit', () => { petRunning = false; petProcess = null; });
@@ -4757,8 +5539,289 @@ const server = app.listen(PORT, () => {
       if (claudeCliAvailable) {
         console.log('[JARVIS] ✅ Claude auth verified. Task execution ENABLED.');
         console.log(`[JARVIS] ✅ Pools: Opus×${pools.opus.pool.length} Sonnet×${pools.sonnet.pool.length} Haiku×${pools.haiku.pool.length}`);
+        // ALWAYS-ON: auto-start cowork mode so JARVIS observes the screen passively
+        setTimeout(() => {
+          if (!coworkActive && typeof startCoworkLoop === 'function') {
+            startCoworkLoop();
+            console.log('[JARVIS] 👁  Ambient mode ON — observing screen + listening continuously.');
+          }
+        }, 3000);
       }
     });
+  }
+});
+
+// ========== REALTIME GA WEBSOCKET PROXY ==========
+// Browser connects to ws://localhost:3000/api/realtime/ws
+// Server proxies to wss://api.openai.com/v1/realtime (GA, no ephemeral token needed)
+const realtimeWss = new WebSocketServer({ noServer: true });
+
+const REALTIME_INSTRUCTIONS = {
+  BR: `[REGRA ABSOLUTA DE IDIOMA — INEGOCIÁVEL]
+Você fala SOMENTE em Português Brasileiro. SEMPRE. SEM EXCEÇÃO.
+Mesmo que o senhor fale em inglês, espanhol ou qualquer outro idioma, sua resposta é SEMPRE em Português Brasileiro.
+ÚNICA exceção: se o senhor pedir EXPLICITAMENTE "me dê uma dica em inglês" ou "diga em inglês" — aí cite a frase em inglês entre aspas, MAS o resto da resposta continua em Português.
+Trate o senhor como "senhor". Máximo 1-2 frases.
+NUNCA mencione GPT ou OpenAI — você é JARVIS.
+
+[PODERES COMPLETOS — VOCÊ PODE TUDO]
+Você VÊ a tela, CONTROLA o Mac, CRIA arquivos/apps/sites/planilhas/PDFs, ABRE programas e sites, EXECUTA código e automação macOS, tem MEMÓRIA permanente.
+
+[REGRA DE EXECUÇÃO]
+Para QUALQUER pedido de ação (abrir, criar, mover, executar, mandar mensagem, tocar, pesquisar, instalar, fechar, etc.) → chame IMEDIATAMENTE a função "execute_task" com o pedido VERBATIM.
+NUNCA diga "não consigo" ou "não posso" ou "vou tentar". Apenas EXECUTE.
+NUNCA peça confirmação ou esclarecimento — DECIDA e EXECUTE.`,
+  ES: `Eres JARVIS — asistente personal con poderes COMPLETOS. SOLO Español. Máximo 1 frase. Nunca menciones GPT ni OpenAI. Para cualquier acción → execute_task. NUNCA "no puedo".`,
+  EN: `You are JARVIS — personal assistant with FULL powers. ONLY English. Max 1 sentence. Never mention GPT or OpenAI. For any action → execute_task. NEVER "I can't".`
+};
+
+const REALTIME_TOOL = {
+  type: 'function',
+  name: 'execute_task',
+  description: 'Execute ANY action on the computer via Claude Code. Use for: creating files/documents/code/PDFs, opening websites/folders/programs, playing music/video, web search, running commands — any action the user requests.',
+  parameters: {
+    type: 'object',
+    properties: { request: { type: 'string', description: 'The full user request verbatim.' } },
+    required: ['request']
+  }
+};
+
+server.on('upgrade', (req, socket, head) => {
+  if (!req.url?.startsWith('/api/realtime/ws')) return;
+  if (!process.env.OPENAI_API_KEY) { socket.destroy(); return; }
+
+  realtimeWss.handleUpgrade(req, socket, head, (browserWs) => {
+    const params = new URL(req.url, 'http://localhost');
+    const language = params.searchParams.get('language') || 'BR';
+    const voice = params.searchParams.get('voice') || 'ash';
+
+    const openaiWs = new WebSocket(
+      `wss://api.openai.com/v1/realtime?model=gpt-realtime-2&voice=${voice}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+        }
+      }
+    );
+
+    openaiWs.on('open', () => {
+      // Build instructions WITH 3 brains: Claude CLI, Mega-Brain (vault index/memory), Obsidian
+      let baseInstructions = REALTIME_INSTRUCTIONS[language] || REALTIME_INSTRUCTIONS.BR;
+      try {
+        const mem = loadMemoryCached();
+        if (mem) baseInstructions += `\n\nMEMÓRIA PERSISTENTE:\n${mem.slice(0, 2500)}`;
+      } catch {}
+      try {
+        const vaultIdx = _obsidianCache.notes.map(n => `- ${n.title}`).join('\n');
+        if (vaultIdx) baseInstructions += `\n\nVAULT OBSIDIAN (${_obsidianCache.notes.length} notas):\n${vaultIdx.slice(0, 1500)}`;
+      } catch {}
+      // Configure session — GA API (gpt-realtime) schema
+      openaiWs.send(JSON.stringify({
+        type: 'session.update',
+        session: {
+          type: 'realtime',
+          instructions: baseInstructions,
+          audio: {
+            input: {
+              format: { type: 'audio/pcm', rate: 24000 },
+              // VAD tuned for natural conversation: lower threshold = more sensitive to soft speech,
+              // shorter silence = JARVIS responds faster after you stop talking.
+              turn_detection: { type: 'server_vad', threshold: 0.4, prefix_padding_ms: 300, silence_duration_ms: 350 },
+            },
+            output: {
+              format: { type: 'audio/pcm', rate: 24000 },
+              voice,
+            },
+          },
+        }
+      }));
+      realtimeAvailable = true;
+      console.log('[JARVIS] ✅ Realtime GA WebSocket connected');
+      if (browserWs.readyState === WebSocket.OPEN) {
+        browserWs.send(JSON.stringify({ type: 'jarvis.session_ready' }));
+      }
+    });
+
+    // OpenAI → browser
+    openaiWs.on('message', (data) => {
+      if (browserWs.readyState === WebSocket.OPEN) browserWs.send(data);
+    });
+
+    // Browser → OpenAI
+    browserWs.on('message', (data) => {
+      if (openaiWs.readyState === WebSocket.OPEN) openaiWs.send(data);
+    });
+
+    openaiWs.on('error', (e) => {
+      console.error('[JARVIS] Realtime GA error:', e.message);
+      if (browserWs.readyState === WebSocket.OPEN) {
+        browserWs.send(JSON.stringify({ type: 'jarvis.error', message: e.message }));
+        browserWs.close();
+      }
+    });
+
+    openaiWs.on('close', (code, reason) => {
+      console.log(`[JARVIS] Realtime GA closed: code=${code} reason=${reason?.toString() || 'none'}`);
+      if (browserWs.readyState === WebSocket.OPEN) {
+        // Forward rate limit / unauthorized closes so browser can stop retrying
+        if (code === 1013 || code === 4000 || code === 4001 || code === 4003) {
+          try { browserWs.close(code, reason?.toString() || ''); } catch { browserWs.close(); }
+        } else {
+          browserWs.close();
+        }
+      }
+    });
+    openaiWs.on('message', (data) => {
+      try {
+        const ev = JSON.parse(data.toString());
+        if (ev.type === 'error') console.log('[JARVIS] OpenAI error:', JSON.stringify(ev.error));
+      } catch {}
+    });
+
+    browserWs.on('close', () => {
+      if (openaiWs.readyState === WebSocket.OPEN) openaiWs.close();
+    });
+
+    browserWs.on('error', () => {
+      if (openaiWs.readyState === WebSocket.OPEN) openaiWs.close();
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OBS STUDIO — WebSocket v5 Integration
+// ─────────────────────────────────────────────────────────────────────────────
+import OBSWebSocket from 'obs-websocket-js';
+
+const obsClient = new OBSWebSocket();
+let obsConnected = false;
+
+async function obsConnect(host = 'localhost', port = 4455, password = '') {
+  try {
+    await obsClient.connect(`ws://${host}:${port}`, password || undefined);
+    obsConnected = true;
+    console.log('[OBS] Conectado com sucesso na porta', port);
+    return { ok: true };
+  } catch (e) {
+    obsConnected = false;
+    return { ok: false, error: e.message };
+  }
+}
+
+obsClient.on('ConnectionClosed', () => { obsConnected = false; });
+obsClient.on('ConnectionError', () => { obsConnected = false; });
+
+// POST /api/obs/connect — conectar ao OBS WebSocket
+app.post('/api/obs/connect', async (req, res) => {
+  const { host = 'localhost', port = 4455, password = '' } = req.body || {};
+  const result = await obsConnect(host, port, password);
+  res.json(result);
+});
+
+// GET /api/obs/status — status da conexão + cena ativa
+app.get('/api/obs/status', async (req, res) => {
+  if (!obsConnected) return res.json({ connected: false });
+  try {
+    const { currentProgramSceneName } = await obsClient.call('GetCurrentProgramScene');
+    const { outputActive } = await obsClient.call('GetStreamStatus');
+    const { outputActive: recActive } = await obsClient.call('GetRecordStatus');
+    res.json({ connected: true, cena_ativa: currentProgramSceneName, ao_vivo: outputActive, gravando: recActive });
+  } catch (e) {
+    res.json({ connected: false, error: e.message });
+  }
+});
+
+// GET /api/obs/scenes — listar cenas
+app.get('/api/obs/scenes', async (req, res) => {
+  if (!obsConnected) return res.status(400).json({ error: 'OBS não conectado' });
+  try {
+    const { scenes } = await obsClient.call('GetSceneList');
+    res.json({ cenas: scenes.map(s => s.sceneName) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/obs/scene — trocar de cena
+app.post('/api/obs/scene', async (req, res) => {
+  if (!obsConnected) return res.status(400).json({ error: 'OBS não conectado' });
+  const { name } = req.body || {};
+  if (!name) return res.status(400).json({ error: 'nome da cena obrigatório' });
+  try {
+    await obsClient.call('SetCurrentProgramScene', { sceneName: name });
+    res.json({ ok: true, cena: name });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/obs/stream/start — iniciar transmissão
+app.post('/api/obs/stream/start', async (req, res) => {
+  if (!obsConnected) return res.status(400).json({ error: 'OBS não conectado' });
+  try {
+    await obsClient.call('StartStream');
+    res.json({ ok: true, msg: 'Transmissão iniciada' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/obs/stream/stop — parar transmissão
+app.post('/api/obs/stream/stop', async (req, res) => {
+  if (!obsConnected) return res.status(400).json({ error: 'OBS não conectado' });
+  try {
+    await obsClient.call('StopStream');
+    res.json({ ok: true, msg: 'Transmissão encerrada' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/obs/record/start — iniciar gravação
+app.post('/api/obs/record/start', async (req, res) => {
+  if (!obsConnected) return res.status(400).json({ error: 'OBS não conectado' });
+  try {
+    await obsClient.call('StartRecord');
+    res.json({ ok: true, msg: 'Gravação iniciada' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/obs/record/stop — parar gravação
+app.post('/api/obs/record/stop', async (req, res) => {
+  if (!obsConnected) return res.status(400).json({ error: 'OBS não conectado' });
+  try {
+    await obsClient.call('StopRecord');
+    res.json({ ok: true, msg: 'Gravação encerrada' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/obs/mute — mutar/desmutar fonte de áudio
+app.post('/api/obs/mute', async (req, res) => {
+  if (!obsConnected) return res.status(400).json({ error: 'OBS não conectado' });
+  const { source, muted } = req.body || {};
+  if (!source) return res.status(400).json({ error: 'nome da fonte obrigatório' });
+  try {
+    await obsClient.call('SetInputMute', { inputName: source, inputMuted: !!muted });
+    res.json({ ok: true, fonte: source, mutado: !!muted });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/obs/command — comando direto ao OBS WebSocket
+app.post('/api/obs/command', async (req, res) => {
+  if (!obsConnected) return res.status(400).json({ error: 'OBS não conectado' });
+  const { request, data = {} } = req.body || {};
+  if (!request) return res.status(400).json({ error: 'request obrigatório' });
+  try {
+    const result = await obsClient.call(request, data);
+    res.json({ ok: true, result });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
