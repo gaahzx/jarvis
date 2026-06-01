@@ -29,6 +29,7 @@ const NICHOS = [
 const STATUS_INFO: Record<string, { label: string; color: string }> = {
   novo:              { label: 'Novo',                color: 'bg-white/10 text-white/50' },
   analisado:         { label: 'Analisado',           color: 'bg-blue-500/20 text-blue-400' },
+  processando:       { label: 'Melhorando com IA...', color: 'bg-blue-500/20 text-blue-400' },
   aguardando_ok:     { label: 'Aguardando OK',       color: 'bg-amber-500/20 text-amber-400' },
   autorizado:        { label: 'Autorizado ✓',        color: 'bg-emerald-500/20 text-emerald-400' },
   enviado:           { label: 'Enviado',             color: 'bg-purple-500/20 text-purple-400' },
@@ -462,6 +463,29 @@ function AprovacaoCard({ lead, onUpdate, onDelete }: { lead: any; onUpdate: (id:
   const [solicitandoMelhoria, setSolicitandoMelhoria] = useState(false);
   const [modalMelhoria, setModalMelhoria] = useState(false);
   const [feedbackMelhoria, setFeedbackMelhoria] = useState('');
+
+  // Polling automático enquanto a IA está melhorando a proposta
+  useEffect(() => {
+    if (lead.status !== 'processando') return;
+    let active = true;
+    const poll = async () => {
+      if (!active) return;
+      try {
+        const atualizado = await api.get(`/api/prospeccao/leads/${lead.id}`);
+        if (!active) return;
+        if (atualizado.status !== 'processando') {
+          onUpdate(lead.id, atualizado);
+          if (atualizado.status === 'aguardando_ok') {
+            toast.success('✨ Proposta melhorada pela IA! Revise e aprove.');
+          }
+        } else {
+          setTimeout(poll, 8000); // verifica a cada 8s enquanto processando
+        }
+      } catch { if (active) setTimeout(poll, 15000); }
+    };
+    const t = setTimeout(poll, 8000);
+    return () => { active = false; clearTimeout(t); };
+  }, [lead.status, lead.id]);
 
   async function autorizar() {
     setAutorizando(true);
