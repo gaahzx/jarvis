@@ -151,6 +151,7 @@ export const api = {
 
   // Prospecção
   post: (path: string, data: any) => request(path, { method: 'POST', body: JSON.stringify(data) }),
+  put: (path: string, data: any) => request(path, { method: 'PUT', body: JSON.stringify(data) }),
   get: (path: string) => request(path),
   patch: (path: string, data: any) => request(path, { method: 'PATCH', body: JSON.stringify(data) }),
   delete: (path: string) => request(path, { method: 'DELETE' }),

@@ -25,13 +25,15 @@ const TEMAS_SUGERIDOS = [
 ];
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  gerando:     { label: 'Gerando...', color: 'text-blue-400',   bg: 'bg-blue-500/10' },
-  pendente:    { label: 'Aguardando aprovação', color: 'text-amber-400', bg: 'bg-amber-500/10' },
-  agendado:    { label: 'Agendado', color: 'text-cyan-400',   bg: 'bg-cyan-500/10' },
-  aprovado:    { label: 'Publicando...', color: 'text-green-400', bg: 'bg-green-500/10' },
-  publicado:   { label: 'Publicado', color: 'text-green-400',  bg: 'bg-green-500/10' },
-  rejeitado:   { label: 'Rejeitado', color: 'text-white/30',   bg: 'bg-white/5' },
-  erro:        { label: 'Erro', color: 'text-red-400',    bg: 'bg-red-500/10' },
+  gerando:          { label: 'Gerando...', color: 'text-blue-400',   bg: 'bg-blue-500/10' },
+  pendente:         { label: 'Aguardando aprovação', color: 'text-amber-400', bg: 'bg-amber-500/10' },
+  agendado:         { label: 'Agendado', color: 'text-cyan-400',   bg: 'bg-cyan-500/10' },
+  aprovado:         { label: 'Publicando...', color: 'text-green-400', bg: 'bg-green-500/10' },
+  publicando:       { label: 'Publicando...', color: 'text-green-400', bg: 'bg-green-500/10' },
+  publicado:        { label: 'Publicado ✓', color: 'text-green-400',  bg: 'bg-green-500/10' },
+  rejeitado:        { label: 'Rejeitado', color: 'text-white/30',   bg: 'bg-white/5' },
+  erro:             { label: 'Erro', color: 'text-red-400',    bg: 'bg-red-500/10' },
+  erro_publicacao:  { label: 'Erro ao publicar', color: 'text-red-400', bg: 'bg-red-500/10' },
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -330,6 +332,163 @@ function CardConteudo({ item, onAtualizar }: { item: any; onAtualizar: () => voi
   );
 }
 
+function SecaoConfig() {
+  const [token, setToken] = useState('');
+  const [accountId, setAccountId] = useState('');
+  const [ctaLinkPadrao, setCtaLinkPadrao] = useState('');
+  const [mediaBaseUrl, setMediaBaseUrl] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const [aberta, setAberta] = useState(false);
+
+  useEffect(() => {
+    api.get('/content/config').then((cfg: any) => {
+      setToken(cfg.instagram_access_token || '');
+      setAccountId(cfg.instagram_account_id || '');
+      setCtaLinkPadrao(cfg.instagram_cta_link_padrao || '');
+      setMediaBaseUrl(cfg.instagram_media_base_url || '');
+    }).catch(() => {});
+  }, []);
+
+  async function salvar() {
+    setSalvando(true);
+    try {
+      await Promise.all([
+        api.put('/content/config/instagram_access_token', { valor: token }),
+        api.put('/content/config/instagram_account_id', { valor: accountId }),
+        api.put('/content/config/instagram_cta_link_padrao', { valor: ctaLinkPadrao }),
+        api.put('/content/config/instagram_media_base_url', { valor: mediaBaseUrl }),
+      ]);
+      toast.success('Configurações salvas!');
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  const webhookUrl = 'http://191.252.209.43:5678/webhook/instagram-comments';
+  const tokenConfigured = token.length > 20;
+  const mediaHttps = mediaBaseUrl.startsWith('https://');
+
+  return (
+    <div className="rounded-2xl bg-white/[0.03] border border-white/5 overflow-hidden">
+      <button
+        onClick={() => setAberta(!aberta)}
+        className="w-full flex items-center justify-between p-5 hover:bg-white/[0.02] transition-all"
+      >
+        <div className="flex items-center gap-3">
+          <Instagram className="h-4 w-4 text-pink-400" />
+          <span className="text-sm font-semibold text-white/80">Configurações do Instagram</span>
+          {tokenConfigured ? (
+            <span className="rounded-full bg-green-500/15 border border-green-500/20 px-2 py-0.5 text-[10px] text-green-400">✓ Conectado</span>
+          ) : (
+            <span className="rounded-full bg-amber-500/15 border border-amber-500/20 px-2 py-0.5 text-[10px] text-amber-400">Token pendente</span>
+          )}
+        </div>
+        <ChevronRight className={`h-4 w-4 text-white/30 transition-transform ${aberta ? 'rotate-90' : ''}`} />
+      </button>
+
+      {aberta && (
+        <div className="px-5 pb-5 space-y-4 border-t border-white/5">
+
+          {/* Instruções de como obter o token */}
+          {!tokenConfigured && (
+            <div className="mt-4 rounded-xl bg-amber-500/5 border border-amber-500/15 p-4">
+              <p className="text-xs font-semibold text-amber-400 mb-2">Como obter o Page Access Token (2 min)</p>
+              <ol className="text-[11px] text-white/40 space-y-1 list-decimal list-inside">
+                <li>Acesse <a href="https://developers.facebook.com/tools/explorer" target="_blank" rel="noreferrer" className="text-cyan-400 underline">developers.facebook.com/tools/explorer</a></li>
+                <li>Selecione seu app → clique em <strong className="text-white/60">Gerar Token de Acesso</strong> → escolha <strong className="text-white/60">Página</strong></li>
+                <li>Adicione: <code className="text-cyan-400/70">instagram_basic</code>, <code className="text-cyan-400/70">instagram_content_publish</code>, <code className="text-cyan-400/70">instagram_manage_comments</code>, <code className="text-cyan-400/70">pages_messaging</code></li>
+                <li>Copie o token e cole abaixo</li>
+              </ol>
+              <p className="text-[11px] text-white/25 mt-2">⚠️ Token de App NÃO funciona — precisa ser Page Access Token.</p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs text-white/50 uppercase tracking-wider block mb-2">Page Access Token</label>
+              <input
+                type="password"
+                value={token}
+                onChange={e => setToken(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white font-mono focus:outline-none focus:border-cyan-500/50"
+                placeholder="EAAxxxxxxxx..."
+              />
+            </div>
+            <div>
+              <label className="text-xs text-white/50 uppercase tracking-wider block mb-2">Instagram Account ID</label>
+              <input
+                value={accountId}
+                onChange={e => setAccountId(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white font-mono focus:outline-none focus:border-cyan-500/50"
+                placeholder="17841400000000000"
+              />
+              <p className="text-[11px] text-white/25 mt-1">ID do perfil profissional do Instagram</p>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs text-white/50 uppercase tracking-wider block mb-2">Link padrão para DMs</label>
+            <input
+              value={ctaLinkPadrao}
+              onChange={e => setCtaLinkPadrao(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-cyan-500/50"
+              placeholder="https://fernandesrocketdigital.com.br"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs text-white/50 uppercase tracking-wider block mb-2">
+              URL base de mídia
+              {mediaBaseUrl && (
+                <span className={`ml-2 rounded-full px-2 py-0.5 text-[10px] ${mediaHttps ? 'bg-green-500/15 text-green-400' : 'bg-amber-500/15 text-amber-400'}`}>
+                  {mediaHttps ? '✓ HTTPS — carrossel multi-imagem ativo' : '⚠ HTTP — apenas imagem única'}
+                </span>
+              )}
+            </label>
+            <input
+              value={mediaBaseUrl}
+              onChange={e => setMediaBaseUrl(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white font-mono focus:outline-none focus:border-cyan-500/50"
+              placeholder="https://api.seudominio.com.br/api/content/media"
+            />
+            <p className="text-[11px] text-white/25 mt-1">
+              Instagram exige HTTPS para carrossel multi-imagem. Configure um domínio HTTPS apontando para a VPS na porta 3001.
+            </p>
+          </div>
+
+          <div className="rounded-xl bg-black/30 border border-white/5 p-4">
+            <p className="text-xs text-white/40 mb-1 uppercase tracking-wider">URL do Webhook Meta</p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 text-xs text-cyan-400/80 font-mono break-all">{webhookUrl}</code>
+              <button
+                onClick={() => { navigator.clipboard.writeText(webhookUrl); toast.success('Copiado!'); }}
+                className="shrink-0 rounded-lg px-2 py-1 text-[10px] bg-white/5 text-white/40 hover:text-white border border-white/5 transition-all"
+              >
+                Copiar
+              </button>
+            </div>
+            <p className="text-[11px] text-white/25 mt-2">
+              Configure no Meta Developer → Webhooks → Objeto Instagram → Campo: comments
+              <br />Verify Token: <span className="text-white/40 font-mono">jarvis_ig_webhook_2026</span>
+            </p>
+          </div>
+
+          <button
+            onClick={salvar}
+            disabled={salvando}
+            className="rounded-xl px-5 py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-semibold text-sm hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
+          >
+            {salvando ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+            Salvar configurações
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ContentStudioPage() {
   const [tipo, setTipo] = useState('carrossel');
   const [tema, setTema] = useState('');
@@ -525,6 +684,9 @@ export default function ContentStudioPage() {
             )}
           </div>
         </div>
+
+        {/* Configurações do Instagram */}
+        <SecaoConfig />
       </div>
     </AppShell>
   );
