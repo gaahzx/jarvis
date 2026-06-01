@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Bot, LayoutDashboard, Building2, LogOut, Settings, Activity, Bell, BellRing, BarChart3, Calendar, Sparkles, Target } from 'lucide-react';
+import { Bot, LayoutDashboard, Building2, LogOut, Settings, Activity, Bell, BellRing, BarChart3, Calendar, Sparkles, Target, Clapperboard } from 'lucide-react';
 import { clearToken, api } from '@/lib/api';
 import { toast } from 'sonner';
 
@@ -102,6 +102,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     { href: '/atividade', label: 'Atividade', icon: Activity },
     { href: '/marketing', label: 'Marketing IA', icon: Sparkles },
     { href: '/prospeccao', label: 'Prospecção IA', icon: Target },
+    { href: '/content', label: 'Content Studio', icon: Clapperboard },
     { href: '/configuracoes', label: 'Configurações', icon: Settings },
   ];
 
