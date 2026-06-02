@@ -5,14 +5,15 @@ import { AppShell } from '@/components/AppShell';
 import {
   Sparkles, Video, Image, ChevronRight, Clock, CheckCircle2,
   XCircle, Calendar, Send, Eye, Trash2, RefreshCw, Zap,
-  MessageSquare, Link2, Play, Instagram
+  MessageSquare, Link2, Play, Instagram, Upload, Download
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 
 const TIPOS = [
-  { id: 'carrossel', label: 'Carrossel', icon: Image, desc: '8-10 slides PNG prontos' },
-  { id: 'video', label: 'Vídeo HeyGen', icon: Video, desc: 'Reels com seu avatar IA' },
+  { id: 'carrossel', label: 'Carrossel',    icon: Image,  desc: '8-10 slides PNG prontos' },
+  { id: 'video',    label: 'Vídeo HeyGen', icon: Video,  desc: 'Reels com seu avatar IA' },
+  { id: 'upload',   label: 'Upload + Edit', icon: Upload, desc: 'Seu vídeo + edição IA' },
 ];
 
 const TEMAS_SUGERIDOS = [
@@ -238,8 +239,146 @@ function ModalAprovar({
   );
 }
 
+/**
+ * Converte /files/{jobId}/{file} → URL via Edge Function proxy (/api/upload/...)
+ * Usa caminho relativo para funcionar tanto em dev quanto em produção (Vercel HTTPS).
+ * A Edge Function faz streaming direto do VPS — sem limite de tamanho, sem Mixed Content.
+ */
+function getMediaUrl(arquivoUrl: string | null | undefined): string {
+  if (!arquivoUrl) return '';
+  const m = arquivoUrl.match(/^\/files\/([^/]+)\/(.+)$/);
+  if (m) return `/api/upload/content/media/${m[1]}/${m[2]}`;
+  // fallback para outros formatos de URL
+  return `/api/upload${arquivoUrl}`;
+}
+
+function getJobId(arquivoUrl: string | null | undefined): string | null {
+  if (!arquivoUrl) return null;
+  const m = arquivoUrl.match(/^\/files\/([^/]+)\//);
+  return m ? m[1] : null;
+}
+
+function ModalReeditar({
+  item,
+  onClose,
+  onReeditado,
+}: {
+  item: any;
+  onClose: () => void;
+  onReeditado: () => void;
+}) {
+  const [roteiro, setRoteiro] = useState(item.tema || '');
+  const [ctaKeyword, setCtaKeyword] = useState(item.cta_keyword || 'EU QUERO');
+  const [reeditando, setReeditando] = useState(false);
+
+  async function handleReeditar() {
+    setReeditando(true);
+    try {
+      await api.post(`/content/${item.id}/reeditar`, {
+        roteiro,
+        cta_keyword: ctaKeyword,
+        tema: roteiro.slice(0, 60),
+      });
+      toast.success('Re-edição iniciada! O vídeo ficará disponível em ~1 min.');
+      onReeditado();
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setReeditando(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+      <div className="w-full max-w-lg bg-[#0a0f1e] border border-white/10 rounded-2xl overflow-hidden">
+        <div className="flex items-center justify-between p-6 border-b border-white/5">
+          <h2 className="font-bold text-white flex items-center gap-2">
+            <RefreshCw className="h-4 w-4 text-purple-400" />
+            Re-editar Vídeo
+          </h2>
+          <button onClick={onClose} className="text-white/40 hover:text-white">
+            <XCircle className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <p className="text-xs text-white/40">
+            Re-executa a pós-produção automática — legendas, logo JARVIS, hook e CTA — sobre o vídeo original.
+          </p>
+
+          <div>
+            <label className="text-xs text-white/50 uppercase tracking-wider block mb-2">
+              Roteiro / Script completo
+            </label>
+            <textarea
+              value={roteiro}
+              onChange={e => setRoteiro(e.target.value)}
+              rows={7}
+              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white resize-none focus:outline-none focus:border-purple-500/50"
+              placeholder="Cole o roteiro completo — as legendas são geradas a partir deste texto..."
+            />
+            <p className="text-[11px] text-white/25 mt-1">
+              As legendas são sincronizadas automaticamente pela contagem de palavras
+            </p>
+          </div>
+
+          <div>
+            <label className="text-xs text-white/50 uppercase tracking-wider block mb-2">CTA final (últimos 3s)</label>
+            <input
+              value={ctaKeyword}
+              onChange={e => setCtaKeyword(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-purple-500/50"
+              placeholder="EU QUERO"
+            />
+            <p className="text-[11px] text-white/25 mt-1">Exibido como: "Comenta {ctaKeyword}"</p>
+          </div>
+        </div>
+
+        <div className="p-6 border-t border-white/5 flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 rounded-xl py-3 border border-white/10 text-white/60 hover:text-white hover:border-white/20 transition-all text-sm"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleReeditar}
+            disabled={reeditando || !roteiro.trim()}
+            className="flex-1 rounded-xl py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-semibold text-sm hover:opacity-90 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {reeditando ? (
+              <><RefreshCw className="h-4 w-4 animate-spin" /> Iniciando...</>
+            ) : (
+              <><RefreshCw className="h-4 w-4" /> Re-editar vídeo</>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CardConteudo({ item, onAtualizar }: { item: any; onAtualizar: () => void }) {
   const [modalAberto, setModalAberto] = useState(false);
+  const [modalReeditar, setModalReeditar] = useState(false);
+  const [verOriginal, setVerOriginal] = useState(false);
+
+  const isVideo    = item.tipo === 'video';
+  const isGerando  = item.status === 'gerando';
+  const isPendente = item.status === 'pendente';
+  const isUpload   = Boolean(item.metadados?.upload); // true = vídeo enviado pelo usuário
+
+  const jobId = getJobId(item.arquivo_url);
+
+  // URLs via proxy de mídia
+  const videoEditadoUrl = jobId
+    ? getMediaUrl(`/files/${jobId}/video_editado.mp4`)
+    : '';
+  const videoRawUrl = jobId
+    ? getMediaUrl(`/files/${jobId}/video_heygen.mp4`)
+    : '';
+  const videoAtualUrl = verOriginal ? videoRawUrl : videoEditadoUrl;
 
   async function rejeitar() {
     if (!confirm('Rejeitar este conteúdo?')) return;
@@ -248,16 +387,14 @@ function CardConteudo({ item, onAtualizar }: { item: any; onAtualizar: () => voi
     onAtualizar();
   }
 
-  const isGerando = item.status === 'gerando';
-  const isPendente = item.status === 'pendente';
-
   return (
     <>
       <div className="rounded-2xl bg-white/[0.03] border border-white/5 p-5 space-y-4 hover:border-white/10 transition-all">
+        {/* Cabeçalho */}
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">
-              {item.tipo === 'video' ? (
+              {isVideo ? (
                 <Video className="h-4 w-4 text-purple-400" />
               ) : (
                 <Image className="h-4 w-4 text-cyan-400" />
@@ -269,30 +406,91 @@ function CardConteudo({ item, onAtualizar }: { item: any; onAtualizar: () => voi
           <StatusBadge status={item.status} />
         </div>
 
+        {/* Barra de progresso (gerando) */}
         {isGerando && (
-          <ProgressBar id={item.id} onConcluido={onAtualizar} />
+          <>
+            <ProgressBar id={item.id} onConcluido={onAtualizar} />
+            <button
+              onClick={rejeitar}
+              className="text-[11px] text-white/20 hover:text-red-400/60 transition-all mt-1"
+            >
+              Cancelar geração
+            </button>
+          </>
         )}
 
+        {/* Preview de vídeo */}
+        {isVideo && isPendente && jobId && (
+          <div className="rounded-xl overflow-hidden bg-black/50 border border-white/5">
+            <video
+              key={videoAtualUrl}
+              src={videoAtualUrl}
+              controls
+              preload="metadata"
+              className="w-full"
+              style={{ maxHeight: '260px' }}
+              onError={() => {/* UFW pendente — silencia o erro, o player mostra ícone nativo */}}
+            />
+            {/* Toggle editado / original */}
+            <div className="flex gap-1 p-1.5 bg-black/40 border-t border-white/5">
+              <button
+                onClick={() => setVerOriginal(false)}
+                className={`flex-1 rounded-lg py-1.5 text-xs font-medium transition-all ${
+                  !verOriginal
+                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                    : 'text-white/30 hover:text-white/60 border border-transparent'
+                }`}
+              >
+                ✨ Editado
+              </button>
+              <button
+                onClick={() => setVerOriginal(true)}
+                className={`flex-1 rounded-lg py-1.5 text-xs font-medium transition-all ${
+                  verOriginal
+                    ? 'bg-white/10 text-white/70 border border-white/20'
+                    : 'text-white/30 hover:text-white/60 border border-transparent'
+                }`}
+              >
+                {isUpload ? '📁 Original' : 'HeyGen bruto'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* CTA info */}
         {item.cta_keyword && (
           <div className="flex items-center gap-2 text-xs text-white/40">
             <MessageSquare className="h-3.5 w-3.5" />
             <span>Comenta "{item.cta_keyword}"</span>
-            {item.cta_link && <><Link2 className="h-3.5 w-3.5 ml-1" /><span className="truncate max-w-32">{item.cta_link}</span></>}
+            {item.cta_link && (
+              <>
+                <Link2 className="h-3.5 w-3.5 ml-1" />
+                <span className="truncate max-w-32">{item.cta_link}</span>
+              </>
+            )}
           </div>
         )}
 
+        {/* Horário agendado */}
         {item.publicar_em && item.status === 'agendado' && (
           <div className="flex items-center gap-2 text-xs text-cyan-400/70">
             <Clock className="h-3.5 w-3.5" />
-            <span>Publicar em {new Date(item.publicar_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+            <span>
+              Publicar em{' '}
+              {new Date(item.publicar_em).toLocaleString('pt-BR', {
+                day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+              })}
+            </span>
           </div>
         )}
 
+        {/* Ações (pendente) */}
         {isPendente && (
           <div className="flex gap-2 pt-1">
-            {item.arquivo_url && (
+            {/* Carrossel: link de preview */}
+            {!isVideo && item.arquivo_url && (
               <a
-                href={`${process.env.NEXT_PUBLIC_API_URL}${item.arquivo_url}`}
+                href={getMediaUrl(item.arquivo_url)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium bg-white/5 text-white/60 hover:text-white border border-white/5 hover:border-white/10 transition-all"
@@ -300,6 +498,27 @@ function CardConteudo({ item, onAtualizar }: { item: any; onAtualizar: () => voi
                 <Eye className="h-3.5 w-3.5" />
                 Preview
               </a>
+            )}
+            {/* Vídeo: botão re-editar + download */}
+            {isVideo && (
+              <>
+                <button
+                  onClick={() => setModalReeditar(true)}
+                  className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium bg-white/5 text-white/60 hover:text-purple-400 hover:bg-purple-500/10 border border-white/5 hover:border-purple-500/20 transition-all"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Re-editar
+                </button>
+                {jobId && (
+                  <a
+                    href={videoEditadoUrl}
+                    download
+                    className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium bg-white/5 text-white/60 hover:text-cyan-400 hover:bg-cyan-500/10 border border-white/5 hover:border-cyan-500/20 transition-all"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                  </a>
+                )}
+              </>
             )}
             <button
               onClick={() => setModalAberto(true)}
@@ -317,16 +536,23 @@ function CardConteudo({ item, onAtualizar }: { item: any; onAtualizar: () => voi
           </div>
         )}
 
+        {/* Publicado */}
         {item.status === 'publicado' && (
           <div className="flex items-center gap-2 text-xs text-green-400/70">
             <Instagram className="h-3.5 w-3.5" />
-            <span>Publicado {item.publicado_em ? new Date(item.publicado_em).toLocaleString('pt-BR') : ''}</span>
+            <span>
+              Publicado{' '}
+              {item.publicado_em ? new Date(item.publicado_em).toLocaleString('pt-BR') : ''}
+            </span>
           </div>
         )}
       </div>
 
       {modalAberto && (
         <ModalAprovar item={item} onClose={() => setModalAberto(false)} onAprovado={onAtualizar} />
+      )}
+      {modalReeditar && (
+        <ModalReeditar item={item} onClose={() => setModalReeditar(false)} onReeditado={onAtualizar} />
       )}
     </>
   );
@@ -499,6 +725,11 @@ export default function ContentStudioPage() {
   const [fila, setFila] = useState<any[]>([]);
   const [carregando, setCarregando] = useState(true);
 
+  // Estados específicos do modo upload
+  const [videoFile, setVideoFile]         = useState<File | null>(null);
+  const [roteiro, setRoteiro]             = useState('');
+  const [uploadProgress, setUploadProgress] = useState(0);
+
   async function carregarFila() {
     try {
       const data = await api.get('/content/fila');
@@ -514,7 +745,57 @@ export default function ContentStudioPage() {
     return () => clearInterval(i);
   }, []);
 
+  // Upload manual: 2 passos (prepare JSON → upload raw binary via Edge Function)
+  async function handleUpload() {
+    if (!videoFile)      { toast.error('Selecione um arquivo .mp4'); return; }
+    if (!roteiro.trim()) { toast.error('Cole o roteiro para gerar as legendas'); return; }
+
+    setGerando(true);
+    setUploadProgress(0);
+    try {
+      // Passo 1 — cria slot no content-studio + registro na fila (JSON pequeno)
+      const prep = await api.post('/content/upload-video/prepare', {
+        roteiro:     roteiro.trim(),
+        tema:        tema.trim() || roteiro.slice(0, 60),
+        cta_keyword: ctaKeyword,
+        cta_link:    ctaLink || null,
+      });
+
+      const { content_id, python_job_id } = prep;
+
+      // Passo 2 — envia arquivo via Edge Function /api/upload (sem limite 4.5MB)
+      await new Promise<void>((resolve, reject) => {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('jarvis_token') : '';
+        const xhr   = new XMLHttpRequest();
+        xhr.open('PUT', `/api/upload/content/upload-video/file/${python_job_id}`);
+        xhr.setRequestHeader('Content-Type', videoFile.type || 'video/mp4');
+        xhr.setRequestHeader('X-Content-Id', content_id);
+        if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) setUploadProgress(Math.round(e.loaded / e.total * 100));
+        };
+        xhr.onload  = () => xhr.status < 400 ? resolve() : reject(new Error(`Upload falhou (${xhr.status})`));
+        xhr.onerror = () => reject(new Error('Erro de rede durante o upload'));
+        xhr.send(videoFile);
+      });
+
+      toast.success('Vídeo enviado! Editando automaticamente (legendas + logo + CTA)...');
+      setVideoFile(null);
+      setRoteiro('');
+      setTema('');
+      setTimeout(carregarFila, 3000);
+
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setGerando(false);
+      setUploadProgress(0);
+    }
+  }
+
   async function handleGerar() {
+    if (tipo === 'upload') return handleUpload();
     if (!tema.trim()) { toast.error('Digite o tema do conteúdo'); return; }
     setGerando(true);
     try {
@@ -556,7 +837,7 @@ export default function ContentStudioPage() {
               <h2 className="text-sm font-semibold text-white/70 uppercase tracking-wider">Gerar Conteúdo</h2>
 
               {/* Tipo */}
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 {TIPOS.map(t => {
                   const Icon = t.icon;
                   return (
@@ -577,35 +858,122 @@ export default function ContentStudioPage() {
                 })}
               </div>
 
-              {/* Tema */}
-              <div>
-                <label className="text-xs text-white/50 uppercase tracking-wider block mb-2">Tema do Conteúdo</label>
-                <textarea
-                  value={tema}
-                  onChange={e => setTema(e.target.value)}
-                  rows={3}
-                  placeholder="Ex: Como o JARVIS cria sites completos em minutos..."
-                  className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white placeholder:text-white/20 resize-none focus:outline-none focus:border-cyan-500/50"
-                />
-              </div>
+              {/* Campos dinâmicos por tipo */}
+              {tipo !== 'upload' ? (
+                <>
+                  {/* Tema (carrossel e video HeyGen) */}
+                  <div>
+                    <label className="text-xs text-white/50 uppercase tracking-wider block mb-2">Tema do Conteúdo</label>
+                    <textarea
+                      value={tema}
+                      onChange={e => setTema(e.target.value)}
+                      rows={3}
+                      placeholder="Ex: Como o JARVIS cria sites completos em minutos..."
+                      className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white placeholder:text-white/20 resize-none focus:outline-none focus:border-cyan-500/50"
+                    />
+                  </div>
 
-              {/* Sugestões */}
-              <div>
-                <label className="text-xs text-white/50 uppercase tracking-wider block mb-2">Sugestões</label>
-                <div className="flex flex-wrap gap-2">
-                  {TEMAS_SUGERIDOS.map(s => (
-                    <button
-                      key={s.label}
-                      onClick={() => { setTema(s.label); setTipoTema(s.tipo_tema); }}
-                      className="rounded-lg px-2.5 py-1 text-xs bg-white/[0.04] text-white/50 hover:text-white hover:bg-white/[0.08] border border-white/5 hover:border-white/10 transition-all"
-                    >
-                      {s.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+                  {/* Sugestões */}
+                  <div>
+                    <label className="text-xs text-white/50 uppercase tracking-wider block mb-2">Sugestões</label>
+                    <div className="flex flex-wrap gap-2">
+                      {TEMAS_SUGERIDOS.map(s => (
+                        <button
+                          key={s.label}
+                          onClick={() => { setTema(s.label); setTipoTema(s.tipo_tema); }}
+                          className="rounded-lg px-2.5 py-1 text-xs bg-white/[0.04] text-white/50 hover:text-white hover:bg-white/[0.08] border border-white/5 hover:border-white/10 transition-all"
+                        >
+                          {s.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Upload — área de seleção de arquivo */}
+                  <div>
+                    <label className="text-xs text-white/50 uppercase tracking-wider block mb-2">
+                      Arquivo de Vídeo <span className="text-red-400/70">*</span>
+                    </label>
+                    <label className={`flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-5 cursor-pointer transition-all ${
+                      videoFile
+                        ? 'border-purple-500/40 bg-purple-500/5'
+                        : 'border-white/10 bg-white/[0.02] hover:border-white/20'
+                    }`}>
+                      <input
+                        type="file"
+                        accept="video/mp4,video/quicktime,video/*"
+                        className="hidden"
+                        onChange={e => setVideoFile(e.target.files?.[0] || null)}
+                      />
+                      {videoFile ? (
+                        <>
+                          <Video className="h-7 w-7 text-purple-400" />
+                          <p className="text-sm text-white/80 font-medium text-center truncate max-w-full">{videoFile.name}</p>
+                          <p className="text-xs text-white/40">{(videoFile.size / 1024 / 1024).toFixed(1)} MB</p>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="h-7 w-7 text-white/20" />
+                          <p className="text-sm text-white/40">Clique ou arraste o .mp4 aqui</p>
+                          <p className="text-xs text-white/20">Reels: até ~200MB</p>
+                        </>
+                      )}
+                    </label>
+                  </div>
 
-              {/* CTA */}
+                  {/* Roteiro para legendas */}
+                  <div>
+                    <label className="text-xs text-white/50 uppercase tracking-wider block mb-2">
+                      Roteiro completo <span className="text-red-400/70">*</span>
+                    </label>
+                    <textarea
+                      value={roteiro}
+                      onChange={e => setRoteiro(e.target.value)}
+                      rows={5}
+                      placeholder="Cole o script do vídeo — as legendas são geradas automaticamente a partir deste texto..."
+                      className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white placeholder:text-white/20 resize-none focus:outline-none focus:border-purple-500/50"
+                    />
+                    <p className="text-[11px] text-white/25 mt-1">Legendas sincronizadas por contagem de palavras</p>
+                  </div>
+
+                  {/* Hook (opcional) */}
+                  <div>
+                    <label className="text-xs text-white/50 uppercase tracking-wider block mb-2">
+                      Texto do hook (primeiros 2.5s)
+                      <span className="ml-1 text-white/25 normal-case tracking-normal">opcional</span>
+                    </label>
+                    <input
+                      value={tema}
+                      onChange={e => setTema(e.target.value)}
+                      placeholder="Auto: primeiros 60 chars do roteiro"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-purple-500/50"
+                    />
+                  </div>
+
+                  {/* Barra de progresso do upload */}
+                  {gerando && uploadProgress > 0 && uploadProgress < 100 && (
+                    <div>
+                      <div className="flex justify-between text-xs text-white/40 mb-1">
+                        <span>Enviando vídeo...</span>
+                        <span>{uploadProgress}%</span>
+                      </div>
+                      <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-purple-500 to-blue-500 rounded-full transition-all duration-300"
+                          style={{ width: `${uploadProgress}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {gerando && uploadProgress === 100 && (
+                    <p className="text-xs text-white/40 text-center">Editando automaticamente (FFmpeg)...</p>
+                  )}
+                </>
+              )}
+
+              {/* CTA — comum a todos os tipos */}
               <div className="space-y-3 pt-1 border-t border-white/5">
                 <label className="text-xs text-white/50 uppercase tracking-wider block">Automação de Comentário</label>
                 <div className="flex gap-2">
@@ -626,11 +994,23 @@ export default function ContentStudioPage() {
 
               <button
                 onClick={handleGerar}
-                disabled={gerando || !tema.trim()}
-                className="w-full rounded-xl py-3.5 bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-semibold text-sm hover:opacity-90 transition-all disabled:opacity-40 flex items-center justify-center gap-2"
+                disabled={gerando || (tipo !== 'upload' && !tema.trim()) || (tipo === 'upload' && (!videoFile || !roteiro.trim()))}
+                className={`w-full rounded-xl py-3.5 text-white font-semibold text-sm hover:opacity-90 transition-all disabled:opacity-40 flex items-center justify-center gap-2 bg-gradient-to-r ${
+                  tipo === 'upload'
+                    ? 'from-purple-600 to-blue-600'
+                    : 'from-cyan-600 to-blue-600'
+                }`}
               >
                 {gerando ? (
-                  <><RefreshCw className="h-4 w-4 animate-spin" /> Gerando...</>
+                  tipo === 'upload' ? (
+                    uploadProgress > 0 && uploadProgress < 100
+                      ? <><RefreshCw className="h-4 w-4 animate-spin" /> Enviando {uploadProgress}%...</>
+                      : <><RefreshCw className="h-4 w-4 animate-spin" /> Editando com FFmpeg...</>
+                  ) : (
+                    <><RefreshCw className="h-4 w-4 animate-spin" /> Gerando...</>
+                  )
+                ) : tipo === 'upload' ? (
+                  <><Upload className="h-4 w-4" /> Enviar e Auto-Editar</>
                 ) : (
                   <><Sparkles className="h-4 w-4" /> Gerar Conteúdo</>
                 )}
