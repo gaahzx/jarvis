@@ -1488,25 +1488,42 @@ function readVaultContext(queryKeywords = []) {
       parts.push('── PREFERÊNCIAS ──\n' + fs.readFileSync(prefPath, 'utf8').slice(0, 1000));
     }
 
-    // 4. Skills library — lê todos os arquivos de Skills/ e filtra por relevância
+    // 4. Skills library — roteamento por keywords do frontmatter (preciso, economiza token)
     const skillsDir = path.join(OBSIDIAN_VAULT, 'Skills');
     if (fs.existsSync(skillsDir)) {
       const skillFiles = fs.readdirSync(skillsDir).filter(f => f.endsWith('.md'));
       const kw = queryKeywords.map(k => k.toLowerCase());
-      const relevantSkills = [];
+      const scored = [];
 
       for (const file of skillFiles) {
         const content = fs.readFileSync(path.join(skillsDir, file), 'utf8');
-        // Inclui skill se não há keywords (incluir todas) OU se alguma keyword bate
-        const isRelevant = kw.length === 0
-          || kw.some(k => content.toLowerCase().includes(k) || file.toLowerCase().includes(k));
-        if (isRelevant) {
-          relevantSkills.push(`[${file.replace('.md', '')}]\n${content.slice(0, 600)}`);
+        const name = file.replace('.md', '');
+
+        // Extrai a linha "keywords:" do frontmatter YAML
+        const kwMatch = content.match(/^keywords:\s*(.+)$/m);
+        const skillKeywords = kwMatch
+          ? kwMatch[1].toLowerCase().split(',').map(k => k.trim())
+          : [];
+        const isIndex = /prioridade:\s*0/.test(content); // Roteamento sempre entra
+
+        // Pontua: quantas keywords do pedido batem com as keywords declaradas da skill
+        let score = 0;
+        for (const q of kw) {
+          if (skillKeywords.some(sk => sk.includes(q) || q.includes(sk))) score += 2;
+          if (name.toLowerCase().includes(q)) score += 1;
         }
+
+        if (isIndex) score += 100; // o índice de roteamento sempre vai junto
+        if (score > 0) scored.push({ name, content, score });
       }
 
-      if (relevantSkills.length > 0) {
-        parts.push('── SKILLS DISPONÍVEIS ──\n' + relevantSkills.join('\n\n---\n'));
+      // Ordena por relevância, pega as 3 mais o índice
+      scored.sort((a, b) => b.score - a.score);
+      const top = scored.slice(0, 4);
+
+      if (top.length > 0) {
+        const rendered = top.map(s => `[${s.name}]\n${s.content.slice(0, 700)}`);
+        parts.push('── SKILLS RELEVANTES (use o conhecimento já destilado) ──\n' + rendered.join('\n\n---\n'));
       }
     }
 
