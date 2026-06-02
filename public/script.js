@@ -3097,65 +3097,111 @@ initRealtimeBtn();
 })();
 
 // ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 // JARVIS TERMINAL CHAT — acesso direto ao Opus 4.8
-// Minimizado por padrão, abre ao clicar, grudado no card do Obsidian
+// Sempre visível · Expand abre modal completo · Auth status em tempo real
 // ═══════════════════════════════════════════════════════════════════
 (function initJarvisTerminal() {
-  const card     = document.getElementById('jterm-card');
-  const toggle   = document.getElementById('jterm-toggle');
-  const body     = document.getElementById('jterm-body');
-  const minBtn   = document.getElementById('jterm-minbtn');
-  const messages = document.getElementById('jterm-messages');
-  const input    = document.getElementById('jterm-input');
-  const sendBtn  = document.getElementById('jterm-send');
-  if (!card || !toggle || !body || !input || !sendBtn) return;
+  // ── Elementos do card compacto ──
+  const messages  = document.getElementById('jterm-messages');
+  const input     = document.getElementById('jterm-input');
+  const sendBtn   = document.getElementById('jterm-send');
+  const expandBtn = document.getElementById('jterm-expand');
+  const authDot   = document.getElementById('jterm-auth-dot');
 
-  let isOpen = false;
+  // ── Elementos do modal expandido ──
+  const modal         = document.getElementById('jterm-modal');
+  const modalClose    = document.getElementById('jterm-modal-close');
+  const modalMessages = document.getElementById('jterm-modal-messages');
+  const modalInput    = document.getElementById('jterm-modal-input');
+  const modalSend     = document.getElementById('jterm-modal-send');
+  const modalDot      = document.getElementById('jterm-modal-dot');
+
+  if (!messages || !input || !sendBtn) return;
+
   let isBusy = false;
+  // Armazena todas as mensagens para sincronizar card ↔ modal
+  const messageHistory = []; // { text, type }
 
-  // Toggle abrir/minimizar
-  function toggleTerminal() {
-    isOpen = !isOpen;
-    body.classList.toggle('open', isOpen);
-    minBtn.textContent = isOpen ? '▼ minimizar' : '▲ abrir';
-    if (isOpen) { input.focus(); scrollToBottom(); }
-  }
+  // ── Scroll helpers ──
+  function scrollBottom(el) { el.scrollTop = el.scrollHeight; }
 
-  toggle.addEventListener('click', toggleTerminal);
-
-  // Scroll automático
-  function scrollToBottom() {
-    messages.scrollTop = messages.scrollHeight;
-  }
-
-  // Adicionar linha ao terminal
-  function addLine(text, type = 'jterm-jarvis') {
+  // ── Cria elemento de linha ──
+  function makeLine(text, type) {
     const el = document.createElement('div');
     el.className = 'jterm-line ' + type;
     el.textContent = text;
-    messages.appendChild(el);
-    scrollToBottom();
     return el;
   }
 
-  // Enviar mensagem ao Opus via /api/terminal
-  async function sendMessage() {
-    const msg = input.value.trim();
+  // ── Adiciona linha ao card E ao modal, salva no histórico ──
+  function addLine(text, type = 'jterm-jarvis', returnEl = false) {
+    messageHistory.push({ text, type });
+
+    const elCard = makeLine(text, type);
+    messages.appendChild(elCard);
+    scrollBottom(messages);
+
+    if (modalMessages) {
+      const elModal = makeLine(text, type);
+      modalMessages.appendChild(elModal);
+      scrollBottom(modalMessages);
+    }
+
+    return returnEl ? elCard : undefined;
+  }
+
+  // ── Abre linha de streaming (retorna o elemento para atualizar) ──
+  function addStreamingLine() {
+    const placeholder = { text: '', type: 'jterm-streaming' };
+    messageHistory.push(placeholder);
+
+    const elCard = makeLine('', 'jterm-streaming');
+    messages.appendChild(elCard);
+    scrollBottom(messages);
+
+    let elModal = null;
+    if (modalMessages) {
+      elModal = makeLine('', 'jterm-streaming');
+      modalMessages.appendChild(elModal);
+      scrollBottom(modalMessages);
+    }
+
+    function update(text) {
+      placeholder.text = text;
+      elCard.textContent = text;
+      if (elModal) elModal.textContent = text;
+      scrollBottom(messages);
+      if (elModal) scrollBottom(modalMessages);
+    }
+
+    function finalize(text, type) {
+      placeholder.text = text;
+      placeholder.type = type;
+      elCard.className = 'jterm-line ' + type;
+      elCard.textContent = text;
+      if (elModal) { elModal.className = 'jterm-line ' + type; elModal.textContent = text; }
+    }
+
+    return { update, finalize };
+  }
+
+  // ── Envia mensagem ao Opus via /api/terminal ──
+  async function sendMessage(fromModal = false) {
+    const src = fromModal ? modalInput : input;
+    const msg = src.value.trim();
     if (!msg || isBusy) return;
 
     isBusy = true;
-    input.value = '';
+    src.value = '';
+    if (!fromModal) input.value = '';
+    else modalInput.value = '';
     sendBtn.disabled = true;
+    if (modalSend) modalSend.disabled = true;
 
-    // Mostra mensagem do usuário
     addLine(msg, 'jterm-user');
 
-    // Linha de streaming do JARVIS
-    const jarvisLine = document.createElement('div');
-    jarvisLine.className = 'jterm-line jterm-streaming';
-    jarvisLine.textContent = '';
-    messages.appendChild(jarvisLine);
-    scrollToBottom();
+    const streaming = addStreamingLine();
 
     try {
       const resp = await fetch('/api/terminal', {
@@ -3165,55 +3211,100 @@ initRealtimeBtn();
       });
 
       if (!resp.ok) {
-        jarvisLine.className = 'jterm-line jterm-err';
-        jarvisLine.textContent = '[erro ' + resp.status + '] ' + await resp.text();
+        const errText = await resp.text();
+        streaming.finalize('[erro ' + resp.status + '] ' + errText, 'jterm-err');
+        // Auth offline
+        if (resp.status === 503) setAuthStatus('offline');
       } else {
         const reader = resp.body.getReader();
         const decoder = new TextDecoder();
         let full = '';
-
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          full += chunk;
-          jarvisLine.textContent = full;
-          scrollToBottom();
+          full += decoder.decode(value, { stream: true });
+          streaming.update(full);
         }
-
-        // Finaliza — remove cursor piscando
-        jarvisLine.className = 'jterm-line jterm-jarvis';
-        jarvisLine.textContent = full;
+        streaming.finalize(full, 'jterm-jarvis');
+        setAuthStatus('online');
       }
     } catch (err) {
-      jarvisLine.className = 'jterm-line jterm-err';
-      jarvisLine.textContent = '[erro] ' + err.message;
+      streaming.finalize('[erro] ' + err.message, 'jterm-err');
     }
+
+    // Separador sutil
+    addLine('──────────────────────', 'jterm-sys');
 
     isBusy = false;
     sendBtn.disabled = false;
-    input.focus();
-    scrollToBottom();
-
-    // Linha separadora sutil
-    const sep = document.createElement('div');
-    sep.className = 'jterm-line jterm-sys';
-    sep.textContent = '──────────────────────';
-    messages.appendChild(sep);
+    if (modalSend) modalSend.disabled = false;
+    src.focus();
   }
 
-  // Enter envia
+  // ── Enter envia (card e modal) ──
   input.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(false); }
   });
-  sendBtn.addEventListener('click', sendMessage);
+  sendBtn.addEventListener('click', () => sendMessage(false));
 
-  // Ctrl+` abre/fecha o terminal de qualquer lugar
-  document.addEventListener('keydown', e => {
-    if (e.ctrlKey && e.key === '`') { e.preventDefault(); toggleTerminal(); }
-  });
+  if (modalInput) {
+    modalInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(true); }
+    });
+  }
+  if (modalSend) modalSend.addEventListener('click', () => sendMessage(true));
 
-  console.log('[JARVIS] Terminal chat inicializado — Ctrl+` para abrir');
+  // ── Expand: abre modal e sincroniza histórico ──
+  function openModal() {
+    if (!modal) return;
+    // Sincroniza histórico no modal
+    modalMessages.innerHTML = '';
+    messageHistory.forEach(({ text, type }) => {
+      const el = makeLine(text, type);
+      modalMessages.appendChild(el);
+    });
+    modal.style.display = 'flex';
+    scrollBottom(modalMessages);
+    setTimeout(() => modalInput && modalInput.focus(), 50);
+  }
+
+  function closeModal() {
+    if (modal) modal.style.display = 'none';
+    input.focus();
+  }
+
+  if (expandBtn) expandBtn.addEventListener('click', openModal);
+  if (modalClose) modalClose.addEventListener('click', closeModal);
+  if (modal) modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+
+  // ── Status de auth do Claude CLI ──
+  function setAuthStatus(status) { // 'online' | 'offline' | 'checking'
+    const dotClass = status === 'online' ? '' : status === 'offline' ? 'offline' : 'checking';
+    if (authDot) { authDot.className = 'jterm-auth-dot ' + dotClass; authDot.title = status === 'online' ? 'Claude CLI autenticado' : status === 'offline' ? 'Claude CLI offline — rode: claude auth login' : 'Verificando...'; }
+    if (modalDot) { modalDot.style.background = status === 'online' ? 'rgba(0,255,136,0.7)' : status === 'offline' ? 'rgba(255,80,80,0.8)' : 'rgba(255,200,0,0.8)'; }
+    if (status === 'offline') {
+      addLine('⚠ Claude CLI offline. No terminal Windows, execute: claude auth login', 'jterm-warn');
+    }
+  }
+
+  // Verifica auth ao inicializar e a cada 10min
+  async function checkAuth() {
+    setAuthStatus('checking');
+    try {
+      const r = await fetch('/api/health');
+      const data = await r.json();
+      const claudeOk = data?.pools?.opus !== undefined ? true : data?.claude?.status === 'ok';
+      setAuthStatus(claudeOk ? 'online' : 'offline');
+    } catch { setAuthStatus('offline'); }
+  }
+
+  checkAuth();
+  setInterval(checkAuth, 10 * 60 * 1000); // re-check a cada 10min
+
+  // Foco automático no input
+  setTimeout(() => input.focus(), 300);
+
+  console.log('[JARVIS] Terminal chat inicializado · expand para modal completo');
 })();
 
 

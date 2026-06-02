@@ -1462,31 +1462,111 @@ async function updateProjectStatus(userRequest, claudeResponse) {
   } catch {}
 }
 
-// ── Vault context reader — lê memória recente do Obsidian ──
-function readVaultContext() {
+// ── Vault context reader — lê memória recente + biblioteca de skills ──
+function readVaultContext(queryKeywords = []) {
   try {
     if (!fs.existsSync(OBSIDIAN_VAULT)) return '';
     const parts = [];
-    // Contexto ativo (memória de trabalho)
+
+    // 1. Contexto ativo (memória de trabalho)
     const agoraPath = path.join(OBSIDIAN_VAULT, 'Agora', 'Contexto-Ativo.md');
     if (fs.existsSync(agoraPath)) {
       parts.push('── CONTEXTO ATIVO ──\n' + fs.readFileSync(agoraPath, 'utf8').slice(0, 1500));
     }
-    // Sessão de hoje
+
+    // 2. Sessão de hoje (últimas interações)
     const today = new Date().toISOString().split('T')[0];
     const sessionPath = path.join(OBSIDIAN_VAULT, 'Sessões', `${today}.md`);
     if (fs.existsSync(sessionPath)) {
       const content = fs.readFileSync(sessionPath, 'utf8');
-      parts.push('── SESSÃO HOJE ──\n' + content.slice(-2000)); // últimas interações
+      parts.push('── SESSÃO HOJE ──\n' + content.slice(-2000));
     }
-    // Preferências do usuário
+
+    // 3. Preferências do usuário
     const prefPath = path.join(OBSIDIAN_VAULT, 'Preferências', `${USER_NAME}.md`);
     if (fs.existsSync(prefPath)) {
       parts.push('── PREFERÊNCIAS ──\n' + fs.readFileSync(prefPath, 'utf8').slice(0, 1000));
     }
+
+    // 4. Skills library — lê todos os arquivos de Skills/ e filtra por relevância
+    const skillsDir = path.join(OBSIDIAN_VAULT, 'Skills');
+    if (fs.existsSync(skillsDir)) {
+      const skillFiles = fs.readdirSync(skillsDir).filter(f => f.endsWith('.md'));
+      const kw = queryKeywords.map(k => k.toLowerCase());
+      const relevantSkills = [];
+
+      for (const file of skillFiles) {
+        const content = fs.readFileSync(path.join(skillsDir, file), 'utf8');
+        // Inclui skill se não há keywords (incluir todas) OU se alguma keyword bate
+        const isRelevant = kw.length === 0
+          || kw.some(k => content.toLowerCase().includes(k) || file.toLowerCase().includes(k));
+        if (isRelevant) {
+          relevantSkills.push(`[${file.replace('.md', '')}]\n${content.slice(0, 600)}`);
+        }
+      }
+
+      if (relevantSkills.length > 0) {
+        parts.push('── SKILLS DISPONÍVEIS ──\n' + relevantSkills.join('\n\n---\n'));
+      }
+    }
+
+    // 5. Agentes disponíveis (AIOX-Core) — resumo para roteamento
+    const agentesDir = path.join(OBSIDIAN_VAULT, 'Agentes');
+    if (fs.existsSync(agentesDir)) {
+      const agentFiles = fs.readdirSync(agentesDir).filter(f => f.endsWith('.md'));
+      const agentList = agentFiles.map(f => f.replace('.md', '').replace('Skill — ', '')).join(', ');
+      if (agentList) {
+        parts.push(`── AGENTES AIOX-CORE (usar apenas quando realmente necessário) ──\n${agentList}\nATENÇÃO: Prefira execução direta. Acione agentes somente para tarefas multi-domínio complexas. Sonnet sempre valida antes da entrega final.`);
+      }
+    }
+
     return parts.join('\n\n');
   } catch { return ''; }
 }
+
+// ══════════════════════════════════════════════════════════════
+// CLAUDE CLI KEEPALIVE — mantém o token sempre fresco
+// O accessToken do Claude Pro expira a cada ~8h. Ele tem refreshToken
+// que renova automaticamente, MAS só quando o CLI executa. Sem uso,
+// o token expira e o JARVIS fica "offline". Solução: ping proativo.
+// ══════════════════════════════════════════════════════════════
+
+// 1. Keepalive PROATIVO a cada 3h — roda uma inferência mínima que
+//    dispara o refresh do token ANTES de expirar (janela de 8h).
+setInterval(() => {
+  if (claudeCliAvailable) {
+    console.log('[JARVIS] Keepalive — renovando sessão Claude CLI...');
+    try {
+      const proc = spawn(CLAUDE_CMD, [
+        '--print', '--output-format', 'text', '--dangerously-skip-permissions'
+      ], { shell: true, cwd: JARVIS_DIR });
+      proc.stdin.write('ok');
+      proc.stdin.end();
+      let out = '';
+      proc.stdout.on('data', d => { out += d; });
+      const t = setTimeout(() => { try { proc.kill(); } catch {} }, 30000);
+      proc.on('close', (code) => {
+        clearTimeout(t);
+        if (code === 0 && out.trim()) {
+          console.log('[JARVIS] ✅ Keepalive OK — token renovado');
+        } else {
+          console.warn('[JARVIS] ⚠ Keepalive falhou — agendando re-auth');
+          claudeCliAvailable = false;
+          checkClaudeCliAuth();
+        }
+      });
+      proc.on('error', () => { clearTimeout(t); });
+    } catch {}
+  }
+}, 3 * 60 * 60 * 1000); // 3h — bem dentro da janela de 8h do token
+
+// 2. Recovery REATIVO a cada 10min — se caiu, tenta re-autenticar
+setInterval(() => {
+  if (!claudeCliAvailable) {
+    console.log('[JARVIS] Claude CLI offline — tentando recuperar...');
+    checkClaudeCliAuth();
+  }
+}, 10 * 60 * 1000);
 
 // ── Session memory writer — escreve no Obsidian após cada interação ──
 function writeSessionMemory(request, response) {
@@ -1549,6 +1629,12 @@ WEB: Abre qualquer URL, navega, clica, extrai, preenche, interage com qualquer s
 
 MEMÓRIA: Lê vault Obsidian antes de tasks de projeto. Escreve resultados após conclusão.
 
+BIBLIOTECA DE SKILLS (sua vantagem — conhecimento já destilado):
+Antes de executar, consulte a skill relevante listada em "SKILLS DISPONÍVEIS" no contexto do vault.
+Cada skill contém o conhecimento de ponta já lapidado para aquele domínio (design, código, documentos,
+computer use, análise). Use-a — economiza tempo e garante qualidade premium. A "Skill — Roteamento (Índice)"
+é o mapa que decide qual skill/modelo/agente acionar. Acione AGENTES AIOX-CORE só quando realmente necessário.
+
 REGRAS DE EXECUÇÃO INVIOLÁVEIS:
 1. NUNCA diga "não consigo" — sempre existe um caminho, encontre-o
 2. NUNCA entregue incompleto — se a tarefa é grande, continue até terminar
@@ -1557,6 +1643,7 @@ REGRAS DE EXECUÇÃO INVIOLÁVEIS:
 5. Anuncie progresso em tasks longas: "Item 10 de 50 concluído"
 6. Após Computer Use: sempre verifique com screenshot
 7. Você é o JARVIS do ${USER_NAME} — adapte contexto, preferências e estilo ao usuário
+8. Consulte a SKILL relevante antes de criar algo — o conhecimento já está na biblioteca
 
 ══════════════════════════════════════════
 CONTEXTO DO VAULT — MEMÓRIA ATIVA
@@ -4765,8 +4852,9 @@ app.post('/api/terminal', (req, res) => {
   res.setHeader('Transfer-Encoding', 'chunked');
   res.setHeader('X-Accel-Buffering', 'no');
 
-  // System prompt completo — todas as capacidades desbloqueadas
-  const vaultCtx = readVaultContext();
+  // System prompt completo — todas as capacidades + skills relevantes do vault
+  const keywords = message.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+  const vaultCtx = readVaultContext(keywords);
   const systemPrompt = `Você é JARVIS — assistente de inteligência artificial de ponta do ${USER_NAME}.
 Direto, preciso, leal. Entrega resultados sem rodeios. Tom técnico mas acessível.
 Nunca mencione Claude, Anthropic, OpenAI. Você É o JARVIS.
