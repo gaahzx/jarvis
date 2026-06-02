@@ -1323,7 +1323,8 @@ async function startRealtime() {
         const ev = JSON.parse(e.data);
         if (ev.type === 'input_audio_buffer.speech_started') setAvatarState('listening');
         if (ev.type === 'response.audio.done') setAvatarState('idle');
-        if (ev.type === 'conversation.item.input_audio_transcription.completed' && ev.transcript) {
+        // Patch 31: OR duplo — GA renomeou alguns eventos
+        if ((ev.type === 'conversation.item.input_audio_transcription.completed' || ev.type === 'input_audio_transcription.completed') && ev.transcript) {
           // Translate user transcript to match the active language toggle
           (async () => {
             try {
@@ -1342,7 +1343,8 @@ async function startRealtime() {
           addTerminalLine(ev.transcript, 'jarvis-line');
         }
         // Handle function call: GPT-realtime asks us to dispatch to Claude
-        if (ev.type === 'response.function_call_arguments.done' && ev.name === 'execute_task') {
+        // Patch 31: OR duplo para evento renomeado na GA do Realtime
+        if ((ev.type === 'response.function_call_arguments.done' || ev.type === 'response.output_function_call_arguments.done') && ev.name === 'execute_task') {
           handleRealtimeTask(ev.call_id, ev.arguments);
         }
       } catch {}
@@ -1350,11 +1352,16 @@ async function startRealtime() {
 
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
-    const sdpRes = await fetch('https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview', {
+    // Patch 27C: endpoint GA correto — modelo ja esta na session, nao vai na query
+    const sdpRes = await fetch('https://api.openai.com/v1/realtime/calls', {
       method: 'POST',
       body: offer.sdp,
       headers: { 'Authorization': `Bearer ${sess.client_secret.value}`, 'Content-Type': 'application/sdp' }
     });
+    if (!sdpRes.ok) {
+      const err = await sdpRes.text();
+      throw new Error(`SDP exchange falhou (${sdpRes.status}): ${err}`);
+    }
     await pc.setRemoteDescription({ type: 'answer', sdp: await sdpRes.text() });
 
     realtimeActive = true;
