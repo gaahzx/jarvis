@@ -1,0 +1,1649 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ROTEIRO-AULA-JARVIS-v8.4</title>
+<style>
+  :root {
+    --cyan: #00e4ff;
+    --cyan-dim: rgba(0,228,255,.18);
+    --cyan-border: rgba(0,228,255,.3);
+    --green: #00ff88;
+    --green-dim: rgba(0,255,136,.15);
+    --red: #ff4466;
+    --red-dim: rgba(255,68,102,.15);
+    --orange: #ffaa00;
+    --orange-dim: rgba(255,170,0,.15);
+    --bg: #080c10;
+    --bg2: #0d1117;
+    --bg3: #111820;
+    --text: #c8d8e8;
+    --text-dim: #7a94a8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  /* ── COVER ── */
+  .cover {
+    min-height: 100vh;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center;
+    border-bottom: 1px solid var(--cyan-border);
+    padding: 60px 40px;
+    background: radial-gradient(ellipse at 50% 30%, rgba(0,228,255,.06) 0%, transparent 70%);
+  }
+  .cover-logo {
+    font-size: clamp(48px, 8vw, 96px);
+    font-weight: 700;
+    letter-spacing: 0.4em;
+    color: var(--cyan);
+    text-shadow: 0 0 40px rgba(0,228,255,.5);
+    margin-bottom: 12px;
+  }
+  .cover-version {
+    font-size: 14px;
+    color: var(--text-dim);
+    letter-spacing: 0.3em;
+    margin-bottom: 40px;
+  }
+  .cover-badge {
+    display: inline-flex; gap: 32px;
+    flex-wrap: wrap; justify-content: center;
+    margin-bottom: 40px;
+  }
+  .badge {
+    padding: 8px 20px;
+    border: 1px solid var(--cyan-border);
+    background: var(--cyan-dim);
+    color: var(--cyan);
+    border-radius: 4px;
+    font-size: 13px;
+    letter-spacing: 0.1em;
+  }
+  .cover-sub {
+    max-width: 600px;
+    color: var(--text-dim);
+    font-size: 13px;
+    line-height: 1.8;
+    margin-bottom: 32px;
+  }
+  .cover-author {
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+  }
+  /* ── SECTIONS ── */
+  .page {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 48px 32px;
+    border-bottom: 1px solid rgba(255,255,255,.05);
+  }
+  .page-header {
+    display: flex; align-items: center; gap: 16px;
+    margin-bottom: 32px;
+  }
+  .page-num {
+    font-size: 11px; letter-spacing: 0.2em;
+    color: var(--text-dim); text-transform: uppercase;
+  }
+  .page-title {
+    font-size: 18px; font-weight: 700;
+    color: var(--cyan); letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+  .section-tag {
+    font-size: 10px; letter-spacing: 0.2em;
+    color: var(--text-dim); text-transform: uppercase;
+    border: 1px solid rgba(255,255,255,.1);
+    padding: 2px 8px; border-radius: 2px;
+    margin-left: auto;
+  }
+  /* ── TABLES ── */
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+  th {
+    background: rgba(0,228,255,.08);
+    color: var(--cyan); font-size: 11px;
+    letter-spacing: 0.15em; text-transform: uppercase;
+    padding: 8px 12px; text-align: left;
+    border-bottom: 1px solid var(--cyan-border);
+  }
+  td {
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(255,255,255,.05);
+    vertical-align: top;
+  }
+  tr:hover td { background: rgba(255,255,255,.02); }
+  /* ── CODE BLOCKS ── */
+  pre, code {
+    font-family: 'Courier New', Courier, monospace;
+  }
+  pre {
+    background: #060a0e;
+    border: 1px solid rgba(0,228,255,.15);
+    border-left: 3px solid var(--cyan);
+    padding: 16px 20px;
+    margin: 16px 0;
+    overflow-x: auto;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #a8c8e0;
+  }
+  code { color: var(--cyan); font-size: 12px; }
+  /* ── CALLOUTS ── */
+  .callout {
+    padding: 16px 20px;
+    border-radius: 4px;
+    margin: 16px 0;
+    border-left: 3px solid;
+    font-size: 13px;
+  }
+  .callout.warn {
+    background: var(--orange-dim);
+    border-color: var(--orange);
+  }
+  .callout.danger {
+    background: var(--red-dim);
+    border-color: var(--red);
+  }
+  .callout.ok {
+    background: var(--green-dim);
+    border-color: var(--green);
+  }
+  .callout.info {
+    background: var(--cyan-dim);
+    border-color: var(--cyan);
+  }
+  .callout-title {
+    font-weight: 700; margin-bottom: 8px;
+    font-size: 12px; letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  /* ── PATCH CARDS ── */
+  .patch {
+    margin: 24px 0;
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .patch-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px;
+    background: rgba(0,228,255,.05);
+    border-bottom: 1px solid rgba(255,255,255,.06);
+  }
+  .patch-num {
+    font-size: 11px; font-weight: 700;
+    color: var(--cyan); letter-spacing: 0.1em;
+    min-width: 70px;
+  }
+  .patch-name {
+    font-size: 14px; font-weight: 700;
+    color: var(--text); flex: 1;
+  }
+  .patch-status {
+    font-size: 10px; letter-spacing: 0.15em;
+    padding: 3px 10px; border-radius: 3px;
+    font-weight: 700; text-transform: uppercase;
+  }
+  .status-apply {
+    background: rgba(255,68,102,.2);
+    border: 1px solid rgba(255,68,102,.4);
+    color: var(--red);
+  }
+  .status-verify {
+    background: rgba(0,255,136,.15);
+    border: 1px solid rgba(0,255,136,.4);
+    color: var(--green);
+  }
+  .patch-body { padding: 16px; }
+  /* ── GATE ── */
+  .gate {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px;
+    border: 1px solid rgba(0,255,136,.3);
+    background: rgba(0,255,136,.06);
+    border-radius: 4px;
+    margin: 20px 0;
+    font-size: 13px;
+  }
+  .gate-label {
+    color: var(--green); font-weight: 700;
+    font-size: 11px; letter-spacing: 0.2em;
+    text-transform: uppercase; min-width: 60px;
+  }
+  /* ── RULE CARDS ── */
+  .rule-card {
+    border: 1px solid rgba(255,170,0,.25);
+    background: rgba(255,170,0,.05);
+    padding: 14px 18px;
+    border-radius: 4px;
+    margin: 12px 0;
+  }
+  .rule-card.absolute {
+    border-color: rgba(255,68,102,.4);
+    background: rgba(255,68,102,.06);
+  }
+  .rule-num {
+    font-size: 11px; font-weight: 700;
+    color: var(--orange); letter-spacing: 0.2em;
+    margin-bottom: 6px;
+  }
+  .rule-card.absolute .rule-num { color: var(--red); }
+  /* ── PHASE HEADER ── */
+  .phase {
+    display: flex; align-items: baseline; gap: 20px;
+    margin-bottom: 24px;
+  }
+  .phase-num {
+    font-size: 56px; font-weight: 700;
+    color: var(--cyan); opacity: .15;
+    line-height: 1;
+  }
+  .phase-info { flex: 1; }
+  .phase-name {
+    font-size: 20px; font-weight: 700;
+    color: var(--cyan); letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+  .phase-gate {
+    font-size: 12px; color: var(--text-dim);
+    margin-top: 4px; letter-spacing: 0.1em;
+  }
+  /* ── TOC ── */
+  .toc-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+    margin: 20px 0;
+  }
+  .toc-item {
+    padding: 12px 16px;
+    border: 1px solid rgba(255,255,255,.07);
+    border-radius: 4px;
+    background: var(--bg3);
+  }
+  .toc-phase { font-size: 11px; color: var(--text-dim); letter-spacing: 0.1em; }
+  .toc-title { font-size: 13px; color: var(--text); margin-top: 4px; }
+  .toc-gate { font-size: 11px; color: var(--cyan); margin-top: 4px; }
+  /* ── UTILITY ── */
+  h3 {
+    font-size: 14px; font-weight: 700;
+    color: var(--text); margin: 20px 0 10px;
+    letter-spacing: 0.05em;
+  }
+  p { margin: 8px 0; color: var(--text); }
+  ul, ol { padding-left: 20px; margin: 8px 0; }
+  li { margin: 4px 0; }
+  .dim { color: var(--text-dim); }
+  .cyan { color: var(--cyan); }
+  .green { color: var(--green); }
+  .red { color: var(--red); }
+  .orange { color: var(--orange); }
+  .divider {
+    border: none; border-top: 1px solid rgba(255,255,255,.06);
+    margin: 28px 0;
+  }
+  .inline-code {
+    background: rgba(0,228,255,.08);
+    border: 1px solid rgba(0,228,255,.2);
+    padding: 1px 6px; border-radius: 3px;
+    color: var(--cyan); font-size: 11px;
+  }
+  .prompt-block {
+    background: #020608;
+    border: 1px solid var(--cyan-border);
+    border-top: 3px solid var(--cyan);
+    padding: 20px 24px;
+    border-radius: 0 0 6px 6px;
+    margin: 16px 0;
+  }
+  .prompt-label {
+    font-size: 10px; letter-spacing: 0.3em;
+    color: var(--cyan); text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  @media print {
+    .page { page-break-before: always; }
+    .cover { page-break-before: avoid; }
+    body { background: white; color: black; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════ CAPA ═══ -->
+<div class="cover">
+  <div class="cover-logo">J·A·R·V·I·S</div>
+  <div class="cover-version">V8.4 · 2026 · ATUALIZADO 02/06/2026</div>
+  <div class="cover-badge">
+    <div class="badge">07 FASES</div>
+    <div class="badge">36 PATCHES</div>
+    <div class="badge">~20 MIN</div>
+  </div>
+  <div class="cover-sub">
+    Este documento é um programa para Claude.<br>
+    Cole no Claude Code na pasta do instalador, peça para ler e executar.<br>
+    Ao final, o JARVIS estará instalado, com os 36 patches anti-regressão aplicados,<br>
+    rodando em localhost:3000 e respondendo por voz e texto.
+  </div>
+  <div class="cover-author">READ → EXECUTE → DELIVERED · GABRIEL FELIPE FERNANDES · CLAUDE OPUS 4.8</div>
+  <div style="margin-top:12px;font-size:11px;color:var(--text-dim);">JARVIS V8.4 · DOCUMENTO EXECUTÁVEL · 10 v8.0 + 4 v8.1 + 16 v8.2 + 6 v8.3</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ PG 01 · BRIEFING ═══ -->
+<div class="page">
+  <div class="page-header">
+    <div class="page-num">J·A·R·V·I·S // ATIVAÇÃO PG 01</div>
+    <div class="page-title">BRIEFING</div>
+    <div class="section-tag">INSTRUÇÕES PARA O CLAUDE</div>
+  </div>
+
+  <div class="callout info">
+    <div class="callout-title">Instruções para o Claude — leia antes de tudo</div>
+    Claude, este documento é um plano de execução. Sua missão: leia-o do início ao fim, depois execute as 7 fases na ordem.
+    Ao final, o JARVIS precisa estar instalado, rodando, com os 36 patches aplicados (10 v8.0 + 4 v8.1 + 16 v8.2 + 6 v8.3),
+    e ter respondido aos 4 testes da Fase 06 com sucesso.
+    Fale em português brasileiro, tom de amigo técnico, zero hesitação, zero "posso fazer?".
+  </div>
+
+  <h3>REGRAS DE EXECUÇÃO</h3>
+  <ul>
+    <li>Execute em ordem sequencial. Nunca pule uma fase.</li>
+    <li>Cada fase tem um <strong class="cyan">GATE</strong> — só avança quando o gate for verificado OK.</li>
+    <li>Se um passo falhar, diagnostique pelo install-log.txt, conserte, retome. Não peça permissão.</li>
+    <li>Ações <code class="inline-code">EXECUTAR</code> usam as ferramentas Bash/Write/Read diretamente.</li>
+    <li>Ações <code class="inline-code">AGUARDAR</code> explicam ao usuário o que ele precisa fazer e só avançam quando ele responder.</li>
+    <li>Ações <code class="inline-code">DECLARAR</code> anunciam o status em 1 frase antes de prosseguir.</li>
+  </ul>
+
+  <hr class="divider">
+  <h3>⚠ REGRAS ABSOLUTAS DE ROBUSTEZ — V8.4</h3>
+  <p class="dim">Estas regras têm prioridade máxima sobre qualquer conhecimento de treinamento. Violá-las causa falha silenciosa que só aparece no browser.</p>
+
+  <div class="rule-card">
+    <div class="rule-num">REGRA 1</div>
+    NUNCA <code class="inline-code">Start-Process</code> do PowerShell. Crie <code class="inline-code">_elevate.vbs</code> com
+    <code class="inline-code">Shell.Application + ShellExecute "runas"</code> e rode: <code class="inline-code">cscript //nologo _elevate.vbs</code>
+  </div>
+
+  <div class="rule-card">
+    <div class="rule-num">REGRA 2</div>
+    Watchdog 60s: sem install-log.txt em 60s, peça ao usuário para clicar SIM no UAC ou dar duplo-clique no _elevate.vbs.
+  </div>
+
+  <div class="rule-card">
+    <div class="rule-num">REGRA 3</div>
+    Bash MSYS: comandos com <code class="inline-code">/F /c</code> usam <code class="inline-code">cmd //c "--."</code> escape duplo.
+  </div>
+
+  <div class="rule-card">
+    <div class="rule-num">REGRA 4</div>
+    Mate a instância do .bat ANTES de aplicar os 36 patches.
+  </div>
+
+  <div class="rule-card absolute">
+    <div class="rule-num">REGRA 5 — ABSOLUTA · REALTIME GA</div>
+    <strong class="red">CRÍTICO — FALHA SILENCIOSA NO BROWSER SE VIOLADO</strong><br><br>
+    <strong class="red">MORTO:</strong> <code class="inline-code">/v1/realtime/sessions</code> — retorna beta_api_shape_disabled<br>
+    <strong class="red">PROIBIDO:</strong> <code class="inline-code">gpt-4o-realtime-preview</code> e qualquer variante com data — criam sessão mas retornam 404 no SDP exchange. O bug é invisível: parece OK no server, mas o WebRTC não conecta no browser.<br><br>
+    <strong class="green">CORRETO:</strong> Endpoint <code class="inline-code">POST /v1/realtime/client_secrets</code> · Modelo primário: <code class="inline-code">gpt-realtime-2</code> · Fallback automático: <code class="inline-code">gpt-realtime</code><br><br>
+    O código do GitHub já vem com o fallback implementado. Verificar após clone (Patch 37).
+  </div>
+
+  <div class="rule-card absolute">
+    <div class="rule-num">REGRA 6 — ABSOLUTA · ZERO BROWSER LOCALHOST</div>
+    PROIBIDO executar qualquer comando que abra browser em localhost durante Fases 01–06.
+    Lista negra: <code class="inline-code">start "" "http://localhost:*"</code>, qualquer variação.
+    Verificação de server vivo: APENAS via <code class="inline-code">curl -s http://localhost:3000/api/health</code>.
+  </div>
+
+  <div class="rule-card">
+    <div class="rule-num">REGRA 7</div>
+    Vault Obsidian = <code class="inline-code">"Felipe"</code>. Aberto via <code class="inline-code">obsidian://open?path=</code>. NÃO modificar para "jarvis".
+  </div>
+
+  <div class="rule-card absolute">
+    <div class="rule-num">REGRA 8 — ABSOLUTA · PATHS VIA GETFOLDERPATH</div>
+    Todos os paths no installer via PowerShell <code class="inline-code">[Environment]::GetFolderPath()</code> no TOPO do script, antes de qualquer execução.
+    NUNCA hardcodar <code class="inline-code">%USERPROFILE%\Desktop</code> ou <code class="inline-code">%USERPROFILE%\Documents</code>. Funciona com e sem OneDrive sync.
+  </div>
+
+  <div class="callout warn" style="margin-top:24px;">
+    <div class="callout-title">Nota v8.4 — Patches pré-aplicados no GitHub</div>
+    Os patches 20, 21, 27 e 31 já foram aplicados no repositório gaahzx/jarvis.
+    Esses patches aparecem marcados como <span class="green">✓ PRÉ-APLICADO</span> — só verifique, não edite.
+    O Patch 37 (novo) faz a verificação automática pós-clone de todos eles.
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ PG 02 · VISÃO GERAL ═══ -->
+<div class="page">
+  <div class="page-header">
+    <div class="page-num">J·A·R·V·I·S // ATIVAÇÃO PG 02</div>
+    <div class="page-title">VISÃO GERAL</div>
+  </div>
+
+  <h3>VISÃO GERAL DAS 7 FASES</h3>
+  <table>
+    <thead><tr><th>#</th><th>Fase</th><th>Gate</th></tr></thead>
+    <tbody>
+      <tr><td class="cyan">01</td><td>Pré-Check · Ambiente</td><td>5/5 OK</td></tr>
+      <tr><td class="cyan">02</td><td>Instalação · 8 passos automáticos</td><td>Log diz FIM</td></tr>
+      <tr><td class="cyan">03</td><td>Validação · 7 health checks</td><td>7/7 green</td></tr>
+      <tr><td class="cyan">04</td><td>Patch · 37 fixes pré-servidor</td><td>37/37 aplicados</td></tr>
+      <tr><td class="cyan">05</td><td>Ativação · Subir o servidor</td><td>HTTP 200 em :3000</td></tr>
+      <tr><td class="cyan">06</td><td>Prova de Vida · 4 testes + 4 testes estendidos</td><td>8/8 tarefas</td></tr>
+      <tr><td class="cyan">07</td><td>Entrega · Sumário final</td><td>ENTREGUE</td></tr>
+    </tbody>
+  </table>
+
+  <h3>FERRAMENTAS POR FASE</h3>
+  <table>
+    <thead><tr><th>Fase</th><th>Ferramenta</th><th>Propósito</th></tr></thead>
+    <tbody>
+      <tr><td>01</td><td>Bash · Read</td><td>Conferir winget, admin, arquivos do instalador</td></tr>
+      <tr><td>02</td><td>Bash</td><td>Executar INSTALAR-JARVIS-v8.bat e monitorar install-log.txt</td></tr>
+      <tr><td>03</td><td>Bash · Read</td><td>Health check dos 7 componentes</td></tr>
+      <tr><td>04</td><td>Edit · Bash</td><td>Aplicar 36 patches em server.js / script.js / index.html / style.css / .bat ANTES de subir o servidor</td></tr>
+      <tr><td>05</td><td>Bash</td><td>Subir node server.js em janela visível, verificar via curl</td></tr>
+      <tr><td>06</td><td>Write · Bash</td><td>Criar arquivo de evidência, validar resposta do sistema</td></tr>
+      <tr><td>07</td><td>Texto</td><td>Declarar conclusão</td></tr>
+    </tbody>
+  </table>
+
+  <hr class="divider">
+
+  <div class="phase">
+    <div class="phase-num">01</div>
+    <div class="phase-info">
+      <div class="phase-name">FASE 01 — PRÉ-CHECK</div>
+      <div class="phase-gate">GATE: 5/5 OK</div>
+    </div>
+  </div>
+
+  <p class="dim">EXECUTAR EM PARALELO:</p>
+  <ul>
+    <li><code class="inline-code">where winget</code> — retorna path</li>
+    <li><code class="inline-code">where node</code> — pode não existir ainda (OK)</li>
+    <li>Pasta atual tem <code class="inline-code">INSTALAR-JARVIS-v8.bat</code></li>
+    <li><code class="inline-code">ping -n 1 github.com</code> — conexão com internet</li>
+    <li>Espaço em disco >= 10 GB</li>
+  </ul>
+
+  <div class="callout info" style="margin-top:16px;">
+    <strong>AGUARDAR:</strong> Pergunte ao usuário: "Você tem a chave OpenAI (sk-...) copiada no clipboard? E está logado no Claude Pro?"
+    Só avance quando ele confirmar "sim".
+  </div>
+  <p class="dim" style="margin-top:12px;">"Ambiente pronto. Vou disparar o instalador agora — ele leva uns 10 minutos. Enquanto ele roda, eu comento cada passo."</p>
+
+  <hr class="divider">
+
+  <div class="phase">
+    <div class="phase-num">02</div>
+    <div class="phase-info">
+      <div class="phase-name">FASE 02 — INSTALAÇÃO</div>
+      <div class="phase-gate">GATE: Log diz FIM e RESULTADO: 7/7</div>
+    </div>
+  </div>
+
+  <p class="dim">EXECUTAR:</p>
+  <pre>powershell -Command "Start-Process -FilePath 'INSTALAR-JARVIS-v8.bat' -Verb RunAs"</pre>
+  <p>A cada 30s, leia install-log.txt e anuncie o último passo concluído em 1 frase.</p>
+  <div class="callout warn">
+    <strong>Fallback:</strong> Se der &lt; 7/7 — leia o log inteiro, identifique qual passo falhou (S1–S8), execute o fix pontual.
+    Git falhou → <code class="inline-code">winget install Git.Git</code>.
+    Claude CLI falhou → <code class="inline-code">npm install -g @anthropic-ai/claude-code</code>.
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ PG 03 · FASE 03 ═══ -->
+<div class="page">
+  <div class="page-header">
+    <div class="page-num">J·A·R·V·I·S // ATIVAÇÃO PG 03</div>
+    <div class="page-title">FASE 03 — VALIDAÇÃO</div>
+    <div class="section-tag">7 HEALTH CHECKS</div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-num">03</div>
+    <div class="phase-info">
+      <div class="phase-name">VALIDAÇÃO · 7 HEALTH CHECKS</div>
+      <div class="phase-gate">GATE: 7/7 GREEN</div>
+    </div>
+  </div>
+
+  <p class="dim">EXECUTAR EM PARALELO:</p>
+  <table>
+    <thead><tr><th>#</th><th>Check</th><th>Comando</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Git</td><td><code>git --version</code></td></tr>
+      <tr><td>2</td><td>Node</td><td><code>node --version</code> (>= 18)</td></tr>
+      <tr>
+        <td>3</td>
+        <td>Python</td>
+        <td>
+          <code>py --version</code> (Windows Launcher) ou detectar caminho real:<br>
+          <code>where python</code> — ignorar resultado se aponta para AppData\Local\Microsoft\WindowsApps (Windows Store stub).<br>
+          Caminho válido: <code>C:\Users\...\AppData\Local\Programs\Python\Python31*\python.exe</code>
+          ou <code>C:\Program Files\Python31*\python.exe</code>
+        </td>
+      </tr>
+      <tr><td>4</td><td>Claude CLI</td><td><code>claude --version</code></td></tr>
+      <tr><td>5</td><td>server.js</td><td>Existe em <code>%~dp0\server.js</code></td></tr>
+      <tr><td>6</td><td>node_modules</td><td>Dir <code>node_modules\express</code> existe</td></tr>
+      <tr><td>7</td><td>.env</td><td>Arquivo .env contém <code>OPENAI_API_KEY=sk-</code></td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <div class="callout-title">Fallbacks</div>
+    <ul>
+      <li>.env sem chave → pedir chave ao usuário e escrever o arquivo.</li>
+      <li>node_modules vazio → <code class="inline-code">npm install --production --no-audit</code></li>
+      <li>Claude CLI não achar → <code class="inline-code">set PATH=%USERPROFILE%\.local\bin;%PATH%</code> e retentar.</li>
+      <li>Python só no Windows Store stub → <code class="inline-code">winget install Python.Python.3.12</code></li>
+    </ul>
+  </div>
+
+  <p class="dim" style="margin-top:16px;">
+    "Validação 7/7. Partes vivas. Antes de ligar, vou aplicar 36 patches que previnem bugs conhecidos da v8.0, v8.1, v8.2 e v8.3."
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════ PG 04 · PATCHES 1-10 ═══ -->
+<div class="page">
+  <div class="page-header">
+    <div class="page-num">J·A·R·V·I·S // ATIVAÇÃO PG 04</div>
+    <div class="page-title">FASE 04 — PATCHES 1–10 · V8.0</div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-num">04</div>
+    <div class="phase-info">
+      <div class="phase-name">PATCH · 36 FIXES PRÉ-SERVIDOR</div>
+      <div class="phase-gate">GATE: 37/37 APLICADOS</div>
+    </div>
+  </div>
+
+  <p>Aplicar os 37 patches abaixo NA ORDEM, ANTES de subir server.js. Cada um previne um bug real detectado em produção. Use Edit e Bash diretamente. Patches marcados <strong>✓ PRÉ-APLICADO</strong> já vêm no repositório — apenas verifique.</p>
+
+  <table>
+    <thead><tr><th>#</th><th>Bug</th><th>Arquivo → Patch</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>PET não abre / Electron ausente</td><td>pet/ → <code>cd pet &amp;&amp; npm install</code> (~300 MB)</td></tr>
+      <tr><td>2</td><td>Botão PET não liga mic / SSE handler faltando</td><td>script.js → case 'pet-mic' no switch SSE → chamar startRealtime()</td></tr>
+      <tr><td>3</td><td>Voz imprime código em vez de salvar / Haiku ignora</td><td>server.js → /api/voice-complete e /api/audio-complete → forçar Write tool acquireTaskProc({model:'sonnet'})</td></tr>
+      <tr><td>4</td><td>"Pronto, senhor" não é falado / notify nunca</td><td>server.js → close handler de voice/audio → adicionar notifyBuildComplete() + updateProjectStatus()</td></tr>
+      <tr><td>5</td><td>Warm pool retorna vazio / CLI sai com stdin vazio</td><td>server.js → acquireTaskProc() faz cold spawn; _spawn() usa node cli.js direto sem cmd.exe</td></tr>
+      <tr><td>6</td><td>Arquivos da raiz somem do HUD / api só varre subpastas</td><td>server.js → /api/files → listar raiz + subpastas</td></tr>
+      <tr><td>7</td><td>GPT inventa "não foi possível" / temperature alta</td><td>server.js → notifyBuildComplete() → prompt fiel, temperature: 0.2, fallback otimista</td></tr>
+      <tr><td>8</td><td>Realtime fala em inglês mesmo com BR</td><td>server.js → replace_all language='EN'→'BR'; whisper 'pt'; INSTRUCTIONS.BR reforçado</td></tr>
+      <tr><td>9</td><td>"Claude não conseguiu — auth issue" / warm pool morto</td><td>server.js → /api/chat usa acquireTaskProc({model}) (cold spawn) como primário</td></tr>
+      <tr><td>10</td><td>Mic captura mas GPT-realtime não chama execute_task</td><td>script.js → fallback 2s em transcription.completed + dedup via _dispatchedCallIds Set</td></tr>
+    </tbody>
+  </table>
+
+  <hr class="divider">
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 1</div>
+      <div class="patch-name">PET / Electron</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <ol>
+        <li>Bash: <code class="inline-code">cd pet &amp;&amp; npm install --no-audit --no-fund --loglevel=error</code></li>
+        <li>Verificar: <code class="inline-code">ls pet/node_modules/electron/dist</code> deve existir.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 2</div>
+      <div class="patch-name">Botão PET liga mic</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <p>Em <code class="inline-code">public/script.js</code>, dentro de <code class="inline-code">initNotifications()</code> → <code class="inline-code">es.onmessage</code>, troque o <code class="inline-code">if (payload.type === 'build-complete')</code> por um <code class="inline-code">switch(payload.type)</code> com 2 cases: <code class="inline-code">'build-complete'</code> (mantém lógica original) e <code class="inline-code">'pet-mic'</code> (chama <code class="inline-code">startRealtime()</code> quando <code class="inline-code">payload.active === true</code>; chama <code class="inline-code">stopRealtime()</code> quando false).</p>
+    </div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 3</div>
+      <div class="patch-name">Voz salva arquivo, não imprime código</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <ol>
+        <li>Em server.js, <code class="inline-code">/api/voice-complete</code>: substitua <code class="inline-code">proc = pools.haiku.acquire()</code> por <code class="inline-code">proc = acquireTaskProc({ model: 'sonnet' })</code>.</li>
+        <li>Em <code class="inline-code">/api/audio-complete</code>: mesma substituição. Haiku ignora Write tool.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 4</div>
+      <div class="patch-name">"Pronto, senhor" no fim</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <ol>
+        <li>Em server.js, no <code class="inline-code">proc.on('close')</code> de <code class="inline-code">/api/voice-complete</code> (após res.end()), adicione: <code class="inline-code">try { notifyBuildComplete(message, responseBuffer, voiceLang); } catch(e) {}</code> e <code class="inline-code">updateProjectStatus(message, responseBuffer).catch(()=>{})</code></li>
+        <li>Mesma adição no <code class="inline-code">proc.on('close')</code> de <code class="inline-code">/api/audio-complete</code>.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 5</div>
+      <div class="patch-name">Cold spawn dedicado</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <ol>
+        <li>Adicione <code class="inline-code">findClaudeCliJs()</code> que checa paths do npm global e local, retorna o primeiro existente como <code class="inline-code">CLAUDE_CLI_JS</code>.</li>
+        <li>Adicione <code class="inline-code">spawnColdProc(model)</code>: deduz modelId, monta args com <code class="inline-code">--print --output-format text --model --dangerously-skip-permissions</code>. Se <code class="inline-code">CLAUDE_CLI_JS</code> existir: <code class="inline-code">spawn(process.execPath, [CLAUDE_CLI_JS, ...args], { shell: false })</code>.</li>
+        <li>Adicione <code class="inline-code">acquireTaskProc({model='sonnet'})</code>: retorna null se <code class="inline-code">!claudeCliAvailable</code>, senão <code class="inline-code">spawnColdProc(model)</code>.</li>
+        <li>NÃO mexa em <code class="inline-code">_spawn()</code> da classe WarmPool.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 6</div>
+      <div class="patch-name">Arquivos da raiz no HUD</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <p>Em server.js, <code class="inline-code">/api/files</code>: além de iterar subpastas, leia <code class="inline-code">fs.readdirSync(PROJECTS_DIR, {withFileTypes:true})</code> e, para cada <code class="inline-code">entry.isFile()</code> com extensão em <code class="inline-code">deliverableExts</code>, push do objeto <code class="inline-code">{ name, project: '(raiz)', path, size, ext, createdAt, downloadUrl }</code>. Ignore arquivos com <code class="inline-code">name.startsWith('.')</code>.</p>
+    </div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 7</div>
+      <div class="patch-name">Notify fiel ao output</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <ol>
+        <li>Em server.js, <code class="inline-code">notifyBuildComplete()</code>: troque <code class="inline-code">temperature: 0.8</code> por <code class="inline-code">temperature: 0.2</code>.</li>
+        <li>Adicione fallback determinístico no início: se output vazio, &lt;8 chars ou contém <code class="inline-code">[error]</code>, pushar mensagem fallback direto sem chamar GPT.</li>
+        <li>Após Promise.race: detecte fabricação (contains "não foi possível"/"unable to" sem [error] no output) e use fallback.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 8</div>
+      <div class="patch-name">Default BR + Realtime forte</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <ol>
+        <li>replace_all: <code class="inline-code">language = 'EN'</code> → <code class="inline-code">language = 'BR'</code> (~10 ocorrências).</li>
+        <li>Troque <code class="inline-code">|| INSTRUCTIONS.EN</code> por <code class="inline-code">|| INSTRUCTIONS.BR</code>.</li>
+        <li>Troque <code class="inline-code">[language] || 'en'</code> por <code class="inline-code">[language] || 'pt'</code>.</li>
+        <li>Em INSTRUCTIONS.BR: reforce REGRA ABSOLUTA — chamar execute_task IMEDIATAMENTE no MESMO turno.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 9</div>
+      <div class="patch-name">/api/chat usa cold spawn</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <p>Em server.js, <code class="inline-code">/api/chat</code>, depois de <code class="inline-code">const model = selectModelByComplexity(...)</code>: troque <code class="inline-code">const proc = acquireWithFallback(model)</code> por <code class="inline-code">const proc = acquireTaskProc({ model }) || acquireWithFallback(model)</code>. Cold spawn é primário.</p>
+    </div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 10</div>
+      <div class="patch-name">Fallback de execução do mic + deduplicação</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <ol>
+        <li>Em script.js, no handler de <code class="inline-code">transcription.completed</code>: adicione no fim um timer de 2s (<code class="inline-code">_pendingTranscriptTimer</code>) que dispara <code class="inline-code">handleRealtimeTask(null, JSON.stringify({request: transcript}))</code> se o GPT não chamar a tool.</li>
+        <li>No handler de <code class="inline-code">response.function_call_arguments.done + execute_task</code>: cancele o timer, chame <code class="inline-code">handleRealtimeTask(ev.call_id, ev.arguments)</code>. Dedup via <code class="inline-code">_dispatchedCallIds Set</code>.</li>
+        <li>Em <code class="inline-code">handleRealtimeTask(callId, argsJson)</code>: só envia <code class="inline-code">function_call_output</code> se callId for não-null.</li>
+      </ol>
+    </div>
+  </div>
+
+  <p class="dim" style="margin-top:24px;">"10 patches v8.0 aplicados. Avançando para os 4 patches post-launch v8.1."</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════ PG 05 · PATCHES 11-14 ═══ -->
+<div class="page">
+  <div class="page-header">
+    <div class="page-num">J·A·R·V·I·S // ATIVAÇÃO PG 05</div>
+    <div class="page-title">PATCHES 11–14 · V8.1</div>
+  </div>
+
+  <p class="dim">4 bugs descobertos em produção em 25/04/2026 durante o primeiro uso real do JARVIS. Aplicar APÓS os 10 patches da v8.0.</p>
+
+  <table>
+    <thead><tr><th>#</th><th>Bug</th><th>Arquivo → Patch</th></tr></thead>
+    <tbody>
+      <tr><td>11</td><td>Build morto quando frontend fecha conexão</td><td>server.js → /api/chat → flag clientAlive + killTimer 300s + code !== null silencioso</td></tr>
+      <tr><td>12</td><td>Haiku roteado para execução de tarefas / ignora Write tool</td><td>server.js → selectModelByComplexity default → Sonnet; AGENT_MODEL_MAP['sm'] → Sonnet; acquireWithFallback sem Haiku</td></tr>
+      <tr><td>13</td><td>Voz Realtime parafraseia anúncio de fim</td><td>script.js → build-complete sempre via speakResponse() (TTS literal), não via Realtime</td></tr>
+      <tr><td>14</td><td>Mensagens user-facing citam "Claude" / quebra ilusão</td><td>server.js + script.js → strings de erro/notificação em 1ª pessoa: "sistema de execução", "instabilidade"</td></tr>
+    </tbody>
+  </table>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 11</div>
+      <div class="patch-name">Build sobrevive a client disconnect</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <ol>
+        <li>Em <code class="inline-code">/api/chat</code>, killTimer: <code class="inline-code">120000 → 300000</code>.</li>
+        <li>Substituir <code class="inline-code">req.on('close', () => { try { proc.kill() } })</code> por flag <code class="inline-code">let clientAlive = true; req.on('close', () => { clientAlive = false; })</code>.</li>
+        <li>Em <code class="inline-code">proc.stdout.on('data')</code>: <code class="inline-code">if (clientAlive) { try { res.write(chunk); } catch {} }</code></li>
+        <li>No <code class="inline-code">proc.on('close')</code>: trocar condição <code class="inline-code">code === 0</code> por <code class="inline-code">code === 0 || code === null</code>. Envolver <code class="inline-code">res.end()</code> com <code class="inline-code">if (clientAlive)</code>.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 12</div>
+      <div class="patch-name">Haiku banido como executor</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <ol>
+        <li><code class="inline-code">selectModelByComplexity</code>: default final = <code class="inline-code">'claude-sonnet-4-6'</code> (era claude-haiku-4-5-20251001).</li>
+        <li><code class="inline-code">AGENT_MODEL_MAP</code>: <code class="inline-code">'sm': 'claude-sonnet-4-6'</code>.</li>
+        <li><code class="inline-code">acquireWithFallback</code>: tierOrder sem pools.haiku. Last resort: <code class="inline-code">spawnColdProc('sonnet')</code>.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 13</div>
+      <div class="patch-name">Voz fim-de-task usa TTS, não Realtime</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <ol>
+        <li>Em script.js, no <code class="inline-code">case 'build-complete'</code> de <code class="inline-code">initNotifications()</code>: remover branch <code class="inline-code">if (realtimeActive) announceToRealtime(...)</code>.</li>
+        <li>Manter apenas: <code class="inline-code">if (userGestureReceived) speakResponse(payload.message)</code> — TTS lê literal, sem paráfrase do GPT-realtime.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 14</div>
+      <div class="patch-name">JARVIS fala em 1ª pessoa, nunca cita Claude/GPT/OpenAI</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <ol>
+        <li>Prompt do GPT-mini em <code class="inline-code">notifyBuildComplete</code>: trocar "FIEL ao output do Claude" por "FIEL ao output gerado". Adicionar: "NUNCA cite 'Claude', 'GPT', 'OpenAI' — fale como se VOCÊ tivesse feito."</li>
+        <li>Mensagens de erro <code class="inline-code">/api/chat</code>: "Claude Code não está disponível" → "Sistema de execução temporariamente indisponível"; etc.</li>
+        <li>script.js: "Claude is executing in background" → "Task is executing in background".</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="gate">
+    <div class="gate-label">GATE V8.1</div>
+    <div>Após os 4 patches v8.1: <code class="inline-code">node --check server.js</code>. Confirme via grep: <code class="inline-code">"build continues in background"</code>, <code class="inline-code">"spawnColdProc('sonnet')"</code>, <code class="inline-code">"ALWAYS use TTS for build-complete"</code>, <code class="inline-code">"NUNCA cite \"Claude\""</code>.</div>
+  </div>
+
+  <p class="dim">"14 patches aplicados (10 v8.0 + 4 v8.1). Build sobrevive a disconnect, Haiku banido, voz fala literal, JARVIS em 1ª pessoa. Avançando para v8.2."</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════ PG 06 · PATCHES 15-20 ═══ -->
+<div class="page">
+  <div class="page-header">
+    <div class="page-num">J·A·R·V·I·S // ATIVAÇÃO PG 06</div>
+    <div class="page-title">PATCHES 15–20 · V8.2</div>
+  </div>
+
+  <p class="dim">Descobertos em sessão de debug 17/05/2026. Warm-pool matava builds silenciosamente, spawn via shell:true bufferizava stdout no Windows, killTimer matava builds longos.</p>
+
+  <table>
+    <thead><tr><th>#</th><th>Bug</th><th>Arquivo → Patch</th></tr></thead>
+    <tbody>
+      <tr><td>15</td><td>shell:true bufferiza stdout no Windows / streaming quebrado</td><td>server.js → spawnClaude() helper com shell:false + CLAUDE_CLI_JS; substituir todos spawn(CLAUDE_CMD por spawnClaude (8 ocorrências)</td></tr>
+      <tr><td>16</td><td>Warm pool retorna zumbis / Claude CLI v2 mata processos idle</td><td>server.js → WarmPool.fill() = no-op; WarmPool.acquire() = this._spawn() direto (sempre cold spawn)</td></tr>
+      <tr><td>17</td><td>killTimer mata builds longos no meio (planilha, app inteiro)</td><td>server.js → /api/chat, voice-complete, audio-complete, parallel-tasks, computer-use: killTimer = null</td></tr>
+      <tr><td>18</td><td>proc.kill() mata só o cmd.exe wrapper / filhos viram órfãos</td><td>server.js → criar killProcessTree(proc): spawn('taskkill', ['/F','/T','/PID', pid]) no Windows</td></tr>
+      <tr><td>19</td><td>Auth check falha em contas com Sonnet 1M-context bloqueado</td><td>server.js → checkClaudeCliAuth() spawn inclui ['--model','claude-sonnet-4-6']</td></tr>
+      <tr>
+        <td>20</td>
+        <td>Opus 4.6 deprecated</td>
+        <td>
+          <span class="green">✓ PRÉ-APLICADO no GitHub</span><br>
+          <span class="dim">Código já contém claude-opus-4-8 (direto para 4.8, não 4.7). Apenas verificar.</span>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 15</div>
+      <div class="patch-name">spawnClaude() helper</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <p>Criar <code class="inline-code">spawnClaude(args, opts)</code>: detecta <code class="inline-code">CLAUDE_CLI_JS</code> via <code class="inline-code">resolveClaudeCliJs()</code>. Se encontrar: <code class="inline-code">spawn(process.execPath, [CLAUDE_CLI_JS, ...args], { shell:false, windowsHide:true, cwd:JARVIS_DIR })</code>. Fallback: <code class="inline-code">spawn(CLAUDE_CMD, args, { shell:true })</code>. Substituir todos <code class="inline-code">spawn(CLAUDE_CMD</code> em 8 sites.</p>
+    </div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 16</div>
+      <div class="patch-name">Warm pool desligado</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <p><code class="inline-code">WarmPool.fill()</code> → <code class="inline-code">return;</code> (no-op imediato). <code class="inline-code">WarmPool.acquire()</code> → <code class="inline-code">return this._spawn();</code> direto. Pool nunca enche, cada request cold-spawna (~200ms a mais, mas funciona).</p>
+    </div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 17</div>
+      <div class="patch-name">killTimer removido de execução</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <p><code class="inline-code">/api/chat</code>: <code class="inline-code">const killTimer = null</code>. <code class="inline-code">/api/voice-complete</code>: idem. <code class="inline-code">/api/audio-complete</code>: idem. Parallel-tasks: idem. Computer-use: idem. Abort segue ativo via <code class="inline-code">req.on('close')</code>. MANTER killTimer em: auth-check (60s) e screen-analysis (60s).</p>
+    </div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 18</div>
+      <div class="patch-name">killProcessTree() para abort no Windows</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <p>Criar <code class="inline-code">killProcessTree(proc)</code>: <code class="inline-code">spawn('taskkill', ['/F','/T','/PID', String(proc.pid)])</code> no Windows; <code class="inline-code">proc.kill()</code> fallback em outras plataformas. Substituir todos <code class="inline-code">try { proc.kill() } catch {}</code> por <code class="inline-code">killProcessTree(proc)</code> (5 sites).</p>
+    </div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 19</div>
+      <div class="patch-name">Auth check com --model explícito</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <p><code class="inline-code">checkClaudeCliAuth()</code> spawn deve incluir <code class="inline-code">['--model', 'claude-sonnet-4-6']</code>. Sem isso o CLI puxa default — em contas com sonnet1m migração ativada → "API Error: Extra usage required for 1M context" → exit 1 → claudeCliAvailable=false → servidor sobe mas não executa nada.</p>
+    </div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 20</div>
+      <div class="patch-name">Opus 4.8 — verificação pós-clone</div>
+      <div class="patch-status status-verify">✓ PRÉ-APLICADO</div>
+    </div>
+    <div class="patch-body">
+      <div class="callout ok">
+        <div class="callout-title">Já no GitHub — apenas verificar</div>
+        O repositório gaahzx/jarvis já contém <code class="inline-code">claude-opus-4-8</code> em todos os lugares.
+        NÃO rodar sed. Apenas confirmar:
+      </div>
+      <pre>node -e "const s=require('fs').readFileSync('server.js','utf8'); const old=['claude-opus-4-6','claude-opus-4-7','Opus 4.6','Opus 4.7']; old.forEach(x=>{ if(s.includes(x)) console.log('DESATUALIZADO:',x); }); console.log('opus-4-8:', s.includes('opus-4-8')?'OK':'FALTANDO');"</pre>
+      <p>Deve retornar apenas <span class="green">opus-4-8: OK</span>. Se aparecer DESATUALIZADO, rode:</p>
+      <pre>node -e "const fs=require('fs'); let s=fs.readFileSync('server.js','utf8'); ['4-6','4-7'].forEach(v=>{ s=s.replaceAll('claude-opus-'+v,'claude-opus-4-8'); s=s.replaceAll('Opus 4.'+v.split('-')[1],'Opus 4.8'); }); fs.writeFileSync('server.js',s);"</pre>
+    </div>
+  </div>
+
+  <div class="gate">
+    <div class="gate-label">GATE 04C</div>
+    <div><code class="inline-code">node --check server.js</code> · <code class="inline-code">grep -c 'spawnClaude' server.js</code> (>= 8) · <code class="inline-code">grep -c 'killProcessTree' server.js</code> (>= 5) · opus-4-8 confirmado</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ PG 07 · PATCHES 21-26 ═══ -->
+<div class="page">
+  <div class="page-header">
+    <div class="page-num">J·A·R·V·I·S // ATIVAÇÃO PG 07</div>
+    <div class="page-title">PATCHES 21–26 · VOZ + UI + INSTALADOR</div>
+  </div>
+
+  <p class="dim">Voz determinística, 13 vozes OpenAI, card sem Haiku, instalação silenciosa, Chrome único.</p>
+
+  <table>
+    <thead><tr><th>#</th><th>Bug</th><th>Arquivo → Patch</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>21</td>
+        <td>Vozes ash/coral/sage/ballad/verse não tocavam (tts-1 suporta só 6)</td>
+        <td><span class="green">✓ PRÉ-APLICADO</span> — server.js já usa gpt-4o-mini-tts com 13 vozes. Verificar apenas.</td>
+      </tr>
+      <tr><td>22</td><td>Sem botão de teste de voz no Config</td><td>index.html → &lt;button id="btn-test-voice"&gt;; script.js → listener fetch /api/tts com sample; style.css → .config-test-btn</td></tr>
+      <tr><td>23</td><td>GPT-mini alucinava narrativa no build-complete</td><td>server.js → notifyBuildComplete: "UMA frase ULTRA-CURTA (máximo 8 palavras)"; max_tokens: 25; temperature: 0.2</td></tr>
+      <tr><td>24</td><td>3 falas sobrepostas por task (ACK + brief + complete)</td><td>script.js → cancelPendingTTS(); ACK TTS removido; streaming TTS desabilitado</td></tr>
+      <tr><td>25</td><td>Card Haiku ainda visível no HUD / anel giratório no weather</td><td>index.html → remover row data-entity="haiku"; script.js → setActiveModel sem haiku; style.css → content:none no weather</td></tr>
+      <tr><td>26</td><td>Browser abria durante install / 2 janelas / navegador default</td><td>INSTALAR-JARVIS-v8.bat → remover start browser; Ligar JARVIS.bat → set AUTO_OPEN_BROWSER=true; server.js → após "Server ready" abre Chrome se flag ativo</td></tr>
+    </tbody>
+  </table>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 21</div>
+      <div class="patch-name">TTS gpt-4o-mini-tts (13 vozes)</div>
+      <div class="patch-status status-verify">✓ PRÉ-APLICADO</div>
+    </div>
+    <div class="patch-body">
+      <div class="callout ok">
+        <div class="callout-title">Já no GitHub — apenas verificar</div>
+        O servidor já usa <code class="inline-code">gpt-4o-mini-tts</code> em <code class="inline-code">/api/tts</code>.
+      </div>
+      <p>Verificar:</p>
+      <pre>node -e "const s=require('fs').readFileSync('server.js','utf8'); console.log('gpt-4o-mini-tts:', s.includes('gpt-4o-mini-tts')?'OK':'FALTANDO'); console.log('tts-1 legado:', s.includes(\"'tts-1'\")?'PROBLEMA':'OK');"</pre>
+      <p class="dim">Vozes válidas para TTS (gpt-4o-mini-tts): <code class="inline-code">alloy, ash, ballad, coral, echo, fable, nova, onyx, sage, shimmer, verse, sol, aria</code></p>
+      <p class="dim">⚠ Atenção: <code class="inline-code">cedar</code> e <code class="inline-code">marin</code> são exclusivas do Realtime — não funcionam no TTS. FALLBACK_MAP: <code class="inline-code">cedar→sage, marin→shimmer</code></p>
+    </div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 22</div>
+      <div class="patch-name">Botão "Testar voz" no Config</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <p>index.html: ao lado do select <code class="inline-code">#config-tts-voice</code>: <code class="inline-code">&lt;button id="btn-test-voice" class="config-test-btn"&gt;▶&lt;/button&gt;</code> (wrapped em div flex). script.js: listener que fetch <code class="inline-code">/api/tts</code> com sample por idioma, toca blob, cancela teste anterior. style.css: <code class="inline-code">.config-test-btn { height:40px; min-width:40px; background:rgba(0,228,255,.08); border:1px solid rgba(0,228,255,.25); }</code></p>
+    </div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 23</div>
+      <div class="patch-name">TTS factual no build-complete</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <p><code class="inline-code">notifyBuildComplete</code> prompt do GPT-mini: "UMA frase ULTRA-CURTA (máximo 8 palavras), sem entusiasmo, sem adjetivos, só o fato.". <code class="inline-code">max_tokens: 25</code> (era 50). Guard: se <code class="inline-code">txt.split(/\s+/).length > 12</code> → rejeitar como fabricação.</p>
+    </div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 24</div>
+      <div class="patch-name">cancelPendingTTS() + suprimir ACK/streaming</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <p>Criar <code class="inline-code">cancelPendingTTS()</code>: pause + <code class="inline-code">src=''</code> em todos os audio elements. Chamar no SSE build-complete antes de <code class="inline-code">speakResponse</code>. ACK TTS removido (terminal-only). Streaming TTS desabilitado (<code class="inline-code">if false</code>).</p>
+    </div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 25</div>
+      <div class="patch-name">AI Models card sem Haiku · Weather sem anel</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <p>index.html: remover <code class="inline-code">&lt;div class="entity-row" data-entity="haiku"&gt;</code>. script.js: setActiveModel sem haiku branch; modelMap sem claude-haiku-4-5; pool HUD = <code class="inline-code">O${opus} S${sonnet}</code>. style.css: <code class="inline-code">#widget-weather .widget-value::before/::after { content: none !important; }</code></p>
+    </div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 26</div>
+      <div class="patch-name">Instalador silencioso + Ligar JARVIS abre só Chrome</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <p>INSTALAR-JARVIS-v8.bat: remover bloco final "start cmd /k node server.js" + "start http://localhost:3000". Ligar JARVIS.bat: trocar timeout+start http:// por <code class="inline-code">set AUTO_OPEN_BROWSER=true</code> antes do node server.js. server.js: após "Server ready", se <code class="inline-code">AUTO_OPEN_BROWSER=true</code> e <code class="inline-code">!global._browserOpened</code>: <code class="inline-code">spawn(findChrome(), ['--new-window', url], {detached:true, stdio:'ignore'}).unref()</code>.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ PG 08 · PATCH 27 ═══ -->
+<div class="page">
+  <div class="page-header">
+    <div class="page-num">J·A·R·V·I·S // ATIVAÇÃO PG 08</div>
+    <div class="page-title">PATCH 27 · REALTIME GA ⚠ CORRIGIDO V8.4</div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 27</div>
+      <div class="patch-name">Realtime API GA — Endpoint + Modelo + Fallback + Verificação SDP</div>
+      <div class="patch-status status-verify">✓ PRÉ-APLICADO</div>
+    </div>
+    <div class="patch-body">
+
+      <div class="callout ok">
+        <div class="callout-title">Já no GitHub — verificação obrigatória</div>
+        O código do GitHub já implementa tudo abaixo. NÃO editar manualmente.
+        Rodar a verificação SDP (Parte E) é OBRIGATÓRIO para confirmar que está funcionando.
+      </div>
+
+      <div class="callout danger" style="margin-top:16px;">
+        <div class="callout-title">Armadilha — leia antes de verificar</div>
+        <strong>MORTO:</strong> <code class="inline-code">/v1/realtime/sessions</code> → retorna beta_api_shape_disabled<br>
+        <strong>PROIBIDO:</strong> <code class="inline-code">gpt-4o-realtime-preview</code> e <code class="inline-code">gpt-4o-realtime-preview-2025-*</code> — criam sessão normalmente mas retornam 404 model_not_found no SDP exchange. O bug é silencioso: servidor parece OK, WebRTC nunca conecta no browser.<br>
+        <strong>CORRETO:</strong> <code class="inline-code">gpt-realtime-2</code> (primário) com fallback automático para <code class="inline-code">gpt-realtime</code>
+      </div>
+
+      <h3>Parte A — server.js: endpoint + body (referência)</h3>
+      <pre>// Endpoint correto
+POST /v1/realtime/client_secrets
+
+// Body — o servidor tenta gpt-realtime-2 primeiro, depois gpt-realtime
+const REALTIME_MODELS = ['gpt-realtime-2', 'gpt-realtime'];
+for (const model of REALTIME_MODELS) {
+  const r = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      expires_after: { anchor: 'created_at', seconds: 120 },
+      session: {
+        type: 'realtime', model,
+        instructions, output_modalities: ['audio'],
+        audio: {
+          input: {
+            noise_reduction: { type: 'near_field' },
+            transcription: { model: 'gpt-4o-transcribe', language: langCode },
+            turn_detection: { type: 'server_vad', threshold: 0.5,
+              prefix_padding_ms: 300, silence_duration_ms: 500 }
+          },
+          output: { voice }
+        },
+        tools, tool_choice: 'auto'
+      }
+    })
+  });
+  if (r.ok) {
+    const raw = await r.json();
+    sessionData = { ...raw.session, client_secret: { value: raw.value, expires_at: raw.expires_at } };
+    break; // usa este modelo
+  }
+}</pre>
+
+      <h3>Parte B — server.js: normalização da response</h3>
+      <p>Response GA retorna <code class="inline-code">{ value:"ek_...", expires_at:..., session:{...} }</code> — <code class="inline-code">value</code> no nível raiz, não dentro de <code class="inline-code">client_secret</code>. Normalização já aplicada no código.</p>
+
+      <h3>Parte C — script.js: endpoint SDP</h3>
+      <pre>// CORRETO (já no GitHub):
+const sdpRes = await fetch('https://api.openai.com/v1/realtime/calls', {
+  method: 'POST', body: offer.sdp,
+  headers: { 'Authorization': `Bearer ${sess.client_secret.value}`, 'Content-Type': 'application/sdp' }
+});
+if (!sdpRes.ok) {
+  const err = await sdpRes.text();
+  throw new Error(`SDP exchange falhou (${sdpRes.status}): ${err}`);
+}
+await pc.setRemoteDescription({ type: 'answer', sdp: await sdpRes.text() });
+
+// PROIBIDO — não usar:
+// fetch('https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview', ...)</pre>
+
+      <h3>Parte D — script.js: eventos GA com OR duplo</h3>
+      <pre>// Transcrição (já no GitHub):
+if ((ev.type === 'conversation.item.input_audio_transcription.completed'
+  || ev.type === 'input_audio_transcription.completed') && ev.transcript) { ... }
+
+// Function call (já no GitHub):
+if ((ev.type === 'response.function_call_arguments.done'
+  || ev.type === 'response.output_function_call_arguments.done') && ev.name === 'execute_task') { ... }</pre>
+
+      <h3>Parte E — VERIFICAÇÃO SDP OBRIGATÓRIA ⚠</h3>
+      <div class="callout danger">
+        <div class="callout-title">NÃO AVANCE SEM 201 OK — detecta modelo errado imediatamente</div>
+      </div>
+      <pre>node -e "
+require('dotenv').config();
+const http=require('http'),https=require('https');
+const d=JSON.stringify({language:'BR',voice:'ash'});
+http.request({hostname:'localhost',port:3000,path:'/api/realtime/session',method:'POST',
+  headers:{'Content-Type':'application/json','Content-Length':d.length}},(res)=>{
+  let b='';res.on('data',x=>b+=x);res.on('end',()=>{
+    const t=JSON.parse(b).client_secret?.value;
+    if(!t){console.log('FAIL: sem token — verificar server.js');return;}
+    const sdp='v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=group:BUNDLE 0 1\r\n'+
+      'm=audio 9 UDP/TLS/RTP/SAVPF 111\r\nc=IN IP4 0.0.0.0\r\n'+
+      'a=ice-ufrag:abcd\r\na=ice-pwd:abcdefghijklmnopqrstu1\r\n'+
+      'a=fingerprint:sha-256 A1:B2:C3:D4:E5:F6:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99\r\n'+
+      'a=setup:actpass\r\na=mid:0\r\na=sendrecv\r\na=rtcp-mux\r\na=rtpmap:111 opus/48000/2\r\n'+
+      'm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\nc=IN IP4 0.0.0.0\r\n'+
+      'a=ice-ufrag:abcd\r\na=ice-pwd:abcdefghijklmnopqrstu1\r\n'+
+      'a=fingerprint:sha-256 A1:B2:C3:D4:E5:F6:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99\r\n'+
+      'a=setup:actpass\r\na=mid:1\r\na=sctp-port:5000\r\n';
+    const buf=Buffer.from(sdp);
+    https.request({hostname:'api.openai.com',path:'/v1/realtime/calls',method:'POST',
+      headers:{'Authorization':'Bearer '+t,'Content-Type':'application/sdp','Content-Length':buf.length}},(r)=>{
+      if(r.statusCode===201) console.log('✓ SDP exchange: 201 OK — Realtime pronto (modelo: gpt-realtime-2)');
+      else{let e='';r.on('data',x=>e+=x);r.on('end',()=>console.log('✗ FAIL '+r.statusCode+': '+e));}
+    }).end(buf);
+  });
+}).end(d);"</pre>
+
+      <div class="gate">
+        <div class="gate-label">GATE</div>
+        <strong class="green">201 OK</strong> → Realtime funcional, avançar. &nbsp;|&nbsp;
+        <strong class="red">404 model_not_found</strong> → modelo errado no server.js → deletar pasta e clonar novamente do GitHub.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ PG 09 · PATCHES 28-30 ═══ -->
+<div class="page">
+  <div class="page-header">
+    <div class="page-num">J·A·R·V·I·S // ATIVAÇÃO PG 09</div>
+    <div class="page-title">PATCHES 28–30 · INSTALADOR + VAULT + HOOK</div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 28</div>
+      <div class="patch-name">Vault Felipe via obsidian://open?path= com URL-encoding</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <p>INSTALAR-JARVIS-v8.bat: registrar vault como "Felipe" com <code class="inline-code">"open":true</code>. Abrir via <code class="inline-code">obsidian://open?path=&lt;URL-encoded-path&gt;</code> usando PowerShell <code class="inline-code">[uri]::EscapeDataString()</code> — mais confiável que <code class="inline-code">?vault=Felipe</code> (independe do registro). Obsidian abre DIRETO no vault Felipe sem tela de seleção.</p>
+    </div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 29</div>
+      <div class="patch-name">OneDrive-aware + Paths no topo + Vault antes do xcopy ⚠</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <div class="callout danger">
+        <div class="callout-title">Bug crítico de instalação — self-overwrite</div>
+        O xcopy jarvis-tmp → IDIR substituiu o próprio .bat em execução. O CMD continuava lendo o arquivo do mesmo byte-offset, mas agora estava lendo o arquivo NOVO. O código de cópia do vault, que vinha DEPOIS do xcopy, ficava em um offset diferente no novo arquivo e era pulado silenciosamente. As notas do Obsidian não eram copiadas — o usuário ficava sem vault após instalação.
+      </div>
+
+      <p>INSTALAR-JARVIS-v8.bat — 4 mudanças estruturais obrigatórias:</p>
+
+      <p><strong>(A) PATHS NO TOPO</strong> — resolver TODOS os paths via PowerShell GetFolderPath no TOPO do script, ANTES de qualquer execução:</p>
+      <pre>REM TOPO DO SCRIPT — antes de qualquer step
+for /f "delims=" %%D in ('powershell -NoProfile -Command "[Environment]::GetFolderPath(\"Desktop\")"') do set DESK=%%D
+for /f "delims=" %%D in ('powershell -NoProfile -Command "[Environment]::GetFolderPath(\"MyDocuments\")"') do set DOCS=%%D
+set VD=%DOCS%\Felipe
+set IDIR=%DESK%\Jarvis
+set SHORTCUT=%DESK%\Ligar JARVIS.lnk
+REM Usar %DESK%, %DOCS%, %VD%, %IDIR% em todo o script — NUNCA %USERPROFILE%\Desktop</pre>
+
+      <p><strong>(B) LIMPEZA PRÉVIA</strong> — matar processo na porta 3000 ANTES de qualquer step:</p>
+      <pre>for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":3000.*LISTENING" 2^>nul') do taskkill /F /PID %%p 2>nul</pre>
+
+      <p><strong>(C) VAULT COPY ANTES DO XCOPY</strong> — correção do bug crítico:</p>
+      <pre>REM ↓↓↓ VAULT PRIMEIRO — antes de qualquer xcopy que sobrescreva o .bat ↓↓↓
+if exist "%IDIR%\jarvis-tmp\obsidian-template" (
+  if not exist "%VD%" mkdir "%VD%" 2>nul
+  echo d | xcopy.exe "%IDIR%\jarvis-tmp\obsidian-template" "%VD%" /E /Y /Q >nul 2>nul
+)
+REM SÓ DEPOIS o xcopy que sobrescreve o .bat
+echo d | xcopy.exe "%IDIR%\jarvis-tmp" "%IDIR%" /E /Y /Q
+REM Fallback pós-instalação
+if exist "%IDIR%\obsidian-template" if not exist "%VD%\JARVIS — Quem Sou Eu.md" (
+  echo d | xcopy.exe "%IDIR%\obsidian-template" "%VD%" /E /Y /Q >nul 2>nul
+)</pre>
+
+      <p><strong>(D) AVISO CLAUDE AUTH LOGIN</strong> — esclarecer que vai abrir UMA janela do Chrome pro OAuth da Anthropic. Aluno fecha após login.</p>
+    </div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 30</div>
+      <div class="patch-name">Hook install-guard.cjs — bloqueio físico de browser-localhost</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <p>Criar <code class="inline-code">.claude/hooks/install-guard.cjs</code> rodando como PreToolUse hook no Bash tool. Lógica: se arquivo <code class="inline-code">.jarvis-install-active</code> existir na raiz E o comando casar com lista negra (start...localhost, chrome.exe localhost, etc) → exit 2 (abort tool call). Permite curl/Invoke-RestMethod. INSTALAR-JARVIS-v8.bat cria <code class="inline-code">.jarvis-install-active</code> no topo e deleta no fim. Registrar em <code class="inline-code">.claude/settings.json</code> como PreToolUse matcher:Bash.</p>
+    </div>
+  </div>
+
+  <div class="gate">
+    <div class="gate-label">GATE 04D</div>
+    <div>Confirme via grep: <code class="inline-code">"gpt-realtime-2"</code> · <code class="inline-code">"gpt-4o-mini-tts"</code> · <code class="inline-code">"AUTO_OPEN_BROWSER"</code> · vault copy ANTES do xcopy no installer · GetFolderPath no TOPO. Rodar verificação SDP (Patch 27E) → 201 OK.</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ PG 10 · PATCH 37 ═══ -->
+<div class="page">
+  <div class="page-header">
+    <div class="page-num">J·A·R·V·I·S // ATIVAÇÃO PG 10</div>
+    <div class="page-title">PATCH 37 · VERIFICAÇÃO AUTOMÁTICA PÓS-CLONE · V8.4</div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 37</div>
+      <div class="patch-name">Verificação automática de todos os modelos e endpoints</div>
+      <div class="patch-status status-apply">EXECUTAR SEMPRE</div>
+    </div>
+    <div class="patch-body">
+      <div class="callout info">
+        <div class="callout-title">Novo em v8.4 — obrigatório após qualquer clone ou atualização</div>
+        Roda ANTES de aplicar os patches. Se algum check falhar, o código está desatualizado — deletar pasta e clonar novamente.
+      </div>
+      <pre>node -e "
+const s = require('fs').readFileSync('server.js','utf8');
+const sc = require('fs').readFileSync('public/script.js','utf8');
+const checks = [
+  ['server.js', 'client_secrets',      s.includes('/v1/realtime/client_secrets')],
+  ['server.js', 'gpt-realtime-2',      s.includes('gpt-realtime-2')],
+  ['server.js', 'opus-4-8',            s.includes('claude-opus-4-8')],
+  ['server.js', 'gpt-4o-mini-tts',     s.includes('gpt-4o-mini-tts')],
+  ['server.js', 'gpt-4o-transcribe',   s.includes('gpt-4o-transcribe')],
+  ['server.js', 'sem /sessions morto', !s.includes('/v1/realtime/sessions')],
+  ['server.js', 'sem tts-1 legado',    !s.includes(\"model: 'tts-1'\")],
+  ['script.js', '/v1/realtime/calls',  sc.includes('/v1/realtime/calls')],
+  ['script.js', 'OR duplo transcricao',sc.includes('input_audio_transcription.completed')],
+  ['script.js', 'OR duplo func_call',  sc.includes('output_function_call_arguments.done')],
+];
+let ok = 0, fail = 0;
+checks.forEach(([file,name,result]) => {
+  if(result){ console.log('  ✓ '+file+': '+name); ok++; }
+  else { console.error('  ✗ '+file+': '+name+' — FALTANDO'); fail++; }
+});
+console.log('');
+if(fail===0) console.log('✅ '+ok+'/'+ok+' checks OK — código atualizado, pode prosseguir.');
+else console.error('❌ '+fail+' falhas — deletar pasta e clonar gaahzx/jarvis novamente.');
+"</pre>
+      <div class="gate">
+        <div class="gate-label">GATE 37</div>
+        <div><strong class="green">10/10 checks OK</strong> → prosseguir para Fase 05. &nbsp;|&nbsp; <strong class="red">Qualquer ✗</strong> → git pull ou clone fresh.</div>
+      </div>
+    </div>
+  </div>
+
+  <p class="dim" style="margin-top:24px;">"37 patches aplicados (10 v8.0 + 4 v8.1 + 16 v8.2 + 6 v8.3 + 1 v8.4). Tasks sem killTimer, sem warm-pool zumbi, streaming Windows via spawnClaude, voz UMA frase factual, 13 vozes OpenAI, UI sem Haiku, instalação silenciosa, Realtime GA com gpt-realtime-2 confirmado, vault multi-usuário com Sessões/Agora/Preferências, terminal Opus 4.8 no cockpit, paths OneDrive-aware, hook install-guard ativo. Subindo agora."</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════ PG 11 · PATCHES 31-36 ═══ -->
+<div class="page">
+  <div class="page-header">
+    <div class="page-num">J·A·R·V·I·S // ATIVAÇÃO PG 11</div>
+    <div class="page-title">PATCHES 31–36 · V8.3 ESTENDIDOS</div>
+  </div>
+
+  <p class="dim">Aplicar APÓS os 30 patches do roteiro base, ANTES de subir o servidor.</p>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 31</div>
+      <div class="patch-name">Fallback eventos GA — data channel WebRTC</div>
+      <div class="patch-status status-verify">✓ PRÉ-APLICADO</div>
+    </div>
+    <div class="patch-body">
+      <div class="callout ok">
+        <div class="callout-title">Já no GitHub — apenas verificar</div>
+        O Patch 37 confirma automaticamente. Referência abaixo é só documentação.
+      </div>
+      <p>A GA do Realtime API renomeou alguns eventos do data channel. O Patch 37 verifica as duas linhas OR duplo no script.js.</p>
+      <pre>// Transcrição — OR duplo (já no código):
+if ((ev.type === 'conversation.item.input_audio_transcription.completed'
+  || ev.type === 'input_audio_transcription.completed') && ev.transcript) { ... }
+
+// Function call — OR duplo (já no código):
+if ((ev.type === 'response.function_call_arguments.done'
+  || ev.type === 'response.output_function_call_arguments.done') && ev.name === 'execute_task') { ... }</pre>
+    </div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 32</div>
+      <div class="patch-name">Fila de notificação — aguardar Realtime terminar antes de anunciar task</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <p>Problema: Quando o JARVIS está respondendo por voz via Realtime e uma task termina ao mesmo tempo, o TTS do build-complete sobrepõe o áudio do Realtime — dois áudios simultâneos.</p>
+      <p>Adicionar em script.js (junto às variáveis globais no topo):</p>
+      <pre>let _realtimeSpeaking = false;
+let _pendingTaskNotification = null;</pre>
+      <p>No handler do data channel WebRTC — adicionar nos cases de áudio:</p>
+      <pre>case 'response.audio_delta':
+case 'response.output_audio_delta':
+  _realtimeSpeaking = true; break;
+
+case 'response.audio.done':
+case 'response.output_audio.done':
+  _realtimeSpeaking = false;
+  if (_pendingTaskNotification) {
+    const msg = _pendingTaskNotification;
+    _pendingTaskNotification = null;
+    if (userGestureReceived) speakResponse(msg);
+  }
+  break;</pre>
+      <p>No handler SSE — substituir o case build-complete:</p>
+      <pre>case 'build-complete':
+  cancelPendingTTS();
+  if (_realtimeSpeaking) {
+    _pendingTaskNotification = payload.message; // enfileirar
+  } else {
+    if (userGestureReceived) speakResponse(payload.message);
+  }
+  break;</pre>
+      <div class="callout warn">
+        Se o Realtime ficar mudo (audio.done nunca chegar): adicionar timeout de 8s como fallback — falar mesmo assim após 8s sem áudio.done.
+      </div>
+    </div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 35</div>
+      <div class="patch-name">Weather — localização server-side</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <p>Problema: <code class="inline-code">navigator.geolocation</code> é bloqueado pelo Chrome em localhost. Widget de clima usava fallback hardcoded para cidade fixa.</p>
+      <p>Criar endpoint em server.js:</p>
+      <pre>app.get('/api/location', async (req, res) => {
+  const apis = [
+    'https://ipapi.co/json/',
+    'http://ip-api.com/json/',
+    'https://wttr.in/?format=j1'
+  ];
+  for (const url of apis) {
+    try {
+      const r = await fetch(url);
+      const d = await r.json();
+      const city = d.city || d.name;
+      if (city) return res.json({ city, lat: d.lat||d.latitude, lon: d.lon||d.longitude });
+    } catch {}
+  }
+  res.json({ city: 'São Paulo', lat: -23.55, lon: -46.63 }); // fallback
+});</pre>
+      <p>Atualizar <code class="inline-code">loadWeather()</code> em script.js:</p>
+      <pre>async function loadWeather() {
+  const loc = await fetch('/api/location').then(r => r.json());
+  const url = `/api/weather?lat=${loc.lat}&lon=${loc.lon}&city=${loc.city}`;
+  // ... resto do loadWeather existente
+}</pre>
+    </div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 36</div>
+      <div class="patch-name">Obsidian RAG — vault context no system prompt</div>
+      <div class="patch-status status-apply">APLICAR</div>
+    </div>
+    <div class="patch-body">
+      <p>Problema: O vault Obsidian era lido só para exibir estatísticas no widget. O JARVIS não usava o conteúdo nas respostas.</p>
+      <p>Adicionar ao .env:</p>
+      <pre>OBSIDIAN_VAULT_PATH=C:\Users\{seu-usuario}\Documents\{SeuNome}
+USER_NAME={SeuNome}</pre>
+      <p>Adicionar em server.js:</p>
+      <pre>function searchVaultContext(query) {
+  const vaultPath = process.env.OBSIDIAN_VAULT_PATH;
+  if (!vaultPath || !fs.existsSync(vaultPath)) return '';
+  const files = fs.readdirSync(vaultPath).filter(f => f.endsWith('.md'));
+  const kw = query.toLowerCase().split(' ');
+  const hits = files.map(f => {
+    const content = fs.readFileSync(path.join(vaultPath, f), 'utf8');
+    const score = kw.filter(k => content.toLowerCase().includes(k)).length;
+    return { f, content, score };
+  }).filter(x => x.score > 0).sort((a,b) => b.score - a.score).slice(0, 3);
+  return hits.map(h => `[${h.f}]\n${h.content.slice(0,400)}`).join('\n\n');
+}
+
+// No system prompt de TODA resposta (GPT-mini, Claude, tasks):
+const vaultCtx = searchVaultContext(userMessage);
+const systemPrompt = vaultCtx
+  ? `${BASE_SYSTEM_PROMPT}\n\nCONTEXTO DO VAULT:\n${vaultCtx}`
+  : BASE_SYSTEM_PROMPT;</pre>
+    </div>
+  </div>
+
+  <div class="patch">
+    <div class="patch-header">
+      <div class="patch-num">PATCH 37</div>
+      <div class="patch-name">Multi-usuário + Vault structure + Terminal Chat</div>
+      <div class="patch-status status-pre">✓ PRÉ-APLICADO</div>
+    </div>
+    <div class="patch-body">
+      <p>Problema: Sistema era hardcoded para "Felipe". Precisava ser multi-usuário para todos os alunos, com vault Obsidian com estrutura correta e terminal direto ao Opus 4.8 no cockpit.</p>
+      <p><strong>1. Configurar .env com dados do aluno:</strong></p>
+      <pre>OBSIDIAN_VAULT_PATH=C:\Users\{seu-usuario}\Documents\{SeuNome}
+USER_NAME={SeuNome}</pre>
+      <p><strong>2. Criar estrutura do vault Obsidian</strong> (rodar uma vez, no terminal Python):</p>
+      <pre>import os, datetime
+vault = r"C:\Users\{seu-usuario}\Documents\{SeuNome}"
+today = datetime.date.today().strftime('%Y-%m-%d')
+for d in ['Sessões', 'Agora', 'Preferências']:
+    os.makedirs(os.path.join(vault, d), exist_ok=True)
+# Criar Agora/Contexto-Ativo.md
+open(os.path.join(vault, 'Agora', 'Contexto-Ativo.md'), 'w').write("# Contexto Ativo\n(vazio)")
+# Criar Preferências/{SeuNome}.md
+open(os.path.join(vault, 'Preferências', '{SeuNome}.md'), 'w').write("# Preferências\n- ")
+print("Vault OK")</pre>
+      <p><strong>3. Verificação — deve retornar 10/10:</strong></p>
+      <pre>node -e "
+import('dotenv/config').then(() => {
+  const ok = [];
+  if (process.env.USER_NAME) ok.push('USER_NAME');
+  if (process.env.OBSIDIAN_VAULT_PATH) ok.push('VAULT_PATH');
+  const fs = require('fs');
+  const v = process.env.OBSIDIAN_VAULT_PATH;
+  ['Sessões','Agora','Preferências'].forEach(d => {
+    if (fs.existsSync(v+'/'+d)) ok.push('dir:'+d);
+  });
+  console.log(ok.length+'/5 configurações OK:', ok.join(', '));
+});"</pre>
+      <p><strong>4. Terminal Chat no cockpit:</strong> Widget <code class="inline-code">⌨ JARVIS · TERMINAL</code> aparece no canto inferior do cockpit, minimizado por padrão. Clique em "▲ abrir" para expandir. Atalho: <kbd>Ctrl+`</kbd>. Cada resposta é automaticamente salva no vault Obsidian em <code class="inline-code">Sessões/{data}.md</code>.</p>
+      <p><strong>5. Teste do terminal:</strong> Abrir cockpit → clicar "▲ abrir" no widget JARVIS TERMINAL → digitar "qual é a sua versão?" → deve responder com streaming token-by-token via Opus 4.8.</p>
+    </div>
+  </div>
+
+  <div class="gate">
+    <div class="gate-label">GATE 31-37</div>
+    <div><code class="inline-code">_realtimeSpeaking</code> + fila OK · <code class="inline-code">/api/location</code> respondendo · <code class="inline-code">searchVaultContext</code> injetado · <code class="inline-code">USER_NAME</code> no .env · vault 3 pastas criadas · terminal chat respondendo</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ PG 12 · FASES 05-06 ═══ -->
+<div class="page">
+  <div class="page-header">
+    <div class="page-num">J·A·R·V·I·S // ATIVAÇÃO PG 12</div>
+    <div class="page-title">FASES 05–06</div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-num">05</div>
+    <div class="phase-info">
+      <div class="phase-name">ATIVAÇÃO · SUBIR O SERVIDOR</div>
+      <div class="phase-gate">GATE: HTTP 200 EM :3000</div>
+    </div>
+  </div>
+
+  <p class="dim">EXECUTAR:</p>
+  <pre>for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":3000.*LISTENING"') do taskkill /F /PID %%p
+start "JARVIS" cmd /k "node server.js"</pre>
+  <p>Aguardar 5s, depois verificar via curl (NUNCA abrir browser):</p>
+  <pre>curl -s http://localhost:3000/api/health</pre>
+  <p>Deve retornar <code class="inline-code">{"status":"operational"}</code> com <code class="inline-code">pools: { opus, sonnet } >= 0</code>.</p>
+  <p class="dim">"JARVIS online em localhost:3000. HUD carregando no navegador. Vamos testar."</p>
+
+  <hr class="divider">
+
+  <div class="phase">
+    <div class="phase-num">06</div>
+    <div class="phase-info">
+      <div class="phase-name">PROVA DE VIDA · 4 TESTES BASE + 4 ESTENDIDOS</div>
+      <div class="phase-gate">GATE: 8/8 TAREFAS</div>
+    </div>
+  </div>
+
+  <p>Execute você mesmo os 4 testes base — NÃO peça para o usuário colar no chat do JARVIS. Você é o JARVIS agora.</p>
+
+  <table>
+    <thead><tr><th>Teste</th><th>Ação</th><th>Critério</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>1 — Hora Atual</td>
+        <td>Responda com a hora local do Windows no fuso do usuário usando <code>date /t + time /t</code>.</td>
+        <td>Hora correta do fuso local</td>
+      </tr>
+      <tr>
+        <td>2 — Evidência</td>
+        <td>Crie <code>Documents and Projects\JARVIS-ATIVO.txt</code> com o conteúdo abaixo.</td>
+        <td>Arquivo existe e é legível</td>
+      </tr>
+      <tr>
+        <td>3 — Clima</td>
+        <td>Chamar <code>GET http://localhost:3000/api/weather</code> e declarar o clima em 1 frase.</td>
+        <td>Temperatura + cidade corretas</td>
+      </tr>
+      <tr>
+        <td>4 — Capacidades</td>
+        <td>"Posso controlar seu PC, criar qualquer tipo de arquivo ou app, responder por voz e manter memória permanente via Obsidian — tudo local."</td>
+        <td>Declaração em PT-BR</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p><strong>Conteúdo do arquivo de evidência (Teste 2):</strong></p>
+  <pre>JARVIS v8.4 — ATIVADO COM SUCESSO
+Data: {data_hora_atual}
+Componentes: Git · Node · Python · Claude CLI · Obsidian · Express · OpenAI
+Patches: 37/37 (10 v8.0 + 4 v8.1 + 16 v8.2 + 6 v8.3 + 1 v8.4)
+Porta: 3000
+Status: ONLINE
+Realtime: gpt-realtime-2 (GA) — SDP exchange 201 OK
+Se você está lendo este arquivo, seu JARVIS está pronto para qualquer tarefa.</pre>
+
+  <hr class="divider">
+  <h3>TESTES ESTENDIDOS (D, A, B, C)</h3>
+  <p class="dim">Executar APÓS os 4 testes base passarem. Servidor rodando + 36 patches aplicados.</p>
+
+  <table>
+    <thead><tr><th>Teste</th><th>Ação</th><th>Critério obrigatório</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>D — Realtime SDP</td>
+        <td>Rodar verificação SDP do Patch 27E via localhost:3000</td>
+        <td>✓ SDP 201 OK — NÃO avançar sem isso</td>
+      </tr>
+      <tr>
+        <td>A — PDF de receita</td>
+        <td><code>POST /api/chat</code>: "Cria uma receita de lasanha em PDF"</td>
+        <td>Arquivo PDF criado em Documents and Projects com conteúdo real</td>
+      </tr>
+      <tr>
+        <td>B — YouTube com música tocando</td>
+        <td><code>POST /api/chat</code>: "Abre o YouTube e toca AC/DC Back in Black"</td>
+        <td><strong class="red">Computer use abre Chrome, busca, clica play — áudio tocando no alto-falante. Abrir sem dar play = FALHA.</strong></td>
+      </tr>
+      <tr>
+        <td>C — Computer use no editor</td>
+        <td><code>POST /api/chat</code>: "Abre o bloco de notas e digita: teste feito com sucesso, computer use e task funciona"</td>
+        <td>Editor aberto com exatamente esse texto digitado</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="gate">
+    <div class="gate-label">GATE 06</div>
+    <div>Realtime 201 OK · PDF lasanha criado · YouTube AC/DC tocando · Bloco de notas digitado · <strong>8/8 validados</strong></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ PG 13 · FASE 07 ═══ -->
+<div class="page">
+  <div class="page-header">
+    <div class="page-num">J·A·R·V·I·S // ATIVAÇÃO PG 13</div>
+    <div class="page-title">FASE 07 · ENTREGA</div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-num">07</div>
+    <div class="phase-info">
+      <div class="phase-name">ENTREGA · SUMÁRIO FINAL</div>
+      <div class="phase-gate">GATE: ENTREGUE</div>
+    </div>
+  </div>
+
+  <p>Envie exatamente este formato ao usuário:</p>
+
+  <div class="prompt-block">
+    <div style="color:var(--green);font-weight:700;margin-bottom:12px;">✅ JARVIS v8.4 — ATIVO</div>
+    <div style="color:var(--text-dim);margin-bottom:12px;">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</div>
+    <div style="line-height:2;color:var(--text);">
+      ▸ Servidor → http://localhost:3000<br>
+      ▸ HUD → abre via Ligar JARVIS.bat<br>
+      ▸ Voz → gpt-realtime-2 (GA · fallback: gpt-realtime) · TTS literal v8.1<br>
+      ▸ Memória → Obsidian vault em Documentos\{SeuNome} (Sessões + Agora + Preferências)<br>
+      ▸ Terminal → Chat direto com Opus 4.8 no cockpit (⌨ JARVIS · TERMINAL)<br>
+      ▸ Atalho → Ligar JARVIS no Desktop<br>
+      ▸ Patches → 37/37 aplicados (36 manuais + 1 pré-aplicado)<br>
+      ▸ Evidência → Documents and Projects\JARVIS-ATIVO.txt<br>
+      ▸ Realtime → SDP exchange 201 OK · modelo gpt-realtime-2<br>
+      ▸ Testes D/A/B/C → 4/4 validados
+    </div>
+    <div style="margin-top:16px;color:var(--text-dim);">
+      Próximo passo: me pede qualquer coisa.<br>
+      Ex: "cria uma landing page pro meu curso"<br>
+      Ex: "abre o YouTube e toca lofi"<br>
+      Ex: "faz uma planilha de controle financeiro"
+    </div>
+  </div>
+
+  <hr class="divider">
+  <h3>COMO DISPARAR · PROMPTS</h3>
+
+  <p style="margin-bottom:8px;color:var(--text-dim);">Prompt Inicial (instalar do zero)</p>
+  <div class="callout info">
+    <div class="callout-title">COLE NO CLAUDE CODE NA PASTA DO INSTALADOR</div>
+    Claude, leia o arquivo ROTEIRO-AULA-JARVIS-v8.4.html nesta pasta. Ele é um documento executável — siga as 7 fases na ordem até o JARVIS estar instalado, com os 37 patches da Fase 04 aplicados (10 v8.0 + 4 v8.1 + 16 v8.2 + 6 v8.3 + 1 v8.4), rodando em localhost:3000, e ter passado nos 8 testes da Fase 06. Fale em português BR, tom de amigo técnico, zero hesitação. Quando terminar, entregue o sumário da Fase 07 literal. Comece agora.
+  </div>
+
+  <p style="margin-bottom:8px;color:var(--text-dim);">Prompt de Contingência (algo travou)</p>
+  <div class="callout warn">
+    Pausa. Algo travou. Lê install-log.txt, identifica qual fase falhou, conserta, e retoma de onde parou — entregando o sumário da Fase 07 no final. Sem perguntar, só faz.
+  </div>
+
+  <p style="margin-bottom:8px;color:var(--text-dim);">Prompt Reinstalar do Zero</p>
+  <div class="callout warn">
+    Mata qualquer JARVIS rodando, apaga node_modules, apaga .env, e roda de novo o ROTEIRO-AULA-JARVIS-v8.4.html inteiro do zero (incluindo os 37 patches da Fase 04). Me entrega o sumário final quando terminar.
+  </div>
+
+  <hr class="divider">
+  <div style="text-align:center;padding:32px 0;color:var(--text-dim);">
+    <div style="color:var(--cyan);font-size:18px;letter-spacing:0.3em;margin-bottom:8px;">JARVIS V8.4 · 2026</div>
+    <div style="font-size:11px;letter-spacing:0.2em;">GABRIEL FELIPE FERNANDES + CLAUDE OPUS 4.8</div>
+    <div style="font-size:11px;letter-spacing:0.3em;margin-top:8px;">READ → EXECUTE → DELIVERED</div>
+  </div>
+</div>
+
+</body>
+</html>
