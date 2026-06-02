@@ -188,8 +188,8 @@ describe('getPool — roteamento de modelos', () => {
     return pools.haiku;
   }
 
-  test('claude-opus-4-6 → pool opus', () => {
-    assert.equal(getPool('claude-opus-4-6').model, 'opus');
+  test('claude-opus-4-8 → pool opus', () => {
+    assert.equal(getPool('claude-opus-4-8').model, 'opus');
   });
 
   test('claude-sonnet-4-6 → pool sonnet', () => {

@@ -2455,10 +2455,11 @@ initRealtimeBtn();
     if (!modelEl) return;
 
     const modelMap = {
-      'claude-opus-4-6': 'Opus 4.6',
+      'claude-opus-4-8': 'Opus 4.8',
+      'claude-opus-4-6': 'Opus 4.8',   // alias legado → aponta para 4.8
       'claude-sonnet-4-6': 'Sonnet 4.6',
       'claude-haiku-4-5': 'Haiku 4.5',
-      'opus': 'Opus 4.6',
+      'opus': 'Opus 4.8',
       'sonnet': 'Sonnet 4.6',
       'haiku': 'Haiku 4.5',
     };
@@ -2720,7 +2721,7 @@ initRealtimeBtn();
   // Detection rules
   var rules = [
     { p: /opus/i, e: 'opus' }, { p: /sonnet/i, e: 'sonnet' }, { p: /haiku/i, e: 'haiku' },
-    { p: /realtime|gpt-4o-rt/i, e: 'gpt-realtime' }, { p: /gpt-4o-mini/i, e: 'gpt-mini' },
+    { p: /gpt-realtime-2|gpt-realtime|realtime/i, e: 'gpt-realtime' }, { p: /gpt-4o-mini/i, e: 'gpt-mini' },
     { p: /@architect|aria/i, e: 'architect' }, { p: /@dev\b|dex/i, e: 'dev' },
     { p: /@qa|quinn/i, e: 'qa' }, { p: /@pm|morgan/i, e: 'pm' },
     { p: /@po\b|pax/i, e: 'po' }, { p: /@analyst|atlas/i, e: 'analyst' },

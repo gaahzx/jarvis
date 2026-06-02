@@ -105,29 +105,45 @@ autoGainControl: true    // keep — normalizes volume
 
 ---
 
-## UPGRADE PATH — OpenAI Realtime API (future)
+## Realtime API GA — WebRTC (implementado)
 
-When OpenAI key budget allows, upgrade to native S2S:
+Abordagem atual (GA desde mai/2026) — WebRTC, não WebSocket:
 
 ```javascript
-// Single WebSocket — no STT/TTS round trips
-const ws = new WebSocket('wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview', {
-  headers: { Authorization: `Bearer ${OPENAI_KEY}`, 'OpenAI-Beta': 'realtime=v1' }
-});
+// 1. Pedir ephemeral token ao backend (expira em 120s)
+// POST /api/realtime-session → retorna { client_secret: { value: "ek_..." }, ... }
 
-// Send audio chunks as they arrive (no wait for silence)
-ws.send(JSON.stringify({
-  type: 'input_audio_buffer.append',
-  audio: base64AudioChunk
-}));
+// 2. Criar RTCPeerConnection e DataChannel
+const pc = new RTCPeerConnection();
+pc.addTransceiver('audio', { direction: 'sendrecv' });
+pc.createDataChannel('oai-events');
 
-// Receive audio response chunks immediately
-ws.on('message', ({ type, delta }) => {
-  if (type === 'response.audio.delta') playAudioChunk(delta);
+// 3. Criar offer SDP
+const offer = await pc.createOffer();
+await pc.setLocalDescription(offer);
+
+// 4. Trocar SDP com a OpenAI (endpoint GA)
+const sdpRes = await fetch('https://api.openai.com/v1/realtime/calls', {
+  method: 'POST',
+  body: offer.sdp,
+  headers: {
+    'Authorization': `Bearer ${ephemeralToken}`,  // ek_...
+    'Content-Type': 'application/sdp'
+  }
 });
+// Espera 201 Created
+await pc.setRemoteDescription({ type: 'answer', sdp: await sdpRes.text() });
 ```
 
-Target latency: **300–500ms** voice-to-voice (vs current ~800ms).
+**Endpoints GA:**
+- Token: `POST /v1/realtime/client_secrets` (modelo: `gpt-realtime-2`, fallback `gpt-realtime`)
+- SDP: `POST /v1/realtime/calls` com Bearer = token efêmero `ek_...`
+- ❌ Morto: `/v1/realtime/sessions`, `/v1/realtime?model=gpt-4o-realtime-preview`
+
+**Vozes válidas no Realtime** (≠ TTS): `alloy, ash, ballad, coral, echo, sage, shimmer, verse, marin, cedar`
+❌ nova, onyx, fable, sol, aria — só existem no TTS, 400 no Realtime.
+
+Target latency: **300–500ms** voice-to-voice.
 
 ---
 
