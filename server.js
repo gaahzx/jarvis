@@ -4918,7 +4918,10 @@ Responda em ${language === 'BR' ? 'Português Brasileiro' : language === 'ES' ? 
     try { res.write(`[erro] ${err.message}`); res.end(); } catch {}
   });
 
-  req.on('close', () => { try { proc.kill(); } catch {} });
+  // Aborta o claude SÓ se o cliente desconectar de verdade (resposta não finalizada).
+  // Usamos res (não req): no Node 24 o 'close' do req dispara assim que o corpo é lido,
+  // o que matava o processo antes do Claude responder (resposta vazia em ~30ms).
+  res.on('close', () => { if (!res.writableEnded) { try { proc.kill(); } catch {} } });
 });
 
 // POST /api/computer-use/task - Claude analyses screen and performs actions autonomously

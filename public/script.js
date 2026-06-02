@@ -38,9 +38,9 @@ function detectGPUTier() {
 }
 
 const GPU_PRESETS = {
-  low:    { particles: 40,  pulses: 6,  lightning: 0,  brainLayers: 1, pixelRatio: 1,    antialias: false, fpsCap: 30, glitch: false, sway: false },
-  medium: { particles: 110, pulses: 14, lightning: 8,  brainLayers: 2, pixelRatio: 1.25, antialias: true,  fpsCap: 45, glitch: true,  sway: true  },
-  high:   { particles: 250, pulses: 25, lightning: 16, brainLayers: 4, pixelRatio: 1.5,  antialias: true,  fpsCap: 60, glitch: true,  sway: true  },
+  low:    { particles: 20, pulses: 6,  lightning: 0,  brainLayers: 1, pixelRatio: 1,    antialias: false, fpsCap: 30, glitch: false, sway: false },
+  medium: { particles: 55, pulses: 14, lightning: 8,  brainLayers: 2, pixelRatio: 1.25, antialias: true,  fpsCap: 45, glitch: true,  sway: true  },
+  high:   { particles: 125, pulses: 25, lightning: 16, brainLayers: 4, pixelRatio: 1.5,  antialias: true,  fpsCap: 60, glitch: true,  sway: true  },
 };
 
 // ========== HOLOGRAPHIC BRAIN 3D — Three.js Iron Man ==========
@@ -214,8 +214,8 @@ class NeuralTree {
       self.brainHolo = brainPivot;
       self.brainGroup.add(brainPivot);
 
-      // Wireframe clone (skip on low tier)
-      if (self.q.brainLayers >= 2) {
+      // Wireframe clone — SEMPRE renderiza (é o que dá a FORMA visível do cérebro,
+      // o avatar nunca some, mesmo em PC fraco)
       const wireModel = model.clone(true);
       wireModel.traverse(function(child) {
         if (child.isMesh) {
@@ -229,9 +229,9 @@ class NeuralTree {
       wirePivot.scale.setScalar(brainScale * 1.003);
       self.brainWire = wirePivot;
       self.brainGroup.add(wirePivot);
-      }
 
-      // Second wireframe (outer glow layer) + inner volume — only on high tier
+      // Camadas de brilho cosmético (outer glow + inner volume) — só no tier alto.
+      // São puramente decorativas; remover não tira o cérebro, só o glow extra.
       if (self.q.brainLayers >= 4) {
       const wire2Model = model.clone(true);
       wire2Model.traverse(function(child) {
@@ -923,6 +923,33 @@ function initLangToggle() {
   enBtn.addEventListener('click', () => { if (currentLang !== 'EN') applyLang('EN'); });
   brBtn.addEventListener('click', () => { if (currentLang !== 'BR') applyLang('BR'); });
   if (esBtn) esBtn.addEventListener('click', () => { if (currentLang !== 'ES') applyLang('ES'); });
+}
+
+// ========== SELETOR DE QUALIDADE 3D ==========
+// 3 níveis manuais (BAIXO/MÉDIO/ALTO) por cima da detecção automática de hardware.
+// Persiste em localStorage.gpuQuality e recarrega pra reconstruir o cérebro 3D.
+function initQualityToggle() {
+  const btns = {
+    low: document.getElementById('q-low'),
+    medium: document.getElementById('q-medium'),
+    high: document.getElementById('q-high'),
+  };
+  if (!btns.low) return;
+
+  // Marca o nível ativo = override salvo OU o tier detectado automaticamente
+  const active = detectGPUTier();
+  Object.keys(btns).forEach(q => {
+    if (btns[q]) btns[q].classList.toggle('active', q === active);
+  });
+
+  Object.keys(btns).forEach(q => {
+    if (!btns[q]) return;
+    btns[q].addEventListener('click', () => {
+      if (localStorage.getItem('gpuQuality') === q) return;
+      localStorage.setItem('gpuQuality', q);
+      location.reload(); // recria o NeuralTree já no novo preset
+    });
+  });
 }
 
 // ========== AUDIO CONTEXT (SOUND FEEDBACK) ==========
@@ -2163,6 +2190,7 @@ setInterval(updateClock, 1000);
 setInterval(updateStats, 4000);
 updateStats();
 initLangToggle();
+initQualityToggle();
 initConclaveToggle();
 initContinuousBtn();
 initRealtimeBtn();

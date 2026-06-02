@@ -106,6 +106,24 @@ html, body {
   color: var(--cyan); border-color: rgba(0,228,255,0.3);
   background: rgba(0,228,255,0.08);
 }
+/* ═══ Seletor de qualidade 3D (espelha o lang-toggle) ═══ */
+.quality-toggle { display: flex; align-items: center; gap: 2px; }
+.quality-label {
+  font-family: var(--font-mono); font-size: 8px; letter-spacing: 1px;
+  color: var(--text-dim); margin-right: 4px; opacity: 0.7;
+}
+.q-btn {
+  background: none; border: 1px solid transparent; border-radius: 4px;
+  color: var(--text-dim); cursor: pointer;
+  font-family: var(--font-mono); font-size: 9px;
+  letter-spacing: 1px; padding: 4px 7px; transition: var(--t);
+}
+.q-btn:hover { color: var(--text-mid); }
+.q-btn.active {
+  color: var(--gold, #ffd700); border-color: rgba(255,215,0,0.3);
+  background: rgba(255,215,0,0.08);
+}
+@media (max-width: 720px) { .quality-toggle { display: none; } }
 .clock {
   font-family: var(--font-mono); font-size: 11px;
   color: var(--text-dim); letter-spacing: 1px;
@@ -1634,7 +1652,8 @@ html, body {
 
 /* Override do cockpit-iron grid */
 .cockpit-iron {
-  grid-template-columns: 280px 1fr 280px !important;
+  /* Colunas laterais FLUIDAS: encolhem com a tela, nunca comem o orb/avatar (1fr) */
+  grid-template-columns: clamp(180px, 17vw, 260px) minmax(0, 1fr) clamp(180px, 17vw, 260px) !important;
   grid-template-rows: 1fr auto !important;
   grid-template-areas:
     "left   orb     right"
@@ -1943,11 +1962,8 @@ html, body {
 .hud-bottom-hint { display: none !important; }
 
 /* ═══ RESPONSIVE ═══ */
-@media (max-width: 1100px) {
-  .cockpit-iron {
-    grid-template-columns: 260px 1fr 260px !important;
-  }
-}
+/* clamp() já faz as colunas encolherem suavemente entre 900px e telas grandes;
+   sem breakpoint intermediário fixo pra evitar "saltos" de tamanho. */
 @media (max-width: 900px) {
   .cockpit-iron {
     grid-template-columns: 1fr !important;
