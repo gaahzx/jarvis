@@ -15,6 +15,12 @@ const nextConfig = {
         source: '/api/proxy/:path*',
         destination: `${BACKEND_URL}/api/:path*`,
       },
+      // Proxy de upload/download de vídeos (binários grandes, range requests)
+      // Mesma mecânica do /api/proxy mas dedicado para a rota /content/upload-video e /content/media
+      {
+        source: '/api/upload/:path*',
+        destination: `${BACKEND_URL}/api/:path*`,
+      },
       // Nginx Proxy Manager — mesmo benefício
       {
         source: '/api/npm-admin/:path*',
