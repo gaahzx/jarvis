@@ -206,6 +206,39 @@ function findPythonExe() {
 const PYTHON_CMD = findPythonExe();
 console.log(`[JARVIS] Python em: ${PYTHON_CMD}`);
 
+// ── AUTO-CURA das dependências Python do Computer Use ──
+// Se o instalador falhou silenciosamente (pip com >nul 2>nul), o aluno ficaria
+// sem screenshot/controle de tela. Aqui o server detecta e instala sozinho no boot,
+// garantindo que Computer Use e Excel funcionem sem intervenção manual.
+let pythonDepsOk = false;
+function ensurePythonDeps() {
+  if (PYTHON_CMD !== 'python' && !fs.existsSync(PYTHON_CMD)) {
+    console.log('[JARVIS] ⚠️  Python não encontrado — Computer Use/Excel desativados');
+    return;
+  }
+  try {
+    execSync(`"${PYTHON_CMD}" -c "import mss,pyautogui,PIL,openpyxl,psutil"`, { stdio: 'ignore', timeout: 30000, shell: true });
+    pythonDepsOk = true;
+    console.log('[JARVIS] ✅ Dependências Python OK (Computer Use pronto)');
+    return;
+  } catch {
+    console.log('[JARVIS] ⚠️  Dependências Python faltando — instalando automaticamente (pode levar 1-2 min)...');
+  }
+  const pip = spawn(PYTHON_CMD, ['-m', 'pip', 'install', '--disable-pip-version-check',
+    '--no-warn-script-location', '-q',
+    'pyautogui', 'mss', 'Pillow', 'openpyxl', 'psutil', 'wmi', 'pywin32'],
+    { shell: true });
+  pip.on('close', (code) => {
+    if (code === 0) {
+      pythonDepsOk = true;
+      console.log('[JARVIS] ✅ Dependências Python instaladas — Computer Use ativado');
+    } else {
+      console.log(`[JARVIS] ❌ Falha ao instalar deps Python (code ${code}). Rode manual: "${PYTHON_CMD}" -m pip install pyautogui mss Pillow openpyxl psutil wmi pywin32`);
+    }
+  });
+  pip.on('error', e => console.log('[JARVIS] ❌ Erro ao chamar pip: ' + e.message));
+}
+
 function checkClaudeCliSync() {
   const found = findClaudeCli();
   if (found) {
@@ -5021,7 +5054,11 @@ const server = app.listen(PORT, () => {
   console.log(`  OpenAI:     ${openai ? '✅ Connected (Voice + TTS + STT)' : '❌ Not configured — voice disabled'}`);
   console.log(`  Claude CLI: ${cliExists ? '✅ Found — verifying auth in background...' : '❌ Not installed'}`);
   console.log(`  Chrome:     ${chrome ? '✅ ' + chrome : '⚠️  Using bundled Chromium'}`);
-  console.log(`  Python:     ${fs.existsSync(PYTHON_CMD) ? '✅ Python 3.11' : '⚠️  Not found — Excel features disabled'}`);
+  console.log(`  Python:     ${fs.existsSync(PYTHON_CMD) ? '✅ ' + PYTHON_CMD : '⚠️  Not found — Computer Use/Excel disabled'}`);
+  let gitOk = false;
+  try { execSync('git --version', { stdio: 'ignore', timeout: 5000, shell: true }); gitOk = true; } catch {}
+  console.log(`  Git:        ${gitOk ? '✅ Found (ATUALIZAR-JARVIS habilitado)' : '⚠️  Não encontrado — ATUALIZAR-JARVIS não vai funcionar'}`);
+  console.log(`  Node:       ✅ ${process.version}`);
   console.log('');
   if (!cliExists) {
     console.log('  ⚠️  WARNING: Claude Code CLI not found.');
@@ -5038,6 +5075,9 @@ const server = app.listen(PORT, () => {
   console.log('');
   console.log('  ==========================================');
   console.log('');
+
+  // Auto-cura das dependências Python (não-bloqueante)
+  ensurePythonDeps();
 
   // Kick off async auth check AFTER server is listening (non-blocking)
   if (cliExists) {
