@@ -1462,30 +1462,112 @@ async function updateProjectStatus(userRequest, claudeResponse) {
   } catch {}
 }
 
-// Build GPT-mini system prompt — injects full JARVIS context (memory + history)
+// ── Vault context reader — lê memória recente do Obsidian ──
+function readVaultContext() {
+  try {
+    if (!fs.existsSync(OBSIDIAN_VAULT)) return '';
+    const parts = [];
+    // Contexto ativo (memória de trabalho)
+    const agoraPath = path.join(OBSIDIAN_VAULT, 'Agora', 'Contexto-Ativo.md');
+    if (fs.existsSync(agoraPath)) {
+      parts.push('── CONTEXTO ATIVO ──\n' + fs.readFileSync(agoraPath, 'utf8').slice(0, 1500));
+    }
+    // Sessão de hoje
+    const today = new Date().toISOString().split('T')[0];
+    const sessionPath = path.join(OBSIDIAN_VAULT, 'Sessões', `${today}.md`);
+    if (fs.existsSync(sessionPath)) {
+      const content = fs.readFileSync(sessionPath, 'utf8');
+      parts.push('── SESSÃO HOJE ──\n' + content.slice(-2000)); // últimas interações
+    }
+    // Preferências do usuário
+    const prefPath = path.join(OBSIDIAN_VAULT, 'Preferências', `${USER_NAME}.md`);
+    if (fs.existsSync(prefPath)) {
+      parts.push('── PREFERÊNCIAS ──\n' + fs.readFileSync(prefPath, 'utf8').slice(0, 1000));
+    }
+    return parts.join('\n\n');
+  } catch { return ''; }
+}
+
+// ── Session memory writer — escreve no Obsidian após cada interação ──
+function writeSessionMemory(request, response) {
+  try {
+    const sessionsDir = path.join(OBSIDIAN_VAULT, 'Sessões');
+    if (!fs.existsSync(sessionsDir)) fs.mkdirSync(sessionsDir, { recursive: true });
+    const today = new Date().toISOString().split('T')[0];
+    const sessionFile = path.join(sessionsDir, `${today}.md`);
+    const time = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const entry = `\n## ${time}\n**Request:** ${String(request).slice(0, 200)}\n**JARVIS:** ${String(response).slice(0, 400)}\n`;
+    if (!fs.existsSync(sessionFile)) {
+      fs.writeFileSync(sessionFile, `# Sessão ${today} — ${USER_NAME}\n`);
+    }
+    fs.appendFileSync(sessionFile, entry);
+  } catch {}
+}
+
+// ── Build system prompt — contexto completo + capacidades desbloqueadas ──
 function buildGPTSystemPrompt(language = 'EN') {
   const memory = loadMemoryCached();
   const history = formatHistoryForPrompt(loadHistoryCached(), false, false);
+  const vaultContext = readVaultContext();
 
   const LANG_RULES = {
-    BR: 'REGRA ABSOLUTA: Você responde EXCLUSIVAMENTE em Português Brasileiro, SEMPRE. Mesmo que o usuário fale em inglês, espanhol ou qualquer outro idioma, sua resposta é SEMPRE em Português Brasileiro. Nunca troque de idioma por nenhum motivo. Trate o usuário como "senhor".',
-    ES: 'REGLA ABSOLUTA: Respondes EXCLUSIVAMENTE en Español, SIEMPRE. Incluso si el usuario habla en inglés, portugués o cualquier otro idioma, tu respuesta es SIEMPRE en Español. Nunca cambies de idioma por ningún motivo. Dirígete al usuario como "señor".',
-    EN: 'ABSOLUTE RULE: You respond EXCLUSIVELY in English, ALWAYS. Even if the user speaks Portuguese, Spanish, or any other language, your response is ALWAYS in English. Never switch languages for any reason. Address the user as "sir".'
+    BR: `REGRA ABSOLUTA DE IDIOMA: Responda SEMPRE em Português Brasileiro, independente do idioma do usuário. Trate o usuário como "senhor" nas respostas por voz.`,
+    ES: `REGLA ABSOLUTA DE IDIOMA: Responde SIEMPRE en Español, independientemente del idioma del usuario. Dirígete al usuario como "señor" en respuestas de voz.`,
+    EN: `ABSOLUTE LANGUAGE RULE: Always respond in English, regardless of user's language. Address the user as "sir" in voice responses.`
   };
-  const langRule = LANG_RULES[language] || LANG_RULES.EN;
 
-  return `You are JARVIS — a highly capable personal AI assistant and trusted advisor. Direct, sharp, loyal. Part expert, part friend, part right-hand man. Strong opinions, delivers results, slightly sarcastic when appropriate.
+  return `Você é JARVIS — sistema de inteligência artificial de ponta do ${USER_NAME}.
+Direto, preciso, leal. Parte especialista, parte parceiro estratégico. Entrega resultados, não desculpas.
 
-${langRule}
-Be concise and direct. Max 3 sentences for simple questions.
-ALWAYS start with a short 2-4 word opener followed by a comma or period (e.g. "Certainly, sir.", "Of course,", "Right away."). This lets voice playback start instantly.
-Never mention that you are GPT or OpenAI. You are JARVIS.
+${LANG_RULES[language] || LANG_RULES.EN}
 
-PERSISTENT MEMORY (everything built and learned so far):
-${memory || '(no memory yet)'}
+SEMPRE inicie com um opener curto de 2-4 palavras seguido de vírgula (ex: "Certo, senhor.", "Feito.", "Com certeza.").
+Nunca mencione Claude, GPT, OpenAI ou Anthropic. Você É o JARVIS.
+Respostas concisas: máximo 3 frases para perguntas simples.
 
-RECENT CONVERSATION HISTORY:
-${history || '(no history yet)'}`;
+══════════════════════════════════════════
+CAPACIDADES TOTAIS DISPONÍVEIS — USE TODAS
+══════════════════════════════════════════
+
+COMPUTER USE: Controle total da tela, mouse, teclado, qualquer aplicativo, qualquer janela.
+Sempre: screenshot ANTES de agir. Screenshot DEPOIS para verificar. Se falhou: analisa, tenta diferente.
+
+CRIAÇÃO SEM LIMITE: PDF, Word, Excel, PowerPoint, HTML, CSS, código em qualquer linguagem,
+SVG, scripts, automações, e-books, landing pages, planilhas complexas, apps completos.
+Entregue SEMPRE o item COMPLETO. Nunca esboço. Nunca "exemplo simplificado".
+
+DESIGN: Sistemas visuais completos — paleta, tipografia, layout, componentes.
+HTML/CSS pixel-perfect. Especificações técnicas precisas. Análise e crítica de designs existentes.
+
+ANÁLISE SEM LIMITE DE QUANTIDADE: 1 item → profundidade total. 100 itens → analisa todos os 100.
+1000 itens → estratégia de lotes, processa tudo, consolida. NUNCA diga "são muitos itens".
+
+NAVEGAÇÃO DE ARQUIVOS: Qualquer pasta, qualquer arquivo, qualquer estrutura.
+Mapeia projetos inteiros. Lê, compara, consolida múltiplos arquivos simultaneamente.
+
+WEB: Abre qualquer URL, navega, clica, extrai, preenche, interage com qualquer site.
+
+MEMÓRIA: Lê vault Obsidian antes de tasks de projeto. Escreve resultados após conclusão.
+
+REGRAS DE EXECUÇÃO INVIOLÁVEIS:
+1. NUNCA diga "não consigo" — sempre existe um caminho, encontre-o
+2. NUNCA entregue incompleto — se a tarefa é grande, continue até terminar
+3. NUNCA peça confirmação para tarefas simples — execute, depois informe
+4. Para tarefas destrutivas (deletar, publicar, enviar): confirme por voz antes
+5. Anuncie progresso em tasks longas: "Item 10 de 50 concluído"
+6. Após Computer Use: sempre verifique com screenshot
+7. Você é o JARVIS do ${USER_NAME} — adapte contexto, preferências e estilo ao usuário
+
+══════════════════════════════════════════
+CONTEXTO DO VAULT — MEMÓRIA ATIVA
+══════════════════════════════════════════
+${vaultContext || '(vault ainda sem contexto — primeiras interações)'}
+
+MEMÓRIA PERSISTENTE:
+${memory || '(sem memória ainda)'}
+
+HISTÓRICO RECENTE:
+${history || '(sem histórico ainda)'}`;
 }
 
 // Handle GPT-mini streaming response
@@ -3827,7 +3909,12 @@ After fixing, output a summary of what was done.`;
 // ═══════════════════════════════════════════════
 // OBSIDIAN BRAIN — Vault endpoints
 // ═══════════════════════════════════════════════
-const OBSIDIAN_VAULT = path.join(os.homedir(), 'Documents', 'Felipe');
+// Multi-user: USER_NAME e vault vêm do .env — cada aluno configura o seu
+const USER_NAME = process.env.USER_NAME
+  || (process.env.OBSIDIAN_VAULT_PATH ? path.basename(process.env.OBSIDIAN_VAULT_PATH) : null)
+  || 'Usuário';
+const OBSIDIAN_VAULT = process.env.OBSIDIAN_VAULT_PATH
+  || path.join(os.homedir(), 'Documents', USER_NAME);
 
 // GET /api/obsidian/stats — count notes, folders, links
 app.get('/api/obsidian/stats', (req, res) => {
@@ -4663,6 +4750,70 @@ app.post('/api/computer-use', (req, res) => {
     console.error('[JARVIS] Computer-use error:', err.message?.slice(0, 200));
     res.status(500).json({ error: err.message?.slice(0, 200) });
   }
+});
+
+// ══════════════════════════════════════════════════════════════
+// POST /api/terminal — Acesso direto ao Opus via terminal chat
+// Streaming SSE — cada token chega em tempo real no widget
+// ══════════════════════════════════════════════════════════════
+app.post('/api/terminal', (req, res) => {
+  const { message, language = 'BR' } = req.body || {};
+  if (!message) return res.status(400).json({ error: 'message required' });
+  if (!claudeCliAvailable) return res.status(503).json({ error: 'Claude CLI não disponível' });
+
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Transfer-Encoding', 'chunked');
+  res.setHeader('X-Accel-Buffering', 'no');
+
+  // System prompt completo — todas as capacidades desbloqueadas
+  const vaultCtx = readVaultContext();
+  const systemPrompt = `Você é JARVIS — assistente de inteligência artificial de ponta do ${USER_NAME}.
+Direto, preciso, leal. Entrega resultados sem rodeios. Tom técnico mas acessível.
+Nunca mencione Claude, Anthropic, OpenAI. Você É o JARVIS.
+
+CAPACIDADES TOTAIS: Computer Use, criação de qualquer arquivo/formato, design, análise de múltiplos itens sem limite,
+navegação web, navegação de arquivos, código em qualquer linguagem, automações, deploy.
+NUNCA diga "não consigo". Sempre encontre um caminho.
+Para análises de múltiplos itens: processe TODOS, um por um, sem parar.
+
+${vaultCtx ? `CONTEXTO DO VAULT:\n${vaultCtx}` : ''}
+
+Responda em ${language === 'BR' ? 'Português Brasileiro' : language === 'ES' ? 'Español' : 'English'}.`;
+
+  let fullResponse = '';
+  const proc = spawn(CLAUDE_CMD, [
+    '--print', '--output-format', 'text',
+    '--model', 'claude-opus-4-8',
+    '--dangerously-skip-permissions'
+  ], { cwd: JARVIS_DIR, env: process.env, shell: true });
+
+  proc.stdin.write(`${systemPrompt}\n\nUsuário: ${message}`);
+  proc.stdin.end();
+
+  proc.stdout.on('data', data => {
+    const text = data.toString();
+    fullResponse += text;
+    try { res.write(text); } catch {}
+  });
+
+  proc.stderr.on('data', data => {
+    const msg = data.toString();
+    if (!msg.includes('ExperimentalWarning') && !msg.includes('Warning:')) {
+      console.error('[JARVIS Terminal]', msg.slice(0, 100));
+    }
+  });
+
+  proc.on('close', () => {
+    // Salva na memória do Obsidian
+    writeSessionMemory(message, fullResponse);
+    try { res.end(); } catch {}
+  });
+
+  proc.on('error', err => {
+    try { res.write(`[erro] ${err.message}`); res.end(); } catch {}
+  });
+
+  req.on('close', () => { try { proc.kill(); } catch {} });
 });
 
 // POST /api/computer-use/task - Claude analyses screen and performs actions autonomously

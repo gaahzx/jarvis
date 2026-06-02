@@ -3096,4 +3096,124 @@ initRealtimeBtn();
   setInterval(updateDateTime, 1000);
 })();
 
+// ═══════════════════════════════════════════════════════════════════
+// JARVIS TERMINAL CHAT — acesso direto ao Opus 4.8
+// Minimizado por padrão, abre ao clicar, grudado no card do Obsidian
+// ═══════════════════════════════════════════════════════════════════
+(function initJarvisTerminal() {
+  const card     = document.getElementById('jterm-card');
+  const toggle   = document.getElementById('jterm-toggle');
+  const body     = document.getElementById('jterm-body');
+  const minBtn   = document.getElementById('jterm-minbtn');
+  const messages = document.getElementById('jterm-messages');
+  const input    = document.getElementById('jterm-input');
+  const sendBtn  = document.getElementById('jterm-send');
+  if (!card || !toggle || !body || !input || !sendBtn) return;
+
+  let isOpen = false;
+  let isBusy = false;
+
+  // Toggle abrir/minimizar
+  function toggleTerminal() {
+    isOpen = !isOpen;
+    body.classList.toggle('open', isOpen);
+    minBtn.textContent = isOpen ? '▼ minimizar' : '▲ abrir';
+    if (isOpen) { input.focus(); scrollToBottom(); }
+  }
+
+  toggle.addEventListener('click', toggleTerminal);
+
+  // Scroll automático
+  function scrollToBottom() {
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  // Adicionar linha ao terminal
+  function addLine(text, type = 'jterm-jarvis') {
+    const el = document.createElement('div');
+    el.className = 'jterm-line ' + type;
+    el.textContent = text;
+    messages.appendChild(el);
+    scrollToBottom();
+    return el;
+  }
+
+  // Enviar mensagem ao Opus via /api/terminal
+  async function sendMessage() {
+    const msg = input.value.trim();
+    if (!msg || isBusy) return;
+
+    isBusy = true;
+    input.value = '';
+    sendBtn.disabled = true;
+
+    // Mostra mensagem do usuário
+    addLine(msg, 'jterm-user');
+
+    // Linha de streaming do JARVIS
+    const jarvisLine = document.createElement('div');
+    jarvisLine.className = 'jterm-line jterm-streaming';
+    jarvisLine.textContent = '';
+    messages.appendChild(jarvisLine);
+    scrollToBottom();
+
+    try {
+      const resp = await fetch('/api/terminal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: msg, language: 'BR' })
+      });
+
+      if (!resp.ok) {
+        jarvisLine.className = 'jterm-line jterm-err';
+        jarvisLine.textContent = '[erro ' + resp.status + '] ' + await resp.text();
+      } else {
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let full = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          full += chunk;
+          jarvisLine.textContent = full;
+          scrollToBottom();
+        }
+
+        // Finaliza — remove cursor piscando
+        jarvisLine.className = 'jterm-line jterm-jarvis';
+        jarvisLine.textContent = full;
+      }
+    } catch (err) {
+      jarvisLine.className = 'jterm-line jterm-err';
+      jarvisLine.textContent = '[erro] ' + err.message;
+    }
+
+    isBusy = false;
+    sendBtn.disabled = false;
+    input.focus();
+    scrollToBottom();
+
+    // Linha separadora sutil
+    const sep = document.createElement('div');
+    sep.className = 'jterm-line jterm-sys';
+    sep.textContent = '──────────────────────';
+    messages.appendChild(sep);
+  }
+
+  // Enter envia
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+  sendBtn.addEventListener('click', sendMessage);
+
+  // Ctrl+` abre/fecha o terminal de qualquer lugar
+  document.addEventListener('keydown', e => {
+    if (e.ctrlKey && e.key === '`') { e.preventDefault(); toggleTerminal(); }
+  });
+
+  console.log('[JARVIS] Terminal chat inicializado — Ctrl+` para abrir');
+})();
+
 

@@ -10,6 +10,98 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
   <link rel="stylesheet" href="style.css">
+  <style>
+  /* ═══ JARVIS TERMINAL CHAT WIDGET ═══ */
+  .jterm-card {
+    display: flex; flex-direction: column;
+    min-width: 220px; max-width: 320px;
+    background: rgba(6, 12, 18, 0.82);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(0, 228, 255, 0.18);
+    border-radius: 8px;
+    overflow: hidden;
+    transition: all 0.25s ease;
+  }
+  .jterm-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px;
+    background: rgba(0, 228, 255, 0.05);
+    border-bottom: 1px solid rgba(0, 228, 255, 0.12);
+    cursor: pointer;
+    user-select: none;
+  }
+  .jterm-title {
+    display: flex; align-items: center; gap: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; font-weight: 600;
+    letter-spacing: 0.15em;
+    color: rgba(0, 228, 255, 0.8);
+    text-transform: uppercase;
+  }
+  .jterm-minbtn {
+    background: none; border: none; cursor: pointer;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px; letter-spacing: 0.1em;
+    color: rgba(0, 228, 255, 0.5);
+    padding: 2px 6px;
+    border: 1px solid rgba(0, 228, 255, 0.15);
+    border-radius: 3px;
+    transition: all 0.2s;
+    text-transform: uppercase;
+  }
+  .jterm-minbtn:hover { color: rgba(0, 228, 255, 0.9); border-color: rgba(0, 228, 255, 0.4); }
+  .jterm-body {
+    display: none;
+    flex-direction: column;
+    height: 260px;
+  }
+  .jterm-body.open { display: flex; }
+  .jterm-messages {
+    flex: 1; overflow-y: auto;
+    padding: 10px 12px;
+    display: flex; flex-direction: column; gap: 4px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0,228,255,0.2) transparent;
+  }
+  .jterm-messages::-webkit-scrollbar { width: 3px; }
+  .jterm-messages::-webkit-scrollbar-thumb { background: rgba(0,228,255,0.2); border-radius: 2px; }
+  .jterm-line {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; line-height: 1.5;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .jterm-sys  { color: rgba(0, 228, 255, 0.35); font-size: 10px; }
+  .jterm-user { color: rgba(255, 255, 255, 0.7); }
+  .jterm-user::before { content: '› '; color: rgba(0,228,255,0.6); }
+  .jterm-jarvis { color: rgba(180, 240, 210, 0.9); }
+  .jterm-jarvis::before { content: 'J › '; color: rgba(0, 255, 136, 0.6); }
+  .jterm-streaming { color: rgba(180, 240, 210, 0.7); }
+  .jterm-streaming::after { content: '▋'; animation: blink 0.7s infinite; }
+  @keyframes blink { 0%,49%{opacity:1} 50%,100%{opacity:0} }
+  .jterm-err { color: rgba(255, 80, 80, 0.8); font-size: 10px; }
+  .jterm-input-row {
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 12px;
+    border-top: 1px solid rgba(0, 228, 255, 0.1);
+    background: rgba(0, 0, 0, 0.3);
+  }
+  .jterm-prompt { color: rgba(0, 228, 255, 0.6); font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+  .jterm-input {
+    flex: 1; background: none; border: none; outline: none;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; color: rgba(255,255,255,0.85);
+    caret-color: rgba(0,228,255,0.8);
+  }
+  .jterm-input::placeholder { color: rgba(255,255,255,0.2); }
+  .jterm-send {
+    background: rgba(0,228,255,0.08); border: 1px solid rgba(0,228,255,0.2);
+    color: rgba(0,228,255,0.6); border-radius: 3px;
+    font-size: 13px; padding: 2px 8px; cursor: pointer;
+    transition: all 0.15s;
+  }
+  .jterm-send:hover { background: rgba(0,228,255,0.18); color: rgba(0,228,255,1); }
+  .jterm-send:disabled { opacity: 0.3; cursor: not-allowed; }
+  </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 </head>
@@ -268,6 +360,28 @@
             <div class="obs-detail"><span class="obs-icon">🔗</span><span class="obs-label">Links</span><span class="obs-val" id="obs-links">--</span></div>
             <div class="obs-detail"><span class="obs-icon">🧠</span><span class="obs-label">Cérebros</span><span class="obs-val">3</span></div>
             <div class="obs-detail"><span class="obs-icon">👥</span><span class="obs-label">Agentes</span><span class="obs-val">15</span></div>
+          </div>
+        </div>
+
+        <!-- ═══ JARVIS TERMINAL CHAT — grudado no Obsidian ═══ -->
+        <div class="hud-bottom-card jterm-card" id="jterm-card">
+          <div class="jterm-header" id="jterm-toggle">
+            <div class="jterm-title">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+              <span>JARVIS · TERMINAL</span>
+            </div>
+            <button class="jterm-minbtn" id="jterm-minbtn" title="Abrir / Minimizar">▲ abrir</button>
+          </div>
+          <div class="jterm-body" id="jterm-body">
+            <div class="jterm-messages" id="jterm-messages">
+              <div class="jterm-line jterm-sys">JARVIS v8.4 · Opus 4.8 · Claude Code desbloqueado</div>
+              <div class="jterm-line jterm-sys">── digite qualquer tarefa, código ou análise ──</div>
+            </div>
+            <div class="jterm-input-row">
+              <span class="jterm-prompt">›</span>
+              <input type="text" id="jterm-input" class="jterm-input" placeholder="fale com o JARVIS..." autocomplete="off" spellcheck="false" />
+              <button class="jterm-send" id="jterm-send" title="Enviar">↵</button>
+            </div>
           </div>
         </div>
 
