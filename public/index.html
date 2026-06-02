@@ -576,18 +576,24 @@
       </div>
       <div class="config-group">
         <label class="config-label">TTS Voice</label>
-        <select class="config-select" id="config-tts-voice">
-          <option value="ash">ash — Confident, clear</option>
-          <option value="coral">coral — Bright, energetic</option>
-          <option value="sage">sage — Calm, thoughtful</option>
-          <option value="alloy">alloy — Neutral, balanced</option>
-          <option value="echo">echo — Clear, precise</option>
-          <option value="shimmer">shimmer — Soft, gentle</option>
-          <option value="ballad">ballad — Warm, expressive</option>
-          <option value="verse">verse — Articulate, composed</option>
-          <option value="cedar">cedar — Rich, natural</option>
-          <option value="marin">marin — Smooth, modern</option>
-        </select>
+        <div style="display:flex; gap:8px; align-items:stretch">
+          <select class="config-select" id="config-tts-voice" style="flex:1; min-width:0">
+            <option value="ash">ash — Confiante, clara</option>
+            <option value="nova">nova — Feminina, suave</option>
+            <option value="onyx">onyx — Grave, masculina</option>
+            <option value="alloy">alloy — Neutra, equilibrada</option>
+            <option value="coral">coral — Brilhante, animada</option>
+            <option value="sage">sage — Calma, ponderada</option>
+            <option value="echo">echo — Clara, precisa</option>
+            <option value="fable">fable — Narrativa, envolvente</option>
+            <option value="shimmer">shimmer — Suave, delicada</option>
+            <option value="ballad">ballad — Calorosa, expressiva</option>
+            <option value="verse">verse — Articulada, serena</option>
+            <option value="marin">marin — Suave, moderna</option>
+            <option value="cedar">cedar — Rica, natural</option>
+          </select>
+          <button type="button" id="test-voice-btn" title="Ouvir uma amostra desta voz em português" style="flex:none; padding:6px 14px; background:rgba(0,228,255,.12); border:1px solid rgba(0,228,255,.45); color:#00e4ff; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; white-space:nowrap">▶ Testar</button>
+        </div>
       </div>
       <!-- Conclave toggle (hidden — preserva funcionalidade do script.js) -->
       <div class="config-group">

@@ -2118,6 +2118,39 @@ if (ttsVoiceSelect) {
   });
 }
 
+// Botão "Testar" — reproduz uma amostra da voz selecionada em PT-BR
+const testVoiceBtn = document.getElementById('test-voice-btn');
+if (testVoiceBtn) {
+  let _testAudio = null;
+  testVoiceBtn.addEventListener('click', async () => {
+    const voice = (ttsVoiceSelect && ttsVoiceSelect.value) || ttsVoice;
+    if (_testAudio) { try { _testAudio.pause(); } catch {} _testAudio = null; }
+    const original = testVoiceBtn.textContent;
+    testVoiceBtn.disabled = true;
+    testVoiceBtn.style.opacity = '0.6';
+    testVoiceBtn.textContent = 'Gerando...';
+    const restore = () => { testVoiceBtn.disabled = false; testVoiceBtn.style.opacity = '1'; testVoiceBtn.textContent = original; _testAudio = null; };
+    try {
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: 'Olá! Eu sou o JARVIS, seu assistente pessoal. Esta é a minha voz. Em que posso ajudar hoje?', language: 'BR', voice })
+      });
+      if (!res.ok) throw new Error('TTS ' + res.status);
+      const url = URL.createObjectURL(await res.blob());
+      _testAudio = new Audio(url);
+      testVoiceBtn.textContent = '♪ ' + voice;
+      const done = () => { URL.revokeObjectURL(url); restore(); };
+      _testAudio.onended = done;
+      _testAudio.onerror = done;
+      await _testAudio.play();
+    } catch (err) {
+      testVoiceBtn.textContent = 'Erro';
+      setTimeout(restore, 1500);
+    }
+  });
+}
+
 // ========== AUTO-START WAKE WORD ==========
 // JARVIS listens for his name — only if user hasn't explicitly disabled it
 setTimeout(() => {

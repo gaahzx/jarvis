@@ -2878,7 +2878,7 @@ app.post('/api/tts', async (req, res) => {
     if (!text) return res.status(400).json({ error: 'Text required' });
 
     // User-selected voice takes priority. Fallback: onyx (EN) / nova (BR)
-    const VALID_VOICES = ['alloy','ash','coral','echo','fable','nova','onyx','sage','shimmer'];
+    const VALID_VOICES = ['alloy','ash','ballad','coral','echo','fable','nova','onyx','sage','shimmer','verse','marin','cedar'];
     const voice = VALID_VOICES.includes(requestedVoice) ? requestedVoice
       : (language === 'BR' ? 'nova' : 'onyx');
 
