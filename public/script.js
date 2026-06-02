@@ -3362,9 +3362,12 @@ initRealtimeBtn();
     const dotClass = status === 'online' ? '' : status === 'offline' ? 'offline' : 'checking';
     if (authDot) { authDot.className = 'jterm-auth-dot ' + dotClass; authDot.title = status === 'online' ? 'Claude CLI autenticado' : status === 'offline' ? 'Claude CLI offline — rode: claude auth login' : 'Verificando...'; }
     if (modalDot) { modalDot.style.background = status === 'online' ? 'rgba(0,255,136,0.7)' : status === 'offline' ? 'rgba(255,80,80,0.8)' : 'rgba(255,200,0,0.8)'; }
-    if (status === 'offline') {
+    // Avisa só UMA vez ao ficar offline (não repete a cada re-check de 10min)
+    if (status === 'offline' && !setAuthStatus._warned) {
       addLine('⚠ Claude CLI offline. No terminal Windows, execute: claude auth login', 'jterm-warn');
+      setAuthStatus._warned = true;
     }
+    if (status === 'online') setAuthStatus._warned = false;
   }
 
   // Verifica auth ao inicializar e a cada 10min
@@ -3373,7 +3376,9 @@ initRealtimeBtn();
     try {
       const r = await fetch('/api/health');
       const data = await r.json();
-      const claudeOk = data?.pools?.opus !== undefined ? true : data?.claude?.status === 'ok';
+      // O health aninha tudo em "components" (pools/claude); aceita os 2 formatos
+      const c = data?.components || data || {};
+      const claudeOk = (c?.pools?.opus > 0) || c?.claude?.status === 'ok';
       setAuthStatus(claudeOk ? 'online' : 'offline');
     } catch { setAuthStatus('offline'); }
   }
