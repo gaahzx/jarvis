@@ -1,4 +1,4 @@
-import 'dotenv/config';
+﻿import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
@@ -379,7 +379,7 @@ class WarmPool {
 
 // One pool per model tier — sized by expected traffic
 const pools = {
-  opus:   new WarmPool('claude-opus-4-6',         1),
+  opus:   new WarmPool('claude-opus-4-8',         1),
   sonnet: new WarmPool('claude-sonnet-4-6',        3),
   haiku:  new WarmPool('claude-haiku-4-5-20251001',4),
 };
@@ -775,13 +775,13 @@ function loadProjectContext() {
 
 const AGENT_MODEL_MAP = {
   // OPUS 4.7 — Highest reasoning, architecture, orchestration
-  'architect':           'claude-opus-4-6',
-  'aios-master':         'claude-opus-4-6',
-  'conclave-critico':    'claude-opus-4-6',
-  'conclave-advogado':   'claude-opus-4-6',
-  'conclave-sintetizador': 'claude-opus-4-6',
-  'data-engineer':       'claude-opus-4-6',
-  'devops':              'claude-opus-4-6',
+  'architect':           'claude-opus-4-8',
+  'aios-master':         'claude-opus-4-8',
+  'conclave-critico':    'claude-opus-4-8',
+  'conclave-advogado':   'claude-opus-4-8',
+  'conclave-sintetizador': 'claude-opus-4-8',
+  'data-engineer':       'claude-opus-4-8',
+  'devops':              'claude-opus-4-8',
 
   // SONNET 4.6 — Balanced: code, UX, product, research
   'dev':      'claude-sonnet-4-6',
@@ -818,7 +818,7 @@ function selectModelByComplexity(message) {
   const lower = message.toLowerCase();
 
   // 0. Explicit model override — user can force any model
-  if (/\bopus\b/i.test(lower))  return 'claude-opus-4-6';
+  if (/\bopus\b/i.test(lower))  return 'claude-opus-4-8';
   if (/\bsonnet\b/i.test(lower)) return 'claude-sonnet-4-6';
   if (/\bhaiku\b/i.test(lower))  return 'claude-haiku-4-5-20251001';
 
@@ -829,7 +829,7 @@ function selectModelByComplexity(message) {
 
   // 2. Complexity-based routing (fallback)
   if (/\b(architect|redesign|refactor|infrastructure|migration|deploy|scale|system design|e-?book|full system|complete|advanced|complex|comprehensive|deep analysis|entire|production|enterprise|conclave|delibera|schema|database|migration)\b/i.test(lower))
-    return 'claude-opus-4-6';
+    return 'claude-opus-4-8';
 
   if (/\b(create|generate|build|make|write|produce|design|implement|develop|fix|update|modify|analyze|report|presentation|website|app|pdf|document|code|script|html|css|crie|gere|construa|faça|escreva|implemente|corrija)\b/i.test(lower))
     return 'claude-sonnet-4-6';
@@ -2484,7 +2484,7 @@ app.post('/api/stt', upload.single('audio'), async (req, res) => {
 
     // First attempt: English
     let transcription = await openai.audio.transcriptions.create({
-      model: 'whisper-1',
+      model: 'gpt-4o-transcribe',
       file: audioFile,
       language: 'en',
       prompt: 'Create an e-book about digital marketing. Build a website. Generate a report. Design a presentation. Analyze data. Write code. Hello JARVIS.'
@@ -2498,7 +2498,7 @@ app.post('/api/stt', upload.single('audio'), async (req, res) => {
       console.log('[JARVIS] EN was hallucination, trying PT...');
       const audioFile2 = await toFile(req.file.buffer, 'audio.webm', { type: 'audio/webm' });
       transcription = await openai.audio.transcriptions.create({
-        model: 'whisper-1',
+        model: 'gpt-4o-transcribe',
         file: audioFile2,
         language: 'pt',
         prompt: 'Crie um e-book sobre marketing digital. Construa um site. Gere um relatório. Olá JARVIS.'
@@ -2664,7 +2664,7 @@ app.post('/api/tts', async (req, res) => {
       : (language === 'BR' ? 'nova' : 'onyx');
 
     const mp3 = await openai.audio.speech.create({
-      model: 'tts-1',
+      model: 'gpt-4o-mini-tts',
       voice,
       input: text
     });
@@ -2703,7 +2703,12 @@ app.post('/api/translate', async (req, res) => {
 app.post('/api/realtime/session', async (req, res) => {
   try {
     if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: 'OpenAI API key not configured' });
-    const { language = 'EN', voice = 'ash' } = req.body || {};
+    const { language = 'BR' } = req.body || {};
+    // Vozes validas para Realtime (diferente do TTS): alloy, ash, ballad, coral, echo, sage, shimmer, verse, marin, cedar
+    const REALTIME_VOICES = ['alloy','ash','ballad','coral','echo','sage','shimmer','verse','marin','cedar'];
+    const rawVoice = req.body?.voice || 'ash';
+    // Fallback: nova/onyx/fable/sol/aria nao existem no Realtime -> usar ash
+    const voice = REALTIME_VOICES.includes(rawVoice) ? rawVoice : 'ash';
 
     const INSTRUCTIONS = {
       BR: `Você é JARVIS — assistente pessoal com poderes COMPLETOS sobre o computador do senhor. Fale APENAS em Português Brasileiro. Máximo 1 frase. Nunca mencione GPT ou OpenAI.
@@ -2749,32 +2754,56 @@ RULE: For ANY request that is not pure knowledge → call "execute_task". NEVER 
       }
     }];
 
-    const r = await fetch('https://api.openai.com/v1/realtime/sessions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-realtime-preview',
-        voice,
-        instructions,
-        turn_detection: { type: 'server_vad', threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 500 },
-        input_audio_transcription: {
-          model: 'whisper-1',
-          language: { BR: 'pt', ES: 'es', EN: 'en' }[language] || 'en'
-        },
-        modalities: ['audio', 'text'],
-        tools,
-        tool_choice: 'auto'
-      })
-    });
-    const data = await r.json();
-    if (!r.ok) {
-      console.error('[JARVIS] Realtime session error:', data);
-      return res.status(500).json({ error: data.error?.message || 'Realtime session failed' });
+    const REALTIME_MODELS = ['gpt-realtime-2', 'gpt-realtime'];
+    const langCode = { BR: 'pt', ES: 'es', EN: 'en' }[language] || 'pt';
+    let sessionData = null;
+
+    for (const model of REALTIME_MODELS) {
+      try {
+        const r = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            expires_after: { anchor: 'created_at', seconds: 120 },
+            session: {
+              type: 'realtime',
+              model,
+              instructions,
+              output_modalities: ['audio'],
+              audio: {
+                input: {
+                  noise_reduction: { type: 'near_field' },
+                  transcription: { model: 'gpt-4o-transcribe', language: langCode },
+                  turn_detection: { type: 'server_vad', threshold: 0.5,
+                    prefix_padding_ms: 300, silence_duration_ms: 500 }
+                },
+                output: { voice }
+              },
+              tools,
+              tool_choice: 'auto'
+            }
+          })
+        });
+        if (r.ok) {
+          const raw = await r.json();
+          console.log('[JARVIS] Realtime ativo:', model);
+          sessionData = { ...raw.session,
+            client_secret: { value: raw.value, expires_at: raw.expires_at } };
+          break;
+        }
+        const errData = await r.json().catch(() => ({}));
+        console.warn(`[JARVIS] ${model} falhou (${r.status}) — tentando fallback`);
+      } catch (e) {
+        console.warn(`[JARVIS] ${model} erro: ${e.message} — tentando fallback`);
+      }
     }
-    res.json(data);
+    if (!sessionData) {
+      return res.status(503).json({ error: 'Realtime indisponivel — verifique chave OpenAI' });
+    }
+    res.json(sessionData);
   } catch (err) {
     console.error('[JARVIS] Realtime error:', err.message);
     res.status(500).json({ error: err.message });
@@ -3606,20 +3635,20 @@ app.post('/api/health/preflight', async (req, res) => {
 
     // 2. Test OpenAI Realtime session creation (voice)
     try {
-      const rtRes = await fetch('https://api.openai.com/v1/realtime/sessions', {
+      const rtRes = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: 'gpt-4o-realtime-preview',
-          voice: 'ash',
-          modalities: ['audio', 'text']
+          expires_after: { anchor: 'created_at', seconds: 60 },
+          session: { type: 'realtime', model: 'gpt-realtime-2',
+            output_modalities: ['audio'], audio: { output: { voice: 'ash' } } }
         })
       });
       const rtData = await rtRes.json();
-      if (rtRes.ok && rtData.client_secret?.value) {
+      if (rtRes.ok && rtData.value) {
         results.openai_realtime = { status: 'ok', detail: 'Realtime session created successfully' };
       } else {
         results.openai_realtime = { status: 'error', detail: rtData.error?.message || 'Session creation failed' };
@@ -3631,7 +3660,7 @@ app.post('/api/health/preflight', async (req, res) => {
     // 3. Test TTS
     try {
       const ttsTest = await openai.audio.speech.create({
-        model: 'tts-1', voice: 'ash', input: 'Test.', response_format: 'mp3'
+        model: 'gpt-4o-mini-tts', voice: 'ash', input: 'Test.', response_format: 'mp3'
       });
       if (ttsTest) {
         results.openai_tts = { status: 'ok', detail: 'TTS generating audio' };
