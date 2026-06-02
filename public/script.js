@@ -9,6 +9,40 @@ const avatarContainer = document.querySelector('.avatar-container');
 const avatarStatus = document.getElementById('avatar-status');
 const fileAttach = document.getElementById('file-attach');
 
+// ========== PERFORMANCE TIER — adapta o 3D ao hardware ==========
+// Detecta PC fraco e reduz partículas, camadas e FPS automaticamente.
+// Override manual: ?quality=low|medium|high na URL, ou localStorage.gpuQuality
+function detectGPUTier() {
+  try {
+    const forced = new URLSearchParams(location.search).get('quality')
+      || localStorage.getItem('gpuQuality');
+    if (forced && ['low', 'medium', 'high'].includes(forced)) return forced;
+
+    const cores = navigator.hardwareConcurrency || 4;
+    const mem = navigator.deviceMemory || 4; // GB (só Chrome)
+
+    // Tenta ler o renderer da GPU para detectar Intel integrada / software
+    let gpuWeak = false;
+    try {
+      const c = document.createElement('canvas');
+      const gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+      const dbg = gl && gl.getExtension('WEBGL_debug_renderer_info');
+      const renderer = dbg ? (gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) || '') : '';
+      gpuWeak = /(intel|swiftshader|software|llvmpipe|microsoft basic)/i.test(renderer);
+    } catch {}
+
+    if (cores <= 4 || mem <= 4 || gpuWeak) return 'low';
+    if (cores <= 8 || mem <= 8) return 'medium';
+    return 'high';
+  } catch { return 'medium'; }
+}
+
+const GPU_PRESETS = {
+  low:    { particles: 40,  pulses: 6,  lightning: 0,  brainLayers: 1, pixelRatio: 1,    antialias: false, fpsCap: 30, glitch: false, sway: false },
+  medium: { particles: 110, pulses: 14, lightning: 8,  brainLayers: 2, pixelRatio: 1.25, antialias: true,  fpsCap: 45, glitch: true,  sway: true  },
+  high:   { particles: 250, pulses: 25, lightning: 16, brainLayers: 4, pixelRatio: 1.5,  antialias: true,  fpsCap: 60, glitch: true,  sway: true  },
+};
+
 // ========== HOLOGRAPHIC BRAIN 3D — Three.js Iron Man ==========
 class NeuralTree {
   constructor(canvasOrContainer) {
@@ -19,6 +53,13 @@ class NeuralTree {
     this.speedMul = 1;
     this.targetSpeed = 1;
     this.stateSpeeds = { idle: 0.4, listening: 0.8, thinking: 1.5, speaking: 1.0 };
+
+    // Tier de performance — adapta ao hardware (PC fraco roda leve)
+    this.tier = detectGPUTier();
+    this.q = GPU_PRESETS[this.tier];
+    this.fpsInterval = 1000 / this.q.fpsCap;
+    this._lastFrame = 0;
+    console.log(`[JARVIS] GPU tier: ${this.tier} — partículas:${this.q.particles} camadas:${this.q.brainLayers} fps:${this.q.fpsCap}`);
 
     // Hide the original canvas (Three.js creates its own)
     if (canvasOrContainer.tagName === 'CANVAS') canvasOrContainer.style.display = 'none';
@@ -53,9 +94,9 @@ class NeuralTree {
     this.camera.lookAt(0, -1.5, 0);
 
     // Renderer
-    this.renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
+    this.renderer = new THREE.WebGLRenderer({ alpha: true, antialias: this.q.antialias, preserveDrawingBuffer: false, powerPreference: 'high-performance' });
     this.renderer.setSize(w, h);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.q.pixelRatio));
     this.renderer.setClearColor(0x000000, 0);
     this.renderer.domElement.style.position = 'absolute';
     this.renderer.domElement.style.top = '0';
@@ -173,7 +214,8 @@ class NeuralTree {
       self.brainHolo = brainPivot;
       self.brainGroup.add(brainPivot);
 
-      // Wireframe clone
+      // Wireframe clone (skip on low tier)
+      if (self.q.brainLayers >= 2) {
       const wireModel = model.clone(true);
       wireModel.traverse(function(child) {
         if (child.isMesh) {
@@ -187,8 +229,10 @@ class NeuralTree {
       wirePivot.scale.setScalar(brainScale * 1.003);
       self.brainWire = wirePivot;
       self.brainGroup.add(wirePivot);
+      }
 
-      // Second wireframe (outer glow layer)
+      // Second wireframe (outer glow layer) + inner volume — only on high tier
+      if (self.q.brainLayers >= 4) {
       const wire2Model = model.clone(true);
       wire2Model.traverse(function(child) {
         if (child.isMesh) {
@@ -219,6 +263,7 @@ class NeuralTree {
       solidPivot.scale.setScalar(brainScale * 0.98);
       self.brainSolid = solidPivot;
       self.brainGroup.add(solidPivot);
+      }
 
       console.log('[JARVIS] Brain 3D model loaded successfully');
     }, undefined, (err) => {
@@ -396,7 +441,7 @@ class NeuralTree {
     // ── Floating particles (more, bigger, spread across entire tree area) ──
     this._particles = [];
     const pMat = new THREE.MeshBasicMaterial({ color: 0x00e4ff, transparent: true, opacity: 0.5 });
-    for (let i = 0; i < 250; i++) {
+    for (let i = 0; i < this.q.particles; i++) {
       const size = 0.02 + Math.random() * 0.04;
       const pGeo = new THREE.SphereGeometry(size, 4, 4);
       const p = new THREE.Mesh(pGeo, pMat.clone());
@@ -414,7 +459,7 @@ class NeuralTree {
 
     // ── Lightning bolts (more, brighter) ──
     this._lightningLines = [];
-    for (let i = 0; i < 16; i++) {
+    for (let i = 0; i < this.q.lightning; i++) {
       const pts = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
       const geo = new THREE.BufferGeometry().setFromPoints(pts);
       const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x88ddff, transparent: true, opacity: 0.7 }));
@@ -428,7 +473,7 @@ class NeuralTree {
     // ── Electric pulse points ──
     this._pulsePoints = [];
     const pulseMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 });
-    for (let i = 0; i < 25; i++) {
+    for (let i = 0; i < this.q.pulses; i++) {
       const pp = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), pulseMat.clone());
       const theta = Math.random()*Math.PI*2, phi = Math.random()*Math.PI;
       pp.position.set(Math.sin(phi)*Math.cos(theta)*2.4, Math.cos(phi)*1.7, Math.sin(phi)*Math.sin(theta)*2.0);
@@ -466,9 +511,15 @@ class NeuralTree {
     }
   }
 
-  animate() {
+  animate(now) {
     if (this._disposed) return;
+    requestAnimationFrame(this.animate);
     if (this._paused) return;
+
+    // ── FPS cap (adaptive por tier de GPU) ──
+    now = now || performance.now();
+    if (now - this._lastFrame < this.fpsInterval) return;
+    this._lastFrame = now;
 
     this.time += 0.016;
     this.speedMul += (this.targetSpeed - this.speedMul) * 0.03;
@@ -591,19 +642,20 @@ class NeuralTree {
     }
 
     // ── Glitch effect (occasional) ──
-    if (this.brainGroup && Math.random() < 0.01) {
+    if (this.q.glitch && this.brainGroup && Math.random() < 0.01) {
       this.brainGroup.position.x = (Math.random() - 0.5) * 0.05;
       const bg = this.brainGroup;
       setTimeout(() => { bg.position.x = 0; }, 50);
     }
 
     // ── Camera subtle sway ──
-    this.camera.position.x = Math.sin(this.time * 0.12) * 0.2;
-    this.camera.position.y = Math.sin(this.time * 0.08) * 0.15;
-    this.camera.lookAt(0, -1.5, 0);
+    if (this.q.sway) {
+      this.camera.position.x = Math.sin(this.time * 0.12) * 0.2;
+      this.camera.position.y = Math.sin(this.time * 0.08) * 0.15;
+      this.camera.lookAt(0, -1.5, 0);
+    }
 
     this.renderer.render(this.scene, this.camera);
-    requestAnimationFrame(this.animate);
   }
 }
 
