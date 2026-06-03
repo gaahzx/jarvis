@@ -7,10 +7,26 @@ import { api } from '@/lib/api';
 
 const SEGMENTOS = [
   { key: 'salao', label: '💇 Salão de Beleza' },
+  { key: 'barbearia', label: '💈 Barbearia' },
+  { key: 'estetica', label: '✨ Estética / Spa' },
   { key: 'clinica', label: '🏥 Clínica / Saúde' },
+  { key: 'odontologia', label: '🦷 Odontologia' },
+  { key: 'psicologia', label: '🧠 Psicologia / Terapia' },
+  { key: 'nutricionista', label: '🥗 Nutrição' },
+  { key: 'fisioterapia', label: '🦴 Fisioterapia' },
   { key: 'restaurante', label: '🍽️ Restaurante / Delivery' },
   { key: 'petshop', label: '🐾 Pet Shop / Vet' },
   { key: 'academia', label: '💪 Academia / Fitness' },
+  { key: 'imobiliaria', label: '🏠 Imobiliária' },
+  { key: 'investimento_imobiliario', label: '📈 Investimento Imobiliário' },
+  { key: 'advocacia', label: '⚖️ Advocacia' },
+  { key: 'contabilidade', label: '📊 Contabilidade' },
+  { key: 'consultoria', label: '💼 Consultoria' },
+  { key: 'farmacia', label: '💊 Farmácia' },
+  { key: 'otica', label: '👓 Ótica' },
+  { key: 'educacao', label: '📚 Escola / Curso' },
+  { key: 'automotivo', label: '🚗 Automotivo / Mecânica' },
+  { key: 'moda', label: '👗 Moda / Vestuário' },
   { key: 'ecommerce', label: '🛍️ E-commerce / Loja' },
 ];
 
