@@ -36,3 +36,15 @@ body {
     @apply mb-1.5 block text-sm font-medium text-white/70;
   }
 }
+
+/* Corrige dropdowns nativos (<select><option>) ilegíveis: texto branco em fundo branco */
+select.input option,
+select option {
+  background-color: #16182b;
+  color: #ffffff;
+}
+select.input optgroup,
+select optgroup {
+  background-color: #16182b;
+  color: #ffffff;
+}
