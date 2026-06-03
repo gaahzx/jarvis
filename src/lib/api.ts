@@ -91,6 +91,12 @@ export const api = {
   conversasAtivas: () => request('/api/conversas/ativas'),
   conversasDaEmpresa: (id: string) => request(`/api/empresas/${id}/conversas`),
   mensagensDaConversa: (id: string) => request(`/api/conversas/${id}/mensagens`),
+  responderConversa: (id: string, texto: string) =>
+    request(`/api/conversas/${id}/responder`, { method: 'POST', body: JSON.stringify({ texto }) }),
+  assumirConversa: (id: string) =>
+    request(`/api/conversas/${id}/assumir`, { method: 'POST' }),
+  devolverConversaIA: (id: string) =>
+    request(`/api/conversas/${id}/devolver`, { method: 'POST' }),
   escalonamentos: (resolvido?: boolean) =>
     request(`/api/escalonamentos${resolvido !== undefined ? `?resolvido=${resolvido}` : ''}`),
 
