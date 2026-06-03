@@ -5,6 +5,8 @@
 :root {
   --background: 240 10% 4%;
   --foreground: 0 0% 98%;
+  /* Faz o navegador renderizar controles nativos (dropdown de select, date, etc.) em modo escuro */
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
