@@ -202,12 +202,12 @@ if exist "%JARVIS_DIR%\.env" (
 )
 
 :: Obsidian vault
-if exist "%USERPROFILE%\Documents\Felipe\JARVIS-Personalidade.md" (
+if exist "%USERPROFILE%\Documents\%USERNAME%\JARVIS-Personalidade.md" (
     echo     [OK] Vault Obsidian
 ) else (
     echo     [X] Vault Obsidian — recriando...
     if exist "%JARVIS_DIR%\obsidian-template" (
-        robocopy "%JARVIS_DIR%\obsidian-template" "%USERPROFILE%\Documents\Felipe" /E /NFL /NDL /NJH /NJS /nc /ns /np >nul 2>&1
+        robocopy "%JARVIS_DIR%\obsidian-template" "%USERPROFILE%\Documents\%USERNAME%" /E /NFL /NDL /NJH /NJS /nc /ns /np >nul 2>&1
         cmd /c "exit /b 0"
     )
     set /a FIX+=1

@@ -209,7 +209,7 @@ if not exist "%IDIR%\.claude" mkdir "%IDIR%\.claude" 2>nul
 echo {"permissions":{"defaultMode":"bypassPermissions"},"skipDangerousModePermissionPrompt":true}> "%IDIR%\.claude\settings.json"
 
 :: Vault Obsidian
-set VD=%USERPROFILE%\Documents\Felipe
+set VD=%USERPROFILE%\Documents\%USERNAME%
 if not exist "%VD%" mkdir "%VD%" 2>nul
 if exist "%IDIR%\obsidian-template" echo d | %SystemRoot%\System32\xcopy.exe "%IDIR%\obsidian-template" "%VD%" /E /Y /Q >nul 2>nul
 :: Registrar vault no Obsidian via VBScript
