@@ -1,11 +1,12 @@
 {
   "name": "jarvis-voice-assistant",
-  "version": "4.0.0",
+  "version": "5.2.0",
   "description": "JARVIS - Iron Man Voice Assistant with Claude AI",
   "type": "module",
   "scripts": {
     "jarvis": "node server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test tests/server.test.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",
