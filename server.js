@@ -182,10 +182,12 @@ function findPythonExe() {
   const candidates = [
     'C:\\Program Files\\Python311\\python.exe',
     'C:\\Program Files\\Python312\\python.exe',
+    'C:\\Program Files\\Python313\\python.exe',
     'C:\\Program Files\\Python310\\python.exe',
     'C:\\Program Files (x86)\\Python311\\python.exe',
     path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python311', 'python.exe'),
     path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python312', 'python.exe'),
+    path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python313', 'python.exe'),
     path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python310', 'python.exe'),
   ];
   for (const p of candidates) {
@@ -292,7 +294,7 @@ async function checkClaudeCliAuth() {
     } else if (msg.includes('permission') || msg.includes('dangerous')) {
       claudeCliError = 'Claude needs permission setup. Run: claude --dangerously-skip-permissions';
     } else if (msg === 'timeout') {
-      claudeCliError = 'Claude auth check timed out (20s). May be slow or not authenticated.';
+      claudeCliError = 'Claude auth check timed out (60s). May be slow or not authenticated.';
     } else {
       claudeCliError = `Claude test failed: ${msg.slice(0, 200)}`;
     }
@@ -3793,7 +3795,7 @@ app.get('/api/health', (req, res) => {
       task_execution: claudeCliAvailable,
       pdf_generation: true,
       screen_analysis: claudeCliAvailable,
-      excel_live: fs.existsSync(PYTHON_CMD),
+      excel_live: pythonDepsOk,
       meta_ads: false
     }
   };
